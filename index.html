@@ -35,7 +35,7 @@
       <footer class="composer">
         <div class="error-bar" id="errorBar" hidden></div>
         <div class="composer-row">
-          <textarea id="input" rows="3" placeholder="写下你的行动或对话……（Ctrl + Enter 发送）"></textarea>
+          <textarea id="input" rows="3" placeholder="写下你的行动或对话……支持 Markdown 和 HTML（Ctrl + Enter 发送）"></textarea>
           <div class="composer-buttons">
             <button id="btnSend" class="btn btn-primary">发送</button>
             <button id="btnStop" class="btn danger" hidden>停止</button>
@@ -165,10 +165,20 @@
     </div>
   </div>
 
+  <div class="modal" id="dialog" hidden>
+    <div class="modal-box dialog-box">
+      <div class="modal-head"><strong id="dialogTitle"></strong></div>
+      <div class="dialog-message" id="dialogMessage"></div>
+      <div class="dialog-buttons" id="dialogButtons"></div>
+    </div>
+  </div>
+
   <div class="toast" id="toast" hidden></div>
 
+  <script src="js/vendor/marked.min.js"></script>
   <script src="js/db.js"></script>
   <script src="js/providers.js"></script>
+  <script src="js/render.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

@@ -31,6 +31,8 @@ const state = {
   editDraft: '',
   follow: true,        // 生成时是否自动滚到底部
   artUrl: null,
+  views: new Map(),    // 消息 id → 界面元素
+  renderedConvId: null,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -45,13 +47,6 @@ function uid() {
 
 function escapeHtml(s) {
   return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
-
-// 简单排版：**粗体**、*斜体*（常用来写动作）
-function formatText(s) {
-  return escapeHtml(s)
-    .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*([^*\n]+)\*/g, '<em>$1</em>');
 }
 
 // 粗略估算 token 数：中日韩文字约 1 字 1 token，其他约 4 个字符 1 token
@@ -138,10 +133,21 @@ function buildSystem() {
   return parts.join('\n\n');
 }
 
-// 从一串消息中取出要发送的部分：最后一条（用户这次的回复）+ 之前的 N 轮（2N 条）
-function windowOf(messages) {
+// 开场白和用户第一条消息合在一起，作为发给模型的第一条消息
+function withGreeting(greeting, text) {
+  return `【开场白】\n${greeting}\n\n【用户】\n${text}`;
+}
+
+// messages 是从对话开头算起的一串消息，最后一条是用户这次的回复。
+// 取出最后一条 + 之前的 N 轮（2N 条）。如果对话的第一条消息还在范围内，就把开场白拼进去。
+function windowOf(messages, greeting = state.conv.greeting) {
   const keep = state.settings.rounds * 2 + 1;
-  return messages.slice(-keep).map((m) => ({ role: m.role, content: msgText(m) }));
+  const start = Math.max(0, messages.length - keep);
+  return messages.slice(start).map((m, i) => {
+    let content = msgText(m);
+    if (start + i === 0 && greeting && m.role === 'user') content = withGreeting(greeting, content);
+    return { role: m.role, content };
+  });
 }
 
 // 当前对话里，从第几条开始在下一次请求的记忆范围内
@@ -156,7 +162,7 @@ function memoryCutoff() {
 
 function newConversation() {
   const now = Date.now();
-  return { id: uid(), title: '新对话', createdAt: now, updatedAt: now, messages: [] };
+  return { id: uid(), title: '新对话', greeting: null, createdAt: now, updatedAt: now, messages: [] };
 }
 
 async function saveConv(conv = state.conv) {
@@ -191,119 +197,174 @@ function renderConvSelect() {
   }
 }
 
+// 从一段可能含 Markdown/HTML 的文字里提取对话标题
+function titleFrom(text) {
+  const plain = text
+    .replace(/<(script|style)[\s\S]*?<\/\1>/gi, ' ')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/[#*_`>~|-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return plain.slice(0, 20) || '新对话';
+}
+
 // ---------------- 消息渲染 ----------------
+// 每条消息对应一个“视图”（state.views），内容没变时不重新加载里面的 iframe，
+// 这样切换版本、调记忆长度等操作时页面不会闪动或跳动。
+
+const GREETING_ID = '__greeting';
 
 function renderMessages() {
   const box = els.messages;
-  box.innerHTML = '';
-  const msgs = state.conv.messages;
-  if (!msgs.length) {
-    box.innerHTML = `<div class="empty-hint">在下方写下第一条消息，开始故事。<br>
-      <span class="small">右侧可以设置 System Prompt、世界观、你的角色和模型。</span></div>`;
+  const conv = state.conv;
+  if (state.renderedConvId !== conv.id) {
+    box.innerHTML = '';
+    state.views.clear();
+    state.renderedConvId = conv.id;
+  }
+
+  const items = [];
+  if (conv.greeting != null) items.push({ id: GREETING_ID, greeting: true });
+  conv.messages.forEach((m, i) => items.push({ id: m.id, m, i }));
+
+  box.querySelectorAll('.empty-hint, .memory-divider').forEach((el) => el.remove());
+  const ids = new Set(items.map((it) => it.id));
+  for (const [id, v] of state.views) {
+    if (!ids.has(id)) { v.el.remove(); state.views.delete(id); }
+  }
+
+  if (!items.length) {
+    const hint = document.createElement('div');
+    hint.className = 'empty-hint';
+    hint.innerHTML = `在下方写下第一条消息，开始故事。<br>
+      <span class="small">第一条消息可以保存为本对话的开场白。支持 Markdown 和 HTML。<br>
+      右侧可以设置 System Prompt、世界观、你的角色和模型。</span>`;
+    box.appendChild(hint);
     updateComposer();
     return;
   }
+
   const cutoff = memoryCutoff();
-  msgs.forEach((m, i) => {
-    if (i === cutoff && cutoff > 0) {
-      const d = document.createElement('div');
-      d.className = 'memory-divider';
-      d.textContent = `↑ 以上 ${cutoff} 条超出记忆长度，模型看不到`;
-      box.appendChild(d);
-    }
-    const el = renderMessage(m, i);
-    if (i < cutoff) el.classList.add('forgotten');
-    box.appendChild(el);
-  });
+  let prev = null;
+  for (const it of items) {
+    let v = state.views.get(it.id);
+    if (!v) { v = createView(it); state.views.set(it.id, v); }
+    updateView(v, it, cutoff);
+    // 只有新建的视图才需要插入；已有的保持原位（移动 iframe 会让它重新加载）
+    if (!v.el.parentNode) box.insertBefore(v.el, prev ? prev.nextSibling : box.firstChild);
+    prev = v.el;
+  }
+
+  if (cutoff > 0) {
+    const d = document.createElement('div');
+    d.className = 'memory-divider';
+    d.textContent = `↑ 以上${conv.greeting != null ? '开场白和' : ''} ${cutoff} 条消息超出记忆长度，模型看不到`;
+    box.insertBefore(d, state.views.get(conv.messages[cutoff].id).el);
+  }
   updateComposer();
 }
 
-function renderMessage(m, i) {
-  const msgs = state.conv.messages;
-  const isLast = i === msgs.length - 1;
-  const busy = !!state.generating;
-  const isGen = busy && state.generating.msgId === m.id;
-
+function createView(it) {
   const el = document.createElement('div');
-  el.className = 'msg ' + m.role;
-  el.dataset.id = m.id;
-
   const label = document.createElement('div');
   label.className = 'msg-label';
-  label.textContent = m.role === 'user' ? '你' : '剧情';
-  el.appendChild(label);
-
-  if (state.editingId === m.id) {
-    el.classList.add('editing');
-    const wrap = document.createElement('div');
-    wrap.className = 'msg-edit';
-    const ta = document.createElement('textarea');
-    ta.value = state.editDraft;
-    ta.addEventListener('input', () => { state.editDraft = ta.value; });
-    ta.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.isComposing) { e.preventDefault(); saveEdit(m); }
-      if (e.key === 'Escape') cancelEdit();
-    });
-    const row = document.createElement('div');
-    row.className = 'row';
-    row.append(button('取消', cancelEdit, 'btn btn-small btn-ghost'), button('保存（Ctrl+Enter）', () => saveEdit(m), 'btn btn-small btn-primary'));
-    wrap.append(ta, row);
-    el.appendChild(wrap);
-    setTimeout(() => { ta.focus(); ta.style.height = Math.min(ta.scrollHeight + 4, window.innerHeight * 0.6) + 'px'; }, 0);
-    return el;
-  }
-
-  const body = document.createElement('div');
-  body.className = 'msg-body';
-  const text = msgText(m);
-  if (isGen && !text) {
-    body.innerHTML = '<span class="thinking">等待模型回复……</span>';
-    body.classList.add('pending');
-  } else {
-    body.innerHTML = formatText(text);
-    if (isGen) body.classList.add('pending');
-  }
-  el.appendChild(body);
-
+  const holder = document.createElement('div');
+  holder.className = 'msg-body';
   const actions = document.createElement('div');
   actions.className = 'msg-actions';
+  el.append(label, holder, actions);
+  return { el, label, holder, actions, frame: null, editor: null, shownText: null };
+}
 
+function updateView(v, it, cutoff) {
+  const conv = state.conv;
+  const m = it.m;
+  const role = it.greeting ? 'greeting' : m.role;
+  const busy = !!state.generating;
+  const isGen = busy && m && state.generating.msgId === m.id;
+  const text = it.greeting ? conv.greeting : msgText(m);
+
+  v.el.className = 'msg ' + role;
+  v.el.dataset.id = it.id;
+  v.el.classList.toggle('forgotten', it.greeting ? cutoff > 0 : it.i < cutoff);
+  v.el.classList.toggle('generating', isGen);
+  v.label.textContent = it.greeting ? '开场白' : m.role === 'user' ? '你' : '剧情';
+  if (isGen) v.label.textContent += ' · 生成中……';
+
+  // 编辑状态：隐藏显示区域，换成文本框
+  const editing = state.editingId === it.id;
+  v.el.classList.toggle('editing', editing);
+  if (editing && !v.editor) {
+    v.editor = buildEditor(it.id);
+    v.el.insertBefore(v.editor, v.actions);
+  } else if (!editing && v.editor) {
+    v.editor.remove();
+    v.editor = null;
+  }
+  v.holder.hidden = editing;
+
+  // 内容
+  if (isGen) {
+    if (!v.frame) { v.frame = Render.create(''); v.holder.appendChild(v.frame); }
+    v.shownText = null; // 生成结束后会用完整内容重新显示一次
+    if (!text) Render.stream(v.frame, '', Render.thinkingHtml('等待模型回复……'));
+  } else if (v.shownText !== text) {
+    if (!v.frame) { v.frame = Render.create(text); v.holder.appendChild(v.frame); }
+    else Render.set(v.frame, text);
+    v.shownText = text;
+  }
+
+  // 操作按钮
+  v.actions.innerHTML = '';
+  if (editing) return;
+  if (it.greeting) {
+    v.actions.append(
+      button('复制', () => copyText(conv.greeting)),
+      button('编辑', () => startEdit(GREETING_ID, conv.greeting)),
+      disabled(button('删除开场白', deleteGreeting), busy),
+    );
+    return;
+  }
+  const isLast = it.i === conv.messages.length - 1;
   if (m.role === 'assistant' && m.versions.length > 1) {
     const sw = document.createElement('span');
     sw.className = 'swipe';
-    const prev = button('‹', () => switchVersion(m, -1));
-    const next = button('›', () => switchVersion(m, 1));
-    prev.title = '上一个版本';
-    next.title = '下一个版本';
-    prev.disabled = next.disabled = busy;
     const n = document.createElement('span');
     n.textContent = `${m.cur + 1}/${m.versions.length}`;
-    sw.append(prev, n, next);
-    actions.appendChild(sw);
+    sw.append(
+      disabled(button('‹', () => switchVersion(m, -1)), busy, '上一个版本'),
+      n,
+      disabled(button('›', () => switchVersion(m, 1)), busy, '下一个版本'),
+    );
+    v.actions.appendChild(sw);
   }
-
-  actions.appendChild(button('复制', () => copyText(msgText(m))));
-  const edit = button('编辑', () => startEdit(m));
-  edit.disabled = isGen;
-  actions.appendChild(edit);
+  v.actions.appendChild(button('复制', () => copyText(msgText(m))));
+  v.actions.appendChild(disabled(button('编辑', () => startEdit(m.id, msgText(m))), isGen));
   if (m.role === 'assistant' && isLast) {
-    const regen = button('重新生成', () => regenerate(m));
-    regen.disabled = busy;
-    regen.title = '生成一个新版本，旧版本会保留，可用 ‹ › 切换';
-    actions.appendChild(regen);
+    v.actions.appendChild(disabled(button('重新生成', () => regenerate(m)), busy, '生成一个新版本，旧版本会保留，可用 ‹ › 切换'));
   }
   if (m.role === 'assistant' && m.versions.length > 1) {
-    const delVer = button('删除此版本', () => deleteVersion(m));
-    delVer.disabled = busy;
-    actions.appendChild(delVer);
+    v.actions.appendChild(disabled(button('删除此版本', () => deleteVersion(m)), busy));
   }
-  const back = button('回退到此前', () => rollback(i));
-  back.disabled = busy;
-  back.title = '删除这条消息以及之后的所有消息';
-  actions.appendChild(back);
+  v.actions.appendChild(disabled(button('回退到此前', () => rollback(it.i)), busy, '删除这条消息以及之后的所有消息'));
+}
 
-  el.appendChild(actions);
-  return el;
+function buildEditor(id) {
+  const wrap = document.createElement('div');
+  wrap.className = 'msg-edit';
+  const ta = document.createElement('textarea');
+  ta.value = state.editDraft;
+  ta.addEventListener('input', () => { state.editDraft = ta.value; });
+  ta.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.isComposing) { e.preventDefault(); saveEdit(); }
+    if (e.key === 'Escape') cancelEdit();
+  });
+  const row = document.createElement('div');
+  row.className = 'row';
+  row.append(button('取消', cancelEdit, 'btn btn-small btn-ghost'), button('保存（Ctrl+Enter）', saveEdit, 'btn btn-small btn-primary'));
+  wrap.append(ta, row);
+  setTimeout(() => { ta.focus(); ta.style.height = Math.min(ta.scrollHeight + 4, window.innerHeight * 0.6) + 'px'; }, 0);
+  return wrap;
 }
 
 function button(text, onClick, cls) {
@@ -314,8 +375,10 @@ function button(text, onClick, cls) {
   return b;
 }
 
-function bodyOf(msgId) {
-  return els.messages.querySelector(`.msg[data-id="${CSS.escape(msgId)}"] .msg-body`);
+function disabled(b, isDisabled, title) {
+  b.disabled = !!isDisabled;
+  if (title) b.title = title;
+  return b;
 }
 
 function updateComposer() {
@@ -355,9 +418,9 @@ async function copyText(t) {
   catch (_) { toast('复制失败，请手动选择文字复制'); }
 }
 
-function startEdit(m) {
-  state.editingId = m.id;
-  state.editDraft = msgText(m);
+function startEdit(id, text) {
+  state.editingId = id;
+  state.editDraft = text;
   renderMessages();
 }
 
@@ -366,12 +429,32 @@ function cancelEdit() {
   renderMessages();
 }
 
-async function saveEdit(m) {
-  m.versions[m.cur] = state.editDraft;
+async function saveEdit() {
+  const id = state.editingId;
+  const draft = state.editDraft;
+  if (id === GREETING_ID) {
+    if (!draft.trim()) {
+      if (!confirm('开场白为空，要删除开场白吗？')) return;
+      state.conv.greeting = null;
+    } else {
+      state.conv.greeting = draft;
+    }
+  } else {
+    const m = state.conv.messages.find((x) => x.id === id);
+    if (m) m.versions[m.cur] = draft;
+  }
   state.editingId = null;
   renderMessages();
   await saveConv();
   toast('已保存修改');
+}
+
+async function deleteGreeting() {
+  if (!confirm('删除本对话的开场白？')) return;
+  state.conv.greeting = null;
+  if (state.editingId === GREETING_ID) state.editingId = null;
+  renderMessages();
+  await saveConv();
 }
 
 async function switchVersion(m, delta) {
@@ -404,13 +487,58 @@ async function rollback(i) {
 
 // ---------------- 发送与生成 ----------------
 
+// 带多个按钮的确认框，返回所选按钮的 value（关闭则为 null）
+function choose(title, message, options) {
+  return new Promise((resolve) => {
+    els.dialogTitle.textContent = title;
+    els.dialogMessage.textContent = message;
+    els.dialogButtons.innerHTML = '';
+    const close = (value) => {
+      els.dialog.hidden = true;
+      document.removeEventListener('keydown', onKey, true);
+      resolve(value);
+    };
+    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(null); } };
+    for (const o of options) {
+      els.dialogButtons.appendChild(button(o.label, () => close(o.value), 'btn' + (o.primary ? ' btn-primary' : o.ghost ? ' btn-ghost' : '')));
+    }
+    document.addEventListener('keydown', onKey, true);
+    els.dialog.hidden = false;
+    els.dialogButtons.querySelector('.btn-primary')?.focus();
+  });
+}
+
 async function send() {
   if (state.generating) return;
   const text = els.input.value.trim();
   if (!text) return;
   const conv = state.conv;
+
+  // 对话完全为空时，询问是否把这条消息作为开场白
+  if (conv.greeting == null && !conv.messages.length) {
+    const choice = await choose('第一条消息', '是否作为开场白发送并保存？\n\n'
+      + '· 作为开场白：固定显示在本对话最上方，现在不发给模型。你下一次发送消息时，开场白会和那条消息合在一起，作为第一条消息发给模型。\n'
+      + '· 直接发送：作为普通消息马上发给模型。', [
+      { label: '取消', value: null, ghost: true },
+      { label: '直接发送给模型', value: 'send' },
+      { label: '作为开场白保存', value: 'greeting', primary: true },
+    ]);
+    if (!choice) return;
+    if (state.generating || conv !== state.conv) return;
+    if (choice === 'greeting') {
+      conv.greeting = text;
+      if (conv.title === '新对话') conv.title = titleFrom(text);
+      els.input.value = '';
+      renderMessages();
+      scrollToBottom();
+      await saveConv();
+      toast('已保存为开场白');
+      return;
+    }
+  }
+
   conv.messages.push({ id: uid(), role: 'user', versions: [text], cur: 0 });
-  if (conv.title === '新对话') conv.title = text.replace(/\s+/g, ' ').slice(0, 20);
+  if (conv.title === '新对话') conv.title = titleFrom(text);
   els.input.value = '';
   await saveConv();
   await generateReply();
@@ -443,28 +571,28 @@ async function runGeneration(m, context) {
   const ver = m.cur;
   let result = null;
   let error = null;
-  let pendingRender = false;
+  let pendingPaint = false;
 
+  const frame = () => {
+    const v = state.conv === conv && state.views.get(m.id);
+    return v && v.frame;
+  };
   const paint = () => {
-    pendingRender = false;
-    if (state.conv !== conv) return;
-    const body = bodyOf(m.id);
-    if (!body) return;
-    body.innerHTML = formatText(m.versions[ver]);
-    // 只有用户停留在底部时才跟随滚动；向上翻阅时不打扰
-    if (state.follow) els.messages.scrollTop = els.messages.scrollHeight;
+    pendingPaint = false;
+    const f = frame();
+    if (f) Render.stream(f, m.versions[ver]);
   };
 
   try {
-    result = await streamChat(providerCfg(), buildSystem(), windowOf(context), {
+    result = await streamChat(providerCfg(), buildSystem(), windowOf(context, conv.greeting), {
       signal: controller.signal,
       onText: (t) => {
         m.versions[ver] += t;
-        if (!pendingRender) { pendingRender = true; requestAnimationFrame(paint); }
+        if (!pendingPaint) { pendingPaint = true; requestAnimationFrame(paint); }
       },
       onThinking: () => {
-        const body = bodyOf(m.id);
-        if (body && !m.versions[ver]) body.innerHTML = '<span class="thinking">模型思考中……</span>';
+        const f = frame();
+        if (f && !m.versions[ver]) Render.stream(f, '', Render.thinkingHtml('模型思考中……'));
       },
     });
   } catch (e) {
@@ -493,7 +621,6 @@ async function runGeneration(m, context) {
   else if (result && (result.stopReason === 'max_tokens' || result.stopReason === 'length')) {
     showError('提示：回复达到了“最大输出长度”被截断。可以在右侧调大这个数值。');
   } else if (!text) toast('已停止');
-  if (state.follow) scrollToBottom();
 }
 
 function stop() {
@@ -521,7 +648,7 @@ function preview() {
   const system = buildSystem();
   const lines = [];
   lines.push(`说明 ${note}`);
-  lines.push(`记忆长度 ${state.settings.rounds} 轮：发送最近 ${win.length} 条消息，${dropped > 0 ? `更早的 ${dropped} 条不发送。` : '目前全部消息都在范围内。'}`);
+  lines.push(`记忆长度 ${state.settings.rounds} 轮：发送最近 ${win.length} 条消息，${dropped > 0 ? `更早的 ${dropped} 条${state.conv.greeting != null ? '和开场白' : ''}不发送。` : '目前全部消息都在范围内。'}`);
   lines.push(`粗略估计共约 ${(estimateTokens(system) + win.reduce((a, m) => a + estimateTokens(m.content), 0)).toLocaleString()} token。`);
   lines.push('');
   lines.push('════════ system ════════');
@@ -557,11 +684,16 @@ async function setArt(file) {
 
 function exportText(markdown) {
   const conv = state.conv;
-  if (!conv.messages.length) return toast('当前对话还没有内容');
+  if (!conv.messages.length && conv.greeting == null) return toast('当前对话还没有内容');
   const out = [];
   out.push(markdown ? `# ${conv.title}` : conv.title);
   out.push(markdown ? `*导出时间：${new Date().toLocaleString()}*` : `导出时间：${new Date().toLocaleString()}`);
   out.push('');
+  if (conv.greeting != null) {
+    out.push(markdown ? '### 开场白' : '【开场白】');
+    out.push(conv.greeting);
+    out.push('');
+  }
   for (const m of conv.messages) {
     const who = m.role === 'user' ? '你' : '剧情';
     out.push(markdown ? `### ${who}` : `【${who}】`);
@@ -834,6 +966,8 @@ async function boot() {
   state.conv = state.conversations.find((c) => c.id === state.settings.activeConvId)
     || [...state.conversations].sort((a, b) => b.updatedAt - a.updatedAt)[0];
   state.settings.activeConvId = state.conv.id;
+  state.renderedConvId = null;
+  state.editingId = null;
 
   fillSettingsForm();
   renderConvSelect();
@@ -848,6 +982,8 @@ function init() {
     .map(([k, p]) => `<option value="${k}">${escapeHtml(p.label)}</option>`).join('');
   bindSettings();
   bindChat();
+  // 消息高度变化时（内容载入、图片加载、展开 <details> 等），如果停留在底部就继续贴底
+  Render.onResize(() => { if (state.follow) els.messages.scrollTop = els.messages.scrollHeight; });
   boot().catch((e) => {
     console.error(e);
     showError('读取本地数据失败：' + e.message + '\n如果是在隐私/无痕模式下打开，浏览器可能禁止了本地存储。');
