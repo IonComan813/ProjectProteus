@@ -18,6 +18,14 @@ const PROVIDERS = {
     models: [],
     defaultModel: '',
   },
+  gemini: {
+    label: 'Google Gemini',
+    format: 'openai', // 使用 Gemini 提供的 OpenAI 兼容接口
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+    // 免费额度下较大的模型常常繁忙（503）或长时间排队，默认用最稳定的 3.5-flash-lite
+    models: ['gemini-3.5-flash-lite', 'gemini-3.5-flash', 'gemini-3-flash-preview', 'gemini-3.8-flash', 'gemini-3.1-pro-preview'],
+    defaultModel: 'gemini-3.5-flash-lite',
+  },
   openrouter: {
     label: 'OpenRouter',
     format: 'openai',
@@ -130,7 +138,8 @@ async function readError(res) {
   const text = await res.text().catch(() => '');
   let msg = text;
   try {
-    const j = JSON.parse(text);
+    let j = JSON.parse(text);
+    if (Array.isArray(j)) j = j[0] || {}; // Gemini 的错误信息包在数组里
     msg = (j.error && (j.error.message || j.error.type)) || j.message || text;
   } catch (_) { /* 不是 JSON，直接用原文 */ }
   const hints = {
@@ -138,6 +147,10 @@ async function readError(res) {
     403: '没有权限访问这个模型或接口。',
     404: '接口地址或模型名称不对。',
     429: '请求太频繁或额度用完了，稍后再试。',
+    500: '服务器内部错误，稍后再试。',
+    502: '服务器暂时不可用，稍后再试。',
+    503: '服务器繁忙（免费额度时常见），稍后再试或换一个模型。',
+    504: '服务器响应超时，稍后再试。',
   };
   return new Error(`HTTP ${res.status}${hints[res.status] ? '：' + hints[res.status] : ''}\n${String(msg).slice(0, 600)}`);
 }
@@ -225,6 +238,7 @@ async function fetchModels(cfg) {
   }
   if (!res.ok) throw await readError(res);
   const j = await res.json();
-  const list = (j.data || j.models || []).map((m) => m.id || m.name).filter(Boolean);
+  const list = (j.data || j.models || []).map((m) => m.id || m.name).filter(Boolean)
+    .map((id) => id.replace(/^models\//, '')); // Gemini 的模型名带有 models/ 前缀，去掉后也能用
   return list.sort();
 }
