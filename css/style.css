@@ -140,8 +140,7 @@ html, body {
 .msg.greeting .msg-label { color: var(--accent); }
 .msg.generating .msg-label { color: var(--accent); }
 
-/* 超出记忆长度的旧消息：变淡显示 */
-.msg.forgotten { opacity: .5; }
+/* 记忆范围的分界线（之前的消息照常显示，只是模型看不到） */
 .memory-divider {
   max-width: 820px;
   margin: -6px auto 22px;
