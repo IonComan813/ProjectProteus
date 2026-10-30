@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Proteus</title>
   <link rel="stylesheet" href="css/style.css">
 </head>
@@ -25,8 +25,10 @@
       <header class="chat-header">
         <select id="convSelect" data-i18n-title="conv.switch"></select>
         <button id="btnNewConv" class="btn" data-i18n="conv.new"></button>
-        <button id="btnRenameConv" class="btn btn-ghost" data-i18n="conv.rename" data-i18n-title="conv.renameTitle"></button>
-        <button id="btnDeleteConv" class="btn btn-ghost danger" data-i18n="conv.delete" data-i18n-title="conv.deleteTitle"></button>
+        <button id="btnRenameConv" class="btn btn-ghost desktop-only" data-i18n="conv.rename" data-i18n-title="conv.renameTitle"></button>
+        <button id="btnDeleteConv" class="btn btn-ghost danger desktop-only" data-i18n="conv.delete" data-i18n-title="conv.deleteTitle"></button>
+        <!-- 手机布局：设置面板收起来，点齿轮打开 -->
+        <button id="btnSettings" class="btn icon-btn mobile-only" data-i18n-title="set.open">⚙</button>
       </header>
 
       <div class="messages-wrap">
@@ -55,7 +57,23 @@
     </main>
 
     <!-- 右栏：设置 -->
+    <div class="settings-backdrop mobile-only" id="settingsBackdrop"></div>
     <aside class="settings-pane" id="settingsPane">
+      <!-- 手机布局：设置面板的标题栏 -->
+      <div class="settings-head mobile-only">
+        <strong data-i18n="set.title"></strong>
+        <button class="btn btn-small btn-ghost" id="btnCloseSettings" data-i18n="modal.close"></button>
+      </div>
+
+      <!-- 手机布局：顶部放不下的“重命名 / 删除”放在这里 -->
+      <section class="card mobile-only">
+        <h3 data-i18n="set.conversation"></h3>
+        <div class="row">
+          <button class="btn btn-small" id="btnRenameConv2" data-i18n="conv.rename"></button>
+          <button class="btn btn-small btn-ghost danger" id="btnDeleteConv2" data-i18n="conv.delete"></button>
+        </div>
+      </section>
+
       <!-- 锁定的对话（来自加密世界卡）才显示 -->
       <section class="card lock-card lock-only">
         <h3 data-i18n="lock.title"></h3>

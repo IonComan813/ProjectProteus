@@ -87,8 +87,25 @@ function showModal(title, body) {
   els.modal.hidden = false;
 }
 
+// 安卓版（Capacitor）里网页不能直接下载文件，改为写入临时文件后弹出系统分享菜单（可存到“文件”、网盘或发给别人）
+const NATIVE = window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform() ? window.Capacitor : null;
+function nativePlugin(name) {
+  return (NATIVE.Plugins && NATIVE.Plugins[name]) || NATIVE.registerPlugin(name);
+}
+
+async function shareFile(filename, blob) {
+  try {
+    const data = (await blobToDataURL(blob)).split(',')[1];
+    const file = await nativePlugin('Filesystem').writeFile({ path: filename, data, directory: 'CACHE' });
+    await nativePlugin('Share').share({ title: filename, files: [file.uri] });
+  } catch (e) {
+    if (!/cancel/i.test(String(e && e.message))) showError(t('export.shareFailed') + '\n' + (e && e.message || e));
+  }
+}
+
 function download(filename, content, type) {
   const blob = content instanceof Blob ? content : new Blob([content], { type: type || 'text/plain;charset=utf-8' });
+  if (NATIVE) return shareFile(filename, blob);
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = filename;
@@ -338,7 +355,7 @@ function renderMessages() {
       hint.append(t('msg.empty'), document.createElement('br'));
       const sub = document.createElement('span');
       sub.className = 'small';
-      sub.append(t('msg.emptySub1'), document.createElement('br'), t('msg.emptySub2'));
+      sub.append(t('msg.emptySub1'), document.createElement('br'), t(isMobileLayout() ? 'msg.emptySub2Mobile' : 'msg.emptySub2'));
       hint.appendChild(sub);
     }
     box.appendChild(hint);
@@ -547,7 +564,9 @@ function updateComposer() {
   els.btnGreetingConfirm.hidden = !gm;
   els.btnGreetingCancel.hidden = !gm;
   els.composer.classList.toggle('greeting-mode', gm);
-  els.input.placeholder = t(gm ? 'input.greetingPlaceholder' : 'input.placeholder');
+  // 手机上没有 Ctrl + Enter，提示里不提它
+  const mobile = isMobileLayout() ? 'Mobile' : '';
+  els.input.placeholder = t((gm ? 'input.greetingPlaceholder' : 'input.placeholder') + mobile);
   updateStatus();
 }
 
@@ -555,7 +574,7 @@ function updateStatus() {
   if (state.generating) { els.status.textContent = t('status.generating'); return; }
   if (state.greetingMode) { els.status.textContent = t('status.greetingMode'); return; }
   const s = state.settings;
-  els.status.textContent = t('status.idle', {
+  els.status.textContent = t(isMobileLayout() ? 'status.idleShort' : 'status.idle', {
     rounds: s.rounds,
     tokens: estimateNextRequest().toLocaleString(),
     sys: estimateTokens(buildSystem()).toLocaleString(),
@@ -587,8 +606,21 @@ function scrollToBottom() {
 // ---------------- 消息操作 ----------------
 
 async function copyText(text) {
-  try { await navigator.clipboard.writeText(text); toast(t('msg.copied')); }
-  catch (_) { toast(t('msg.copyFailed')); }
+  try {
+    await navigator.clipboard.writeText(text);
+    toast(t('msg.copied'));
+  } catch (_) {
+    // 部分安卓 WebView 不允许 navigator.clipboard，退回到老办法
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    ta.remove();
+    toast(t(ok ? 'msg.copied' : 'msg.copyFailed'));
+  }
 }
 
 function startEdit(id, text) {
@@ -1219,7 +1251,48 @@ function makeDraggable(handle, onStart, onMove) {
   });
 }
 
+// ---- 手机布局的设置面板 ----
+
+const isMobileLayout = () => window.matchMedia('(max-width: 999px)').matches;
+
+function openSettings() {
+  document.body.classList.add('settings-open');
+}
+
+function closeSettings() {
+  document.body.classList.remove('settings-open');
+  closeModelMenu();
+}
+
+// 安卓返回键：先关掉打开着的弹窗或设置面板，都没有时才退出
+function bindBackButton() {
+  if (!NATIVE) return;
+  nativePlugin('App').addListener('backButton', () => {
+    for (const id of ['pwDialog', 'textDialog', 'dialog', 'modal']) {
+      if (!els[id].hidden) {
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        els[id].hidden = true;
+        return;
+      }
+    }
+    if (document.body.classList.contains('settings-open')) return closeSettings();
+    if (state.editingId) return cancelEdit();
+    if (state.greetingMode) return exitGreetingMode();
+    nativePlugin('App').exitApp();
+  });
+}
+
 function bindLayout() {
+  els.btnSettings.addEventListener('click', openSettings);
+  els.btnCloseSettings.addEventListener('click', closeSettings);
+  els.settingsBackdrop.addEventListener('click', closeSettings);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSettings(); });
+  // 拉宽窗口切回电脑布局时，收起设置面板的状态
+  window.matchMedia('(max-width: 999px)').addEventListener('change', (e) => {
+    if (!e.matches) closeSettings();
+    if (state.conv) renderMessages(); // 提示文字和状态栏有手机版、电脑版两种写法
+  });
+
   makeDraggable(els.artResizer, () => els.artPane.getBoundingClientRect().width, (w0, dx) => {
     state.settings.artWidth = Math.round(clamp(w0 + dx, artBounds()));
     applyLayout();
@@ -1367,7 +1440,8 @@ function bindModelMenu() {
     } else if (e.key === 'Enter' && !els.modelMenu.hidden && modelMenu.active >= 0) {
       e.preventDefault();
       pickModel(modelMenu.items[modelMenu.active]);
-    } else if (e.key === 'Escape') {
+    } else if (e.key === 'Escape' && !els.modelMenu.hidden) {
+      e.stopPropagation(); // 只收起列表，不顺带关闭设置面板
       closeModelMenu();
     }
   });
@@ -1519,7 +1593,8 @@ function bindSettings() {
 
 
   const pickArt = () => { if (!state.conv.lock) els.fileArt.click(); };
-  els.artPane.addEventListener('click', pickArt);
+  // 手机布局里艺术图是背景，点它不打开上传
+  els.artPane.addEventListener('click', () => { if (!isMobileLayout()) pickArt(); });
   els.artPane.addEventListener('contextmenu', (e) => { if (state.conv.lock) e.preventDefault(); });
   els.btnUploadArt.addEventListener('click', pickArt);
   els.btnDownloadArt.addEventListener('click', downloadArt);
@@ -1560,6 +1635,33 @@ function bindSettings() {
   });
 }
 
+async function renameConv() {
+  const name = await askText(t('conv.rename'), t('conv.renamePrompt'), state.conv.title);
+  if (name === null || !name.trim()) return;
+  state.conv.title = name.trim();
+  await saveConv();
+}
+
+async function deleteConv() {
+  if (state.generating) return toast(t('conv.stopFirst'));
+  if (!confirm(t('conv.deleteConfirm', { title: convTitle(state.conv) }))) return;
+  const gone = state.conv;
+  if (convSavePending === gone) convSavePending = null;
+  state.conversations = state.conversations.filter((c) => c !== gone);
+  if (!state.conversations.length) {
+    // 删掉最后一个对话时，新建一个空对话并沿用被删对话的设定、开场白和艺术图
+    const c = newConversation(gone);
+    state.conversations.push(c);
+    await DB.putConversation(storable(c));
+    const art = await DB.get(artKey(gone.id));
+    if (art) await DB.set(artKey(c.id), art);
+  }
+  await DB.deleteConversation(gone.id);
+  await DB.del(artKey(gone.id));
+  const next = [...state.conversations].sort((a, b) => b.updatedAt - a.updatedAt)[0];
+  await switchConv(next.id);
+}
+
 function bindChat() {
   els.btnSend.addEventListener('click', send);
   els.btnStop.addEventListener('click', stop);
@@ -1584,31 +1686,10 @@ function bindChat() {
 
   els.convSelect.addEventListener('change', () => switchConv(els.convSelect.value));
   els.btnNewConv.addEventListener('click', createConversation);
-  els.btnRenameConv.addEventListener('click', async () => {
-    const name = await askText(t('conv.rename'), t('conv.renamePrompt'), state.conv.title);
-    if (name === null || !name.trim()) return;
-    state.conv.title = name.trim();
-    await saveConv();
-  });
-  els.btnDeleteConv.addEventListener('click', async () => {
-    if (state.generating) return toast(t('conv.stopFirst'));
-    if (!confirm(t('conv.deleteConfirm', { title: convTitle(state.conv) }))) return;
-    const gone = state.conv;
-    if (convSavePending === gone) convSavePending = null;
-    state.conversations = state.conversations.filter((c) => c !== gone);
-    if (!state.conversations.length) {
-      // 删掉最后一个对话时，新建一个空对话并沿用被删对话的设定、开场白和艺术图
-      const c = newConversation(gone);
-      state.conversations.push(c);
-      await DB.putConversation(storable(c));
-      const art = await DB.get(artKey(gone.id));
-      if (art) await DB.set(artKey(c.id), art);
-    }
-    await DB.deleteConversation(gone.id);
-    await DB.del(artKey(gone.id));
-    const next = [...state.conversations].sort((a, b) => b.updatedAt - a.updatedAt)[0];
-    await switchConv(next.id);
-  });
+  els.btnRenameConv.addEventListener('click', renameConv);
+  els.btnRenameConv2.addEventListener('click', renameConv);
+  els.btnDeleteConv.addEventListener('click', deleteConv);
+  els.btnDeleteConv2.addEventListener('click', deleteConv);
 
   els.btnModalClose.addEventListener('click', () => { els.modal.hidden = true; });
   els.modal.addEventListener('click', (e) => { if (e.target === els.modal) els.modal.hidden = true; });
@@ -1684,6 +1765,7 @@ function init() {
   bindChat();
   bindLayout();
   bindModelMenu();
+  bindBackButton();
   // 消息高度变化时（内容载入、图片加载、展开 <details> 等），如果停留在底部就继续贴底
   Render.onResize(() => { if (state.follow) els.messages.scrollTop = els.messages.scrollHeight; });
   boot().catch((e) => {

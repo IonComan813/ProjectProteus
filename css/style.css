@@ -485,3 +485,139 @@ textarea:focus, input:focus, select:focus { outline: 1px solid var(--accent); bo
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: #3a3c44; border-radius: 5px; border: 2px solid transparent; background-clip: padding-box; }
 ::-webkit-scrollbar-track { background: transparent; }
+
+/* =====================================================================
+   手机布局（窗口宽度 < 1000px，包括安卓版）：
+   艺术图铺满背景并调暗，聊天区叠在上面；设置面板点齿轮从右侧滑出。
+   ===================================================================== */
+.icon-btn { font-size: 16px; line-height: 1; padding: 7px 10px; }
+
+@media (min-width: 1000px) {
+  .mobile-only { display: none !important; }
+}
+
+@media (max-width: 999px) {
+  .desktop-only { display: none !important; }
+
+  html, body { overflow: hidden; }
+  .app {
+    display: block;
+    position: relative;
+    height: 100vh;
+    height: 100dvh;
+    min-width: 0;
+  }
+
+  /* 艺术图：铺满整个背景（等比例缩放、裁掉多余部分），上面盖一层深色让文字看得清 */
+  .art-pane {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    border: none;
+    cursor: default;
+    pointer-events: none;
+  }
+  .art-pane img {
+    inset: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transform: none;
+  }
+  .art-pane::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: rgba(13, 14, 18, .72);
+  }
+  .art-placeholder, .col-resizer { display: none; }
+
+  .chat-pane {
+    position: relative;
+    z-index: 1;
+    height: 100%;
+  }
+  .chat-header {
+    gap: 6px;
+    padding: 8px 10px;
+    padding-top: calc(8px + env(safe-area-inset-top, 0px));
+    background: rgba(28, 29, 34, .88);
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+  }
+  .chat-header .btn { padding: 7px 10px; }
+
+  .messages { padding: 14px 12px 28px; }
+  .msg { max-width: 100%; margin-bottom: 18px; }
+  .msg.user .msg-body { background: rgba(42, 45, 54, .9); }
+  .msg.greeting .msg-body { background: rgba(28, 29, 34, .75); }
+  .memory-divider { margin-bottom: 18px; }
+  .empty-hint { margin-top: 14vh; padding: 0 12px; }
+
+  .composer {
+    padding: 8px 10px;
+    padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
+    background: rgba(28, 29, 34, .92);
+  }
+  .row-resizer { margin: -8px -10px 4px; height: 12px; touch-action: none; }
+  .composer-row { gap: 8px; }
+  .composer textarea { font-size: 16px; min-height: 48px; }
+  .composer-buttons .btn { padding: 7px 10px; }
+  .composer-status, .composer-footer { font-size: 10px; }
+
+  /* 设置面板：从右侧滑出，盖住聊天区 */
+  .settings-pane {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(100vw, 420px);
+    z-index: 30;
+    border-left: 1px solid var(--border);
+    padding-top: calc(12px + env(safe-area-inset-top, 0px));
+    padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    transform: translateX(100%);
+    visibility: hidden;
+    transition: transform .2s ease, visibility 0s linear .2s;
+    overscroll-behavior: contain;
+    box-shadow: -8px 0 24px rgba(0, 0, 0, .45);
+  }
+  body.settings-open .settings-pane {
+    transform: none;
+    visibility: visible;
+    transition: transform .2s ease;
+  }
+  .settings-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 29;
+    background: rgba(0, 0, 0, .5);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .2s;
+  }
+  body.settings-open .settings-backdrop { opacity: 1; pointer-events: auto; }
+  .settings-head {
+    position: sticky;
+    top: calc(-12px - env(safe-area-inset-top, 0px));
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: -12px -12px 10px;
+    padding: 12px 16px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    font-size: 15px;
+  }
+
+  .modal-box, .dialog-box { width: 94vw; }
+  input[type=text], input[type=password], input[type=number], select, textarea { font-size: 16px; }
+}
+
+/* 触屏没有“鼠标悬停”，消息下方的按钮一直显示 */
+@media (hover: none) {
+  .msg-actions { opacity: 1; }
+  .msg-actions button, .swipe button { padding: 5px 8px; }
+}
