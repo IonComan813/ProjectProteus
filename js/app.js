@@ -888,6 +888,9 @@ async function runGeneration(m, context) {
     error = new Error(t('gen.refused'));
     m.versions[ver] = '';
   }
+  const kept = !!m.versions[ver];
+  const truncated = !!result && (result.stopReason === 'max_tokens' || result.stopReason === 'length');
+  const failed = !!result && result.stopReason === 'error'; // 部分接口（如 OpenRouter）用 finish_reason 报告中途出错
 
   // 没有生成出任何文字时，撤掉这个空版本
   if (!m.versions[ver]) {
@@ -899,8 +902,11 @@ async function runGeneration(m, context) {
   if (state.conv === conv) renderMessages();
   await saveConv(conv);
 
-  if (error) showError(error.message);
-  else if (result && (result.stopReason === 'max_tokens' || result.stopReason === 'length')) showError(t('gen.truncated'));
+  // 回复没写完就结束了（出错或达到最大输出长度）：已经输出的部分照常显示和保存，弹窗说明一下
+  if (kept && (error || failed)) showModal(t('gen.interruptedTitle'), t('gen.interrupted') + (error ? '\n\n' + error.message : ''));
+  else if (kept && truncated) showModal(t('gen.truncatedTitle'), t('gen.truncated'));
+  else if (error) showError(error.message);
+  else if (failed) showError(t('gen.errorEnded'));
   else if (!text) toast(t('gen.stopped'));
 }
 
