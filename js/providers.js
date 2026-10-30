@@ -145,22 +145,36 @@ async function readSSE(res, onData) {
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buf = '';
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += decoder.decode(value, { stream: true });
-    let idx;
-    while ((idx = buf.indexOf('\n')) >= 0) {
-      const line = buf.slice(0, idx).replace(/\r$/, '');
-      buf = buf.slice(idx + 1);
-      if (!line.startsWith('data:')) continue; // 忽略 event: 行、注释行、空行
-      const data = line.slice(5).trim();
-      if (!data) continue;
-      if (data === '[DONE]') return;
-      let json;
-      try { json = JSON.parse(data); } catch (_) { continue; }
-      onData(json);
+  // 处理一行，返回 true 表示流已结束
+  const handle = (raw) => {
+    const line = raw.replace(/\r$/, '');
+    if (!line.startsWith('data:')) return false; // 忽略 event: 行、注释行、空行
+    const data = line.slice(5).trim();
+    if (!data) return false;
+    if (data === '[DONE]') return true;
+    let json;
+    try { json = JSON.parse(data); } catch (_) { return false; }
+    onData(json);
+    return false;
+  };
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      let idx;
+      while ((idx = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, idx);
+        buf = buf.slice(idx + 1);
+        if (handle(line)) return;
+      }
     }
+    // 最后一行后面可能没有换行
+    buf += decoder.decode();
+    if (buf) handle(buf);
+  } finally {
+    // 提前结束（[DONE] 或接口返回错误）时断开连接，不在后台继续接收
+    reader.cancel().catch(() => {});
   }
 }
 

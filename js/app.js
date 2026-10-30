@@ -1045,10 +1045,49 @@ async function artForExport(convId, encrypt) {
   return encrypt ? Locker.encryptBlob(raw) : blobToDataURL(raw);
 }
 
+// JSON 里的艺术图只接受 data:image/ 文本或加密盒，不去请求任意网址
+function validArt(art) {
+  if (typeof art === 'string') return /^data:image\//i.test(art);
+  return !!art && typeof art === 'object' && typeof art.iv === 'string' && typeof art.data === 'string';
+}
+
 // 从 JSON 读回艺术图，存进本机
 async function importArt(convId, art) {
-  if (!art) return;
+  if (!validArt(art)) return;
   await DB.set(artKey(convId), typeof art === 'string' ? await dataURLToBlob(art) : art);
+}
+
+// 备份里的对话：先整体检查，不合格就不读取（读取完整备份会先清空现有数据）
+function validMessage(m) {
+  return !!m && (m.role === 'user' || m.role === 'assistant')
+    && Array.isArray(m.versions) && m.versions.length > 0 && m.versions.every((v) => typeof v === 'string')
+    && Number.isInteger(m.cur) && m.cur >= 0 && m.cur < m.versions.length;
+}
+
+function validBackupConv(c) {
+  return !!c && typeof c === 'object' && typeof c.id === 'string' && !!c.id
+    && (c.messages === undefined || (Array.isArray(c.messages) && c.messages.every(validMessage)));
+}
+
+// 问是否加密：返回 { password }（不加密时 password 为 null），取消则返回 null
+async function askEncrypt(title, message, suggestEncrypt) {
+  const choice = await choose(title, message, [
+    { label: t('btn.cancel'), value: null, ghost: true },
+    { label: t('export.noEncrypt'), value: 'plain' },
+    { label: t('export.encrypt'), value: 'lock', primary: suggestEncrypt },
+  ]);
+  if (!choice) return null;
+  if (choice === 'plain') return { password: null };
+  const password = await askPassword(t('pw.setTitle'), t('pw.setMessage'), true);
+  return password === null ? null : { password };
+}
+
+// 导出还没解锁的对话：不能选择是否加密（原样导出密文、沿用原来的密码），只提醒一下。确认则返回 true
+async function confirmLockedExport(title, message) {
+  return (await choose(title, message, [
+    { label: t('btn.cancel'), value: null, ghost: true },
+    { label: t('btn.confirm'), value: 'ok', primary: true },
+  ])) === 'ok';
 }
 
 // 世界卡：当前对话的 System Prompt、世界观、开场白和艺术图，不含用户人设和剧情。
@@ -1056,17 +1095,12 @@ async function importArt(convId, art) {
 async function exportWorldCard() {
   const conv = state.conv;
   let password = null;
-  if (!conv.lock) {
-    const choice = await choose(t('export.card'), t('export.cardEncryptMessage'), [
-      { label: t('btn.cancel'), value: null, ghost: true },
-      { label: t('export.noEncrypt'), value: 'plain' },
-      { label: t('export.encrypt'), value: 'lock', primary: true },
-    ]);
-    if (!choice) return;
-    if (choice === 'lock') {
-      password = await askPassword(t('pw.setTitle'), t('pw.setMessage'), true);
-      if (password === null) return;
-    }
+  if (conv.lock) {
+    if (!(await confirmLockedExport(t('export.card'), t('export.lockedCard')))) return;
+  } else {
+    const enc = await askEncrypt(t('export.card'), t('export.cardEncryptMessage'), true);
+    if (!enc) return;
+    password = enc.password;
   }
   const name = await askText(t('export.card'), t('export.cardName'), conv.title || '');
   if (name === null) return;
@@ -1081,7 +1115,6 @@ async function exportWorldCard() {
     // 本来就是锁定的：原样导出密文，沿用原来的密码
     data.locked = conv.lock;
     data.art = await artForExport(conv.id, true);
-    toast(t('export.cardStillLocked'));
   } else if (password !== null) {
     data.locked = await Locker.lock(lockedFields(conv), password);
     data.art = await artForExport(conv.id, true);
@@ -1092,20 +1125,41 @@ async function exportWorldCard() {
   download(`${safeFilename(data.name)}-${t('export.cardSuffix')}.json`, JSON.stringify(data, null, 2), 'application/json');
 }
 
-// 完整备份：所有对话（各自的设定、剧情、艺术图）+ 软件设置（不含 API Key）。
-// 选择加密时，每个对话的 System Prompt、世界观、开场白和艺术图加密，剧情和人设仍是明文；
-// 已经锁定的对话始终保持原来的密文和密码。
+// 完整备份（当前对话）：这个对话的全部内容（设定、用户人设、开场白、剧情、艺术图），不含软件设置。
+// 读取时新建一个对话，已有对话不受影响。锁定的对话原样导出密文，沿用原来的密码。
+async function backupConv() {
+  const conv = state.conv;
+  let lock = conv.lock || null;
+  if (lock) {
+    if (!(await confirmLockedExport(t('export.conv'), t('export.lockedConv')))) return;
+  } else {
+    const enc = await askEncrypt(t('export.conv'), t('export.convEncryptMessage'), false);
+    if (!enc) return;
+    if (enc.password !== null) lock = await Locker.lock(lockedFields(conv), enc.password);
+  }
+  await flushConvSave();
+  const data = {
+    app: 'proteus',
+    type: 'conversation',
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    conversation: storable(lock ? { ...conv, lock } : conv),
+    art: await artForExport(conv.id, !!lock),
+  };
+  download(`${safeFilename(convTitle(conv))}-${t('export.convSuffix')}.json`, JSON.stringify(data, null, 2), 'application/json');
+}
+
+// 完整备份（全部对话）：所有对话（各自的设定、剧情、艺术图）+ 软件设置（不含 API Key）。
+// 选择加密时，每个普通对话的 System Prompt、世界观、开场白和艺术图加密，剧情和人设仍是明文；
+// 已经锁定的对话始终保持原来的密文和密码（先提醒一下）。全部都是锁定对话时不再问是否加密。
 async function backup() {
-  const choice = await choose(t('export.full'), t('export.fullEncryptMessage'), [
-    { label: t('btn.cancel'), value: null, ghost: true },
-    { label: t('export.noEncrypt'), value: 'plain' },
-    { label: t('export.encrypt'), value: 'lock' },
-  ]);
-  if (!choice) return;
+  const lockedN = state.conversations.filter((c) => c.lock).length;
+  if (lockedN && !(await confirmLockedExport(t('export.full'), t('export.lockedAll', { n: lockedN })))) return;
   let password = null;
-  if (choice === 'lock') {
-    password = await askPassword(t('pw.setTitle'), t('pw.setMessage'), true);
-    if (password === null) return;
+  if (lockedN < state.conversations.length) {
+    const enc = await askEncrypt(t('export.full'), t('export.fullEncryptMessage'), false);
+    if (!enc) return;
+    password = enc.password;
   }
   await flushConvSave();
   const conversations = [];
@@ -1135,15 +1189,17 @@ async function exportMenu() {
     { label: t('export.storyTxt'), value: 'txt' },
     { label: t('export.storyMd'), value: 'md' },
     { label: t('export.card'), value: 'card' },
-    { label: t('export.full'), value: 'full', primary: true },
+    { label: t('export.conv'), value: 'conv', primary: true },
+    { label: t('export.full'), value: 'full' },
   ]);
   if (choice === 'txt') exportText(false);
   else if (choice === 'md') exportText(true);
   else if (choice === 'card') await exportWorldCard();
+  else if (choice === 'conv') await backupConv();
   else if (choice === 'full') await backup();
 }
 
-// 读取世界卡或完整备份（剧情导出是 TXT/Markdown，不能读回）
+// 读取世界卡或完整备份（当前对话 / 全部对话）。剧情导出是 TXT/Markdown，不能读回
 async function restore(file) {
   if (state.generating) return toast(t('conv.stopFirst'));
   let data;
@@ -1178,25 +1234,49 @@ async function restore(file) {
     return;
   }
 
-  if (!Array.isArray(data.conversations)) return toast(t('restore.invalid'));
+  if (data.type === 'conversation') {
+    const src = data.conversation;
+    if (!validBackupConv(src)) return toast(t('restore.invalid'));
+    if (!confirm(t(src.lock ? 'restore.convConfirmLocked' : 'restore.convConfirm', { name: convTitle(src) }))) return;
+    await flushConvSave();
+    // 新对话：内容和备份时一样，换一个新的 id，已有对话（包括备份它的那个）不受影响
+    const c = { createdAt: Date.now(), ...src, id: uid() };
+    try { await openLock(c); } catch (_) { return toast(t('restore.invalid')); }
+    normalizeConv(c);
+    state.conversations.push(c);
+    await saveConv(c);
+    await importArt(c.id, data.art);
+    await switchConv(c.id);
+    toast(t('restore.convDone'));
+    return;
+  }
+
+  if (data.type !== 'backup' || !Array.isArray(data.conversations) || !data.conversations.every(validBackupConv)) return toast(t('restore.invalid'));
   if (!confirm(t('restore.fullConfirm', { n: data.conversations.length }))) return;
-  const keys = state.settings.apiKeys;
-  const saved = data.settings || {};
-  // 旧版备份（version 1）：设定和艺术图是所有对话共用的，复制给每个对话
-  const legacy = { systemPrompt: saved.systemPrompt, worldText: saved.worldText, persona: saved.persona };
-  const settings = { ...DEFAULT_SETTINGS, ...saved, apiKeys: keys, rememberKeys: state.settings.rememberKeys };
-  delete settings.systemPrompt;
-  delete settings.worldText;
-  delete settings.persona;
-  state.settings = settings;
-  await DB.set('settings', storableSettings());
-  // 清掉现有的对话和艺术图
-  for (const c of state.conversations) await DB.del(artKey(c.id));
-  await DB.clearConversations();
-  for (const c of data.conversations) {
-    try { await openLock(c); } catch (_) { continue; } // 解不开的锁定对话跳过
-    await DB.putConversation(storable(normalizeConv(c, legacy)));
-    await importArt(c.id, (data.arts && data.arts[c.id]) || data.art);
+  // 还没写入的改动作废：现有对话马上要被替换，晚到的保存会把旧对话写回去
+  clearTimeout(convSaveTimer);
+  convSavePending = null;
+  clearTimeout(saveTimer);
+  const saved = data.settings && typeof data.settings === 'object' ? data.settings : {};
+  const arts = data.arts && typeof data.arts === 'object' ? data.arts : {};
+  // API Key 不在备份里，保留本机的；“记住 API Key”也跟着本机
+  const settings = { ...DEFAULT_SETTINGS, ...saved, apiKeys: state.settings.apiKeys, rememberKeys: state.settings.rememberKeys };
+  try {
+    state.settings = settings;
+    await DB.set('settings', storableSettings());
+    // 清掉现有的对话和艺术图
+    for (const c of state.conversations) await DB.del(artKey(c.id));
+    await DB.clearConversations();
+    for (const c of data.conversations) {
+      try { await openLock(c); } catch (_) { continue; } // 解不开的锁定对话跳过
+      await DB.putConversation(storable(normalizeConv(c)));
+      await importArt(c.id, arts[c.id]);
+    }
+  } catch (e) {
+    console.error(e);
+    await boot();
+    showError(t('restore.failed', { msg: e.message }));
+    return;
   }
   await boot();
   toast(t('restore.fullDone'));
@@ -1268,13 +1348,15 @@ function closeSettings() {
 function bindBackButton() {
   if (!NATIVE) return;
   nativePlugin('App').addListener('backButton', () => {
-    for (const id of ['pwDialog', 'textDialog', 'dialog', 'modal']) {
+    for (const id of ['pwDialog', 'textDialog', 'dialog']) {
       if (!els[id].hidden) {
         document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
         els[id].hidden = true;
         return;
       }
     }
+    // 信息弹窗直接关掉：它没有自己的 Escape 处理，派发 Escape 会连设置面板一起关掉
+    if (!els.modal.hidden) { els.modal.hidden = true; return; }
     if (document.body.classList.contains('settings-open')) return closeSettings();
     if (state.editingId) return cancelEdit();
     if (state.greetingMode) return exitGreetingMode();
