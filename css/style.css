@@ -278,6 +278,49 @@ body.resizing iframe { pointer-events: none; }
 .art-pane.locked img { user-select: none; -webkit-user-drag: none; pointer-events: none; }
 .remember-keys { margin-top: -2px; }
 
+/* 模型选择：输入框 + 自己画的下拉列表（样式和其他下拉框一致） */
+.combo { position: relative; flex: 1; min-width: 0; }
+.combo input { width: 100%; padding-right: 28px; margin-top: 3px; }
+.combo-toggle {
+  position: absolute;
+  right: 1px;
+  top: 4px;
+  bottom: 1px;
+  width: 26px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+.combo-toggle:hover { color: var(--text); }
+.combo-menu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 2px);
+  z-index: 20;
+  max-height: 280px;
+  overflow-y: auto;
+  background: #121317;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 4px 0;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .5);
+}
+.combo-item {
+  padding: 5px 10px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.combo-item.active { background: #3a3c44; }
+.combo-item.current { color: var(--accent); }
+.combo-empty { padding: 6px 10px; font-size: 12px; color: var(--muted); white-space: normal; }
+
 .pw-fields { padding: 0 16px 8px; }
 .pw-fields input { width: 100%; }
 .pw-error { color: var(--danger); font-size: 12px; min-height: 16px; }

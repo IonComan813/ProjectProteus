@@ -119,13 +119,17 @@
           <input type="checkbox" id="rememberKeys"> <span data-i18n="set.rememberKey"></span>
         </label>
         <p class="hint" data-i18n="set.rememberKeyHint"></p>
-        <label class="field"><span data-i18n="set.modelName"></span>
+        <div class="field"><span data-i18n="set.modelName"></span>
           <div class="row nowrap">
-            <input type="text" id="model" list="modelList" spellcheck="false" data-i18n-ph="set.modelPlaceholder">
+            <!-- 可以直接输入模型名，也可以点 ▾ 从列表里选 -->
+            <div class="combo" id="modelCombo">
+              <input type="text" id="model" spellcheck="false" autocomplete="off" data-i18n-ph="set.modelPlaceholder">
+              <button type="button" class="combo-toggle" id="btnModelMenu" data-i18n-title="set.showModels">▾</button>
+              <div class="combo-menu" id="modelMenu" hidden></div>
+            </div>
             <button class="btn btn-small btn-ghost" id="btnFetchModels" data-i18n="set.fetchModels" data-i18n-title="set.fetchModelsTitle"></button>
           </div>
-          <datalist id="modelList"></datalist>
-        </label>
+        </div>
         <label class="field"><span data-i18n="set.maxTokens"></span>
           <input type="number" id="maxTokens" min="256" step="256">
         </label>

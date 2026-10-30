@@ -21,6 +21,7 @@ const DEFAULT_SETTINGS = {
   baseUrls: {},
   models: { anthropic: PROVIDERS.anthropic.defaultModel },
   maxTokens: { anthropic: 16000, custom_anthropic: 16000 },
+  modelLists: {},      // 各服务商“获取列表”得到的模型名，记下来供下拉选择
   effort: '',
   useTemperature: false,
   temperature: 1,
@@ -1222,10 +1223,91 @@ function fillProviderFields() {
   els.model.value = s.models[s.provider] || '';
   els.maxTokens.value = s.maxTokens[s.provider] || '';
   els.maxTokens.placeholder = t(p.format === 'anthropic' ? 'set.maxTokensAnthropic' : 'set.maxTokensOpenai');
-  els.modelList.innerHTML = p.models.map((m) => `<option value="${escapeHtml(m)}">`).join('');
+  closeModelMenu();
   els.anthropicOptions.hidden = p.format !== 'anthropic';
   els.openaiOptions.hidden = p.format !== 'openai';
   els.temperature.disabled = !s.useTemperature;
+}
+
+// ---- 模型下拉列表 ----
+// 浏览器自带的输入建议（datalist）会按输入框里已有的文字过滤，样式也改不了，所以自己画一个。
+
+const modelMenu = { items: [], active: -1 };
+
+// 可选的模型：优先用“获取列表”得到的，没有就用预设的几个
+function modelOptions() {
+  const p = state.settings.provider;
+  const fetched = state.settings.modelLists[p];
+  return fetched && fetched.length ? fetched : PROVIDERS[p].models;
+}
+
+// filter 为空时显示全部；否则只显示包含这段文字的
+function openModelMenu(filter) {
+  const f = (filter || '').trim().toLowerCase();
+  const current = els.model.value.trim();
+  modelMenu.items = modelOptions().filter((m) => !f || m.toLowerCase().includes(f));
+  modelMenu.active = modelMenu.items.indexOf(current);
+  els.modelMenu.innerHTML = '';
+  if (!modelMenu.items.length) {
+    const empty = document.createElement('div');
+    empty.className = 'combo-empty';
+    empty.textContent = t(f ? 'set.modelNoMatch' : 'set.modelListEmpty');
+    els.modelMenu.appendChild(empty);
+  }
+  modelMenu.items.forEach((m, i) => {
+    const item = document.createElement('div');
+    item.className = 'combo-item' + (m === current ? ' current' : '');
+    item.textContent = m;
+    item.title = m;
+    item.addEventListener('mousedown', (e) => { e.preventDefault(); pickModel(m); });
+    item.addEventListener('mousemove', () => highlightModel(i, false));
+    els.modelMenu.appendChild(item);
+  });
+  els.modelMenu.hidden = false;
+  highlightModel(modelMenu.active, true);
+}
+
+function closeModelMenu() {
+  els.modelMenu.hidden = true;
+}
+
+function highlightModel(i, scroll) {
+  modelMenu.active = i;
+  els.modelMenu.querySelectorAll('.combo-item').forEach((el, j) => el.classList.toggle('active', j === i));
+  const el = els.modelMenu.querySelectorAll('.combo-item')[i];
+  if (el && scroll) el.scrollIntoView({ block: 'nearest' });
+}
+
+function pickModel(m) {
+  els.model.value = m;
+  state.settings.models[state.settings.provider] = m;
+  saveSettingsSoon();
+  updateStatus();
+  closeModelMenu();
+}
+
+function bindModelMenu() {
+  els.btnModelMenu.addEventListener('mousedown', (e) => e.preventDefault()); // 不让输入框失去焦点
+  els.btnModelMenu.addEventListener('click', () => {
+    if (els.modelMenu.hidden) { openModelMenu(''); els.model.focus(); } else closeModelMenu();
+  });
+  els.model.addEventListener('input', () => openModelMenu(els.model.value));
+  els.model.addEventListener('blur', closeModelMenu);
+  els.model.addEventListener('keydown', (e) => {
+    const n = modelMenu.items.length;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (els.modelMenu.hidden) return openModelMenu('');
+      if (!n) return;
+      const d = e.key === 'ArrowDown' ? 1 : -1;
+      highlightModel((modelMenu.active + d + n) % n, true);
+    } else if (e.key === 'Enter' && !els.modelMenu.hidden && modelMenu.active >= 0) {
+      e.preventDefault();
+      pickModel(modelMenu.items[modelMenu.active]);
+    } else if (e.key === 'Escape') {
+      closeModelMenu();
+    }
+  });
 }
 
 function updateWorldCount() {
@@ -1361,8 +1443,10 @@ function bindSettings() {
     els.btnFetchModels.disabled = true;
     try {
       const list = await fetchModels(providerCfg());
-      els.modelList.innerHTML = list.map((m) => `<option value="${escapeHtml(m)}">`).join('');
+      s().modelLists[s().provider] = list;
+      saveSettingsSoon();
       toast(t('set.fetchedModels', { n: list.length }));
+      openModelMenu('');
     } catch (e) {
       showModal(t('set.fetchModelsFailed'), e.message);
     } finally {
@@ -1479,7 +1563,7 @@ async function boot() {
   const saved = (await DB.get('settings')) || {};
   const sessionKeys = state.settings && state.settings.rememberKeys === false ? state.settings.apiKeys : null;
   state.settings = { ...DEFAULT_SETTINGS, ...saved };
-  for (const k of ['apiKeys', 'baseUrls', 'models', 'maxTokens']) {
+  for (const k of ['apiKeys', 'baseUrls', 'models', 'maxTokens', 'modelLists']) {
     state.settings[k] = { ...DEFAULT_SETTINGS[k], ...(saved[k] || {}) };
   }
   if (sessionKeys) state.settings.apiKeys = sessionKeys; // 不记住 Key 时，本次打开期间填过的 Key 继续有效
@@ -1536,6 +1620,7 @@ function init() {
   bindSettings();
   bindChat();
   bindLayout();
+  bindModelMenu();
   // 消息高度变化时（内容载入、图片加载、展开 <details> 等），如果停留在底部就继续贴底
   Render.onResize(() => { if (state.follow) els.messages.scrollTop = els.messages.scrollHeight; });
   boot().catch((e) => {
