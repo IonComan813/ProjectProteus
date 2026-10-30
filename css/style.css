@@ -278,7 +278,7 @@ body.resizing iframe { pointer-events: none; }
 .art-pane.locked img { user-select: none; -webkit-user-drag: none; pointer-events: none; }
 .remember-keys { margin-top: -2px; }
 
-/* 模型选择：输入框 + 自己画的下拉列表（样式和其他下拉框一致） */
+/* 模型选择：输入框 + 自己画的下拉列表（能列出“获取列表”拉到的模型，也能边输入边筛选） */
 .combo { position: relative; flex: 1; min-width: 0; }
 .combo input { width: 100%; padding-right: 28px; margin-top: 3px; }
 .combo-toggle {
@@ -302,9 +302,10 @@ body.resizing iframe { pointer-events: none; }
   z-index: 20;
   max-height: 280px;
   overflow-y: auto;
-  /* 和浏览器原生下拉框一致：浅色细边框、黑底白字、无圆角 */
-  background: #1b1b1b;
-  border: 1px solid #c8c8c8;
+  /* 颜色不自己定，用系统颜色，跟着浏览器和系统主题走，和其他（原生）下拉框保持一致 */
+  background: Canvas;
+  color: CanvasText;
+  border: 1px solid ButtonBorder;
   border-radius: 0;
   padding: 0;
 }
@@ -312,13 +313,12 @@ body.resizing iframe { pointer-events: none; }
   padding: 1px 8px;
   line-height: 22px;
   font-size: 13px;
-  color: #fff;
   cursor: default;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.combo-item.active { background: #d6d6d6; color: #000; }  /* 悬停或键盘选中：浅色横条、黑字 */
+.combo-item.active { background: Highlight; color: HighlightText; background: SelectedItem; color: SelectedItemText; }  /* 悬停或键盘选中（不支持 SelectedItem 的浏览器用 Highlight） */
 .combo-empty { padding: 6px 10px; font-size: 12px; color: var(--muted); white-space: normal; }
 
 .pw-fields { padding: 0 16px 8px; }
