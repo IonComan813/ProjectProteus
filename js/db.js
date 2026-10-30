@@ -34,7 +34,18 @@ const DB = (() => {
     });
   }
 
+  // 删除整个数据库（“清除本机所有数据”）
+  async function destroy() {
+    if (dbPromise) (await dbPromise).close();
+    dbPromise = null;
+    await new Promise((resolve) => {
+      const req = indexedDB.deleteDatabase(DB_NAME);
+      req.onsuccess = req.onerror = req.onblocked = () => resolve();
+    });
+  }
+
   return {
+    destroy,
     get: (key) => tx('kv', 'readonly', (s) => s.get(key)),
     set: (key, value) => tx('kv', 'readwrite', (s) => s.put(value, key)),
     del: (key) => tx('kv', 'readwrite', (s) => s.delete(key)),

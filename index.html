@@ -55,21 +55,30 @@
     </main>
 
     <!-- 右栏：设置 -->
-    <aside class="settings-pane">
+    <aside class="settings-pane" id="settingsPane">
+      <!-- 锁定的对话（来自加密世界卡）才显示 -->
+      <section class="card lock-card lock-only">
+        <h3 data-i18n="lock.title"></h3>
+        <p class="hint" data-i18n="lock.hint"></p>
+        <button class="btn btn-small" id="btnUnlock" data-i18n="lock.unlock"></button>
+      </section>
+
       <section class="card">
         <h3 data-i18n="set.systemPrompt"></h3>
         <p class="hint" data-i18n="set.systemPromptHint"></p>
-        <textarea id="systemPrompt" class="scroll-box" rows="6"></textarea>
-        <div class="row"><button class="btn btn-small btn-ghost" id="btnResetSystem" data-i18n="set.resetDefault"></button></div>
+        <textarea id="systemPrompt" class="scroll-box unlockable" rows="6"></textarea>
+        <div class="lock-box lock-only" data-i18n="lock.protected"></div>
+        <div class="row unlockable"><button class="btn btn-small btn-ghost" id="btnResetSystem" data-i18n="set.resetDefault"></button></div>
       </section>
 
       <section class="card">
         <h3 data-i18n="set.world"></h3>
         <p class="hint" data-i18n="set.worldHint"></p>
-        <textarea id="worldText" class="scroll-box" rows="7" data-i18n-ph="set.worldPlaceholder"></textarea>
+        <textarea id="worldText" class="scroll-box unlockable" rows="7" data-i18n-ph="set.worldPlaceholder"></textarea>
+        <div class="lock-box lock-only" data-i18n="lock.protected"></div>
         <div class="row">
-          <button class="btn btn-small" id="btnUploadWorld" data-i18n="set.uploadText"></button>
-          <button class="btn btn-small btn-ghost" id="btnClearWorld" data-i18n="set.clear"></button>
+          <button class="btn btn-small unlockable" id="btnUploadWorld" data-i18n="set.uploadText"></button>
+          <button class="btn btn-small btn-ghost unlockable" id="btnClearWorld" data-i18n="set.clear"></button>
           <span class="muted small" id="worldCount"></span>
         </div>
       </section>
@@ -90,7 +99,6 @@
           <button class="btn btn-small" id="btnRoundsPlus" data-i18n-title="set.roundsPlus">＋</button>
           <span data-i18n="set.roundsUnit"></span>
         </div>
-        <button class="btn btn-small btn-ghost" id="btnPreview" data-i18n="set.preview"></button>
       </section>
 
       <section class="card">
@@ -107,6 +115,10 @@
             <button class="btn btn-small btn-ghost" id="btnToggleKey" data-i18n="set.show"></button>
           </div>
         </label>
+        <label class="field-inline remember-keys">
+          <input type="checkbox" id="rememberKeys"> <span data-i18n="set.rememberKey"></span>
+        </label>
+        <p class="hint" data-i18n="set.rememberKeyHint"></p>
         <label class="field"><span data-i18n="set.modelName"></span>
           <div class="row nowrap">
             <input type="text" id="model" list="modelList" spellcheck="false" data-i18n-ph="set.modelPlaceholder">
@@ -141,6 +153,7 @@
         <h3 data-i18n="set.art"></h3>
         <div class="row">
           <button class="btn btn-small" id="btnUploadArt" data-i18n="set.uploadImage"></button>
+          <button class="btn btn-small" id="btnDownloadArt" data-i18n="set.download"></button>
           <button class="btn btn-small btn-ghost" id="btnRemoveArt" data-i18n="set.remove"></button>
         </div>
       </section>
@@ -152,6 +165,12 @@
           <button class="btn btn-small btn-ghost" id="btnRestore" data-i18n="set.restoreBtn"></button>
         </div>
         <p class="hint" data-i18n="set.exportHint"></p>
+      </section>
+
+      <section class="card">
+        <h3 data-i18n="set.localData"></h3>
+        <p class="hint" data-i18n="set.clearAllHint"></p>
+        <button class="btn btn-small danger" id="btnClearAll" data-i18n="set.clearAll"></button>
       </section>
 
       <section class="card">
@@ -185,11 +204,32 @@
     </div>
   </div>
 
+  <div class="modal" id="pwDialog" hidden>
+    <div class="modal-box dialog-box">
+      <div class="modal-head"><strong id="pwTitle"></strong></div>
+      <div class="dialog-message" id="pwMessage"></div>
+      <div class="pw-fields">
+        <label class="field"><span data-i18n="pw.password"></span>
+          <input type="password" id="pw1" maxlength="64" autocomplete="new-password">
+        </label>
+        <label class="field" id="pw2Row"><span data-i18n="pw.repeat"></span>
+          <input type="password" id="pw2" maxlength="64" autocomplete="new-password">
+        </label>
+        <div class="pw-error" id="pwError"></div>
+      </div>
+      <div class="dialog-buttons">
+        <button class="btn btn-ghost" id="pwCancel" data-i18n="btn.cancel"></button>
+        <button class="btn btn-primary" id="pwOk" data-i18n="pw.ok"></button>
+      </div>
+    </div>
+  </div>
+
   <div class="toast" id="toast" hidden></div>
 
   <script src="js/vendor/marked.min.js"></script>
   <script src="js/i18n.js"></script>
   <script src="js/db.js"></script>
+  <script src="js/crypto.js"></script>
   <script src="js/providers.js"></script>
   <script src="js/render.js"></script>
   <script src="js/app.js"></script>

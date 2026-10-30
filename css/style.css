@@ -249,7 +249,38 @@ body.resizing iframe { pointer-events: none; }
 }
 .msg.preview .msg-body { border-style: dashed; }
 
-.row.stepper input[type=number] { width: 64px; text-align: center; flex: none; }
+.row.stepper input[type=number] {
+  width: 64px;
+  text-align: center;
+  flex: none;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+/* 去掉数字框右侧自带的上下箭头，只用两边的 − / ＋ */
+.row.stepper input[type=number]::-webkit-inner-spin-button,
+.row.stepper input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+
+/* 锁定的对话（来自加密世界卡） */
+.settings-pane.locked .unlockable { display: none !important; }
+.settings-pane:not(.locked) .lock-only { display: none !important; }
+.lock-card { border-color: var(--accent); }
+.lock-box {
+  padding: 18px 12px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+  user-select: none;
+}
+.lock-tag { font-size: 12px; color: var(--muted); padding: 3px 0; }
+.art-pane.locked { cursor: default; }
+.art-pane.locked img { user-select: none; -webkit-user-drag: none; pointer-events: none; }
+.remember-keys { margin-top: -2px; }
+
+.pw-fields { padding: 0 16px 8px; }
+.pw-fields input { width: 100%; }
+.pw-error { color: var(--danger); font-size: 12px; min-height: 16px; }
 .composer-status { max-width: 900px; margin: 6px auto 0; min-height: 16px; }
 .composer-footer {
   max-width: 900px;

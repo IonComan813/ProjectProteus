@@ -57,10 +57,15 @@ const Render = (() => {
     catch (_) { return '<pre>' + escapeHtml(text || '') + '</pre>'; }
   }
 
-  function buildDoc(html, scripts) {
+  // 锁定的开场白：不能选中文字，也不能右键（防止直接复制受保护的内容）
+  const LOCKED_CSS = '* { -webkit-user-select: none !important; user-select: none !important; }';
+  const LOCKED_JS = "document.addEventListener('contextmenu', function (e) { e.preventDefault(); }, true);"
+    + "document.addEventListener('copy', function (e) { e.preventDefault(); }, true);";
+
+  function buildDoc(html, scripts, locked) {
     return '<!doctype html><html><head><meta charset="utf-8"><base target="_blank">'
-      + '<style>' + BASE_CSS + '</style></head><body><div id="root">' + html + '</div>'
-      + (scripts ? '<script>' + HELPER + '</' + 'script>' : '')
+      + '<style>' + BASE_CSS + (locked ? LOCKED_CSS : '') + '</style></head><body><div id="root">' + html + '</div>'
+      + (scripts ? '<script>' + HELPER + (locked ? LOCKED_JS : '') + '</' + 'script>' : '')
       + '</body></html>';
   }
 
@@ -95,7 +100,7 @@ const Render = (() => {
   // ---- 对外接口 ----
 
   // 新建一个显示消息的 iframe
-  function create(text, { scripts = false } = {}) {
+  function create(text, { scripts = false, locked = false } = {}) {
     const f = document.createElement('iframe');
     f.className = 'msg-frame';
     f._scripts = scripts;
@@ -115,16 +120,16 @@ const Render = (() => {
       });
       f.srcdoc = buildDoc('', false);
     } else {
-      set(f, text);
+      set(f, text, { locked });
     }
     return f;
   }
 
   // 显示完整内容。开场白窗口会重新加载，里面的脚本重新运行。
-  function set(f, text) {
+  function set(f, text, { locked = false } = {}) {
     f._text = text;
     if (f._scripts) {
-      f.srcdoc = buildDoc(toHtml(text), true);
+      f.srcdoc = buildDoc(toHtml(text), true, locked);
     } else {
       f._pending = toHtml(text);
       applySafe(f);
