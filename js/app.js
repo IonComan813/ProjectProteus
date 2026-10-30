@@ -28,6 +28,9 @@ const DEFAULT_SETTINGS = {
   activeConvId: null,
 };
 
+// “模型与接口”里的设置：不写进完整备份，读取备份时也保留本机的
+const MODEL_SETTINGS = ['provider', 'apiKeys', 'baseUrls', 'models', 'maxTokens', 'modelLists', 'effort', 'useTemperature', 'temperature', 'rememberKeys'];
+
 const state = {
   settings: null,
   conversations: [],   // 所有对话（完整数据都放在内存里）
@@ -1045,10 +1048,28 @@ async function artForExport(convId, encrypt) {
   return encrypt ? Locker.encryptBlob(raw) : blobToDataURL(raw);
 }
 
+// JSON 里的艺术图只接受 data:image/ 文本或加密盒，不去请求任意网址
+function validArt(art) {
+  if (typeof art === 'string') return /^data:image\//i.test(art);
+  return !!art && typeof art === 'object' && typeof art.iv === 'string' && typeof art.data === 'string';
+}
+
 // 从 JSON 读回艺术图，存进本机
 async function importArt(convId, art) {
-  if (!art) return;
+  if (!validArt(art)) return;
   await DB.set(artKey(convId), typeof art === 'string' ? await dataURLToBlob(art) : art);
+}
+
+// 备份里的对话：先整体检查，不合格就不读取（读取完整备份会先清空现有数据）
+function validMessage(m) {
+  return !!m && (m.role === 'user' || m.role === 'assistant')
+    && Array.isArray(m.versions) && m.versions.length > 0 && m.versions.every((v) => typeof v === 'string')
+    && Number.isInteger(m.cur) && m.cur >= 0 && m.cur < m.versions.length;
+}
+
+function validBackupConv(c) {
+  return !!c && typeof c === 'object' && typeof c.id === 'string' && !!c.id
+    && (c.messages === undefined || (Array.isArray(c.messages) && c.messages.every(validMessage)));
 }
 
 // 世界卡：当前对话的 System Prompt、世界观、开场白和艺术图，不含用户人设和剧情。
@@ -1092,7 +1113,7 @@ async function exportWorldCard() {
   download(`${safeFilename(data.name)}-${t('export.cardSuffix')}.json`, JSON.stringify(data, null, 2), 'application/json');
 }
 
-// 完整备份：所有对话（各自的设定、剧情、艺术图）+ 软件设置（不含 API Key）。
+// 完整备份：所有对话（各自的设定、剧情、艺术图）+ 软件设置（不含“模型与接口”里的任何内容）。
 // 选择加密时，每个对话的 System Prompt、世界观、开场白和艺术图加密，剧情和人设仍是明文；
 // 已经锁定的对话始终保持原来的密文和密码。
 async function backup() {
@@ -1122,7 +1143,7 @@ async function backup() {
     type: 'backup',
     version: 3,
     exportedAt: new Date().toISOString(),
-    settings: { ...state.settings, apiKeys: {} },
+    settings: Object.fromEntries(Object.entries(state.settings).filter(([k]) => !MODEL_SETTINGS.includes(k))),
     conversations,
     arts,
   };
@@ -1178,25 +1199,38 @@ async function restore(file) {
     return;
   }
 
-  if (!Array.isArray(data.conversations)) return toast(t('restore.invalid'));
+  if (!Array.isArray(data.conversations) || !data.conversations.every(validBackupConv)) return toast(t('restore.invalid'));
   if (!confirm(t('restore.fullConfirm', { n: data.conversations.length }))) return;
-  const keys = state.settings.apiKeys;
-  const saved = data.settings || {};
+  // 还没写入的改动作废：现有对话马上要被替换，晚到的保存会把旧对话写回去
+  clearTimeout(convSaveTimer);
+  convSavePending = null;
+  clearTimeout(saveTimer);
+  const saved = data.settings && typeof data.settings === 'object' ? data.settings : {};
+  const arts = data.arts && typeof data.arts === 'object' ? data.arts : {};
   // 旧版备份（version 1）：设定和艺术图是所有对话共用的，复制给每个对话
   const legacy = { systemPrompt: saved.systemPrompt, worldText: saved.worldText, persona: saved.persona };
-  const settings = { ...DEFAULT_SETTINGS, ...saved, apiKeys: keys, rememberKeys: state.settings.rememberKeys };
+  // “模型与接口”的设置（服务商、接口地址、API Key、模型等）保留本机的，旧版备份里带着也不用
+  const settings = { ...DEFAULT_SETTINGS, ...saved };
+  for (const k of MODEL_SETTINGS) settings[k] = state.settings[k];
   delete settings.systemPrompt;
   delete settings.worldText;
   delete settings.persona;
-  state.settings = settings;
-  await DB.set('settings', storableSettings());
-  // 清掉现有的对话和艺术图
-  for (const c of state.conversations) await DB.del(artKey(c.id));
-  await DB.clearConversations();
-  for (const c of data.conversations) {
-    try { await openLock(c); } catch (_) { continue; } // 解不开的锁定对话跳过
-    await DB.putConversation(storable(normalizeConv(c, legacy)));
-    await importArt(c.id, (data.arts && data.arts[c.id]) || data.art);
+  try {
+    state.settings = settings;
+    await DB.set('settings', storableSettings());
+    // 清掉现有的对话和艺术图
+    for (const c of state.conversations) await DB.del(artKey(c.id));
+    await DB.clearConversations();
+    for (const c of data.conversations) {
+      try { await openLock(c); } catch (_) { continue; } // 解不开的锁定对话跳过
+      await DB.putConversation(storable(normalizeConv(c, legacy)));
+      await importArt(c.id, arts[c.id] || data.art);
+    }
+  } catch (e) {
+    console.error(e);
+    await boot();
+    showError(t('restore.failed', { msg: e.message }));
+    return;
   }
   await boot();
   toast(t('restore.fullDone'));
@@ -1268,13 +1302,15 @@ function closeSettings() {
 function bindBackButton() {
   if (!NATIVE) return;
   nativePlugin('App').addListener('backButton', () => {
-    for (const id of ['pwDialog', 'textDialog', 'dialog', 'modal']) {
+    for (const id of ['pwDialog', 'textDialog', 'dialog']) {
       if (!els[id].hidden) {
         document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
         els[id].hidden = true;
         return;
       }
     }
+    // 信息弹窗直接关掉：它没有自己的 Escape 处理，派发 Escape 会连设置面板一起关掉
+    if (!els.modal.hidden) { els.modal.hidden = true; return; }
     if (document.body.classList.contains('settings-open')) return closeSettings();
     if (state.editingId) return cancelEdit();
     if (state.greetingMode) return exitGreetingMode();

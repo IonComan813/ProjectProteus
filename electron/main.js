@@ -1,7 +1,7 @@
 // Electron 桌面版的入口：用自带的 Chromium 内核打开 index.html。
 // 页面本身和浏览器版完全相同；这里只负责窗口、安全设置，以及去掉跨域限制。
 
-const { app, BrowserWindow, Menu, shell, session } = require('electron');
+const { app, BrowserWindow, Menu, dialog, shell, session } = require('electron');
 const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
@@ -12,10 +12,21 @@ if (!app.commandLine.hasSwitch('user-data-dir')) {
   app.setPath('userData', path.join(app.getPath('appData'), 'Proteus'));
 }
 
-// 只允许打开一个窗口：再次启动时把已有窗口调到前面
-if (!app.requestSingleInstanceLock()) app.quit();
+// 只允许打开一个窗口：再次启动时把已有窗口调到前面（见文件末尾的 second-instance）
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) app.quit();
 
 let win = null;
+let pageLang = 'zh-CN'; // 页面当前的界面语言，用于下面的确认框
+
+// 生成回复时页面会拦下关闭（beforeunload）。浏览器会弹确认框，Electron 不会，
+// 点关闭就毫无反应，所以由这里来问。
+const LEAVE_TEXT = {
+  'zh-CN': { message: '模型正在生成回复，关闭后这条回复会丢失。', buttons: ['仍要关闭', '取消'] },
+  'zh-TW': { message: '模型正在產生回覆，關閉後這則回覆會遺失。', buttons: ['仍要關閉', '取消'] },
+  en: { message: 'The model is still writing a reply. It will be lost if you close now.', buttons: ['Close anyway', 'Cancel'] },
+  ja: { message: 'モデルが返信を生成中です。閉じるとこの返信は失われます。', buttons: ['閉じる', 'キャンセル'] },
+};
 
 function isWebUrl(url) {
   return /^https?:\/\//i.test(url);
@@ -51,6 +62,16 @@ function createWindow() {
     if (url === win.webContents.getURL()) return;
     e.preventDefault();
     if (isWebUrl(url)) shell.openExternal(url);
+  });
+
+  win.webContents.on('will-prevent-unload', (e) => {
+    const text = LEAVE_TEXT[pageLang] || LEAVE_TEXT['zh-CN'];
+    const choice = dialog.showMessageBoxSync(win, { type: 'question', message: text.message, buttons: text.buttons, defaultId: 1, cancelId: 1 });
+    if (choice === 0) e.preventDefault(); // 忽略页面的拦截，照常关闭
+  });
+  // 切换界面语言时页面标题会变，顺便记下当前语言
+  win.webContents.on('page-title-updated', () => {
+    win.webContents.executeJavaScript('document.documentElement.lang').then((l) => { pageLang = l; }).catch(() => {});
   });
 
   // F12 打开开发者工具（排查问题用）
@@ -103,19 +124,22 @@ function setupMenu() {
   ]));
 }
 
-app.on('second-instance', () => {
-  if (!win) return;
-  if (win.isMinimized()) win.restore();
-  win.focus();
-});
+// 已经有一个在运行时，这个实例直接退出，不再建窗口
+if (gotLock) {
+  app.on('second-instance', () => {
+    if (!win) return;
+    if (win.isMinimized()) win.restore();
+    win.focus();
+  });
 
-app.whenReady().then(() => {
-  setupMenu();
-  allowCors();
-  createWindow();
-  app.on('activate', () => { if (!win) createWindow(); });
-});
+  app.whenReady().then(() => {
+    setupMenu();
+    allowCors();
+    createWindow();
+    app.on('activate', () => { if (!win) createWindow(); });
+  });
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
-});
+  app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') app.quit();
+  });
+}

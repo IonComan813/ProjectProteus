@@ -9,7 +9,9 @@
 #
 # 安卓版签名：在仓库 Settings → Secrets and variables → Actions 里添加
 #   ANDROID_KEYSTORE_BASE64（签名密钥文件的 base64 文本）和 ANDROID_KEYSTORE_PASSWORD（密钥密码）。
-# 没有添加时改用临时的调试密钥签名：能安装，但以后的版本无法直接覆盖更新。
+# 密钥别名必须是 proteus，密钥密码与密钥库密码相同。
+# 没有添加时：只打包不发布的运行改用临时的调试密钥签名（能安装，但以后的版本无法直接覆盖更新）；
+# 要发布到 Release 的运行直接失败。
 
 name: Build desktop app
 
@@ -126,6 +128,10 @@ jobs:
           if [ -n "$KEYSTORE_BASE64" ]; then
             echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
             echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+          elif [ -n "$RELEASE_TAG" ]; then
+            # 调试版可被调试工具读出手机上的数据，签名也每次不同，不能发布给用户
+            echo "::error::ANDROID_KEYSTORE_BASE64 is not set: refusing to publish a debug-signed APK to release $RELEASE_TAG."
+            exit 1
           else
             echo "::warning::ANDROID_KEYSTORE_BASE64 is not set: the APK is signed with a temporary debug key and later versions cannot update it in place."
           fi
