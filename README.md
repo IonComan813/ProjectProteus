@@ -10,7 +10,9 @@
 
 ### 桌面版（推荐）
 
-到 [Releases 页面](https://github.com/IonComan813/ProjectProteus/releases) 下载最新版本：
+**Windows 用户可以直接下载：[Proteus-Setup-0.1.0-win-x64.exe](https://github.com/IonComan813/ProjectProteus/raw/downloads/Proteus-Setup-0.1.0-win-x64.exe)**（约 120 MB，存放在 [`downloads` 分支](https://github.com/IonComan813/ProjectProteus/tree/downloads)）。
+
+也可以到 [Releases 页面](https://github.com/IonComan813/ProjectProteus/releases) 下载各个版本：
 
 | 文件 | 说明 |
 |---|---|
