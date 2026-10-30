@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 和界面背景一致的深色：系统状态栏、导航条后面露出的区域也用这个颜色 -->
+    <color name="proteus_background">#15161A</color>
+</resources>

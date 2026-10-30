@@ -13,6 +13,12 @@
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
         <item name="android:background">@null</item>
+        <!-- 深色窗口背景：避免状态栏、导航条区域露出白色 -->
+        <item name="android:windowBackground">@color/proteus_background</item>
+        <item name="android:statusBarColor">@color/proteus_background</item>
+        <item name="android:navigationBarColor">@color/proteus_background</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
     </style>
 
 
