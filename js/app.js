@@ -853,6 +853,7 @@ async function runGeneration(m, context) {
   const ver = m.cur;
   let result = null;
   let error = null;
+  let aborted = false; // 你点了“停止”
   let pendingPaint = false;
 
   const frame = () => {
@@ -865,6 +866,7 @@ async function runGeneration(m, context) {
     if (f) Render.stream(f, m.versions[ver]);
   };
 
+  logConv = conv;
   try {
     result = await streamChat(providerCfg(), buildSystem(conv), windowOf(context, sentGreeting(conv)), {
       signal: controller.signal,
@@ -878,22 +880,21 @@ async function runGeneration(m, context) {
       },
     });
   } catch (e) {
-    if (e.name !== 'AbortError') error = e;
+    if (e.name === 'AbortError') aborted = true;
+    else error = e;
   }
 
   state.generating = null;
   const text = m.versions[ver];
-
-  if (result && result.stopReason === 'refusal') {
-    error = new Error(t('gen.refused'));
-    m.versions[ver] = '';
-  }
-  const kept = !!m.versions[ver];
-  const truncated = !!result && (result.stopReason === 'max_tokens' || result.stopReason === 'length');
-  const failed = !!result && result.stopReason === 'error'; // 部分接口（如 OpenRouter）用 finish_reason 报告中途出错
+  const kept = !!text;
+  const reason = result && result.stopReason;
+  const truncated = reason === 'max_tokens' || reason === 'length';
+  const failed = reason === 'error'; // 部分接口（如 OpenRouter）用 finish_reason 报告中途出错
+  // 被拦截：模型的安全机制拒绝（Anthropic 的 refusal），或接口的内容过滤（OpenAI 格式的 content_filter）
+  const blocked = reason === 'refusal' ? 'refused' : reason === 'content_filter' ? 'filtered' : null;
 
   // 没有生成出任何文字时，撤掉这个空版本
-  if (!m.versions[ver]) {
+  if (!kept) {
     m.versions.splice(ver, 1);
     if (!m.versions.length) conv.messages.splice(conv.messages.indexOf(m), 1);
     else m.cur = m.versions.length - 1;
@@ -902,12 +903,18 @@ async function runGeneration(m, context) {
   if (state.conv === conv) renderMessages();
   await saveConv(conv);
 
-  // 回复没写完就结束了（出错或达到最大输出长度）：已经输出的部分照常显示和保存，弹窗说明一下
-  if (kept && (error || failed)) showModal(t('gen.interruptedTitle'), t('gen.interrupted') + (error ? '\n\n' + error.message : ''));
-  else if (kept && truncated) showModal(t('gen.truncatedTitle'), t('gen.truncated'));
-  else if (error) showError(error.message);
+  // 只要有输出就照常显示和保存；回复没写完就结束的（出错、被拦截、达到最大输出长度），弹窗说明一下
+  if (kept) {
+    if (error || failed) showModal(t('gen.interruptedTitle'), t('gen.interrupted') + (error ? '\n\n' + error.message : ''));
+    else if (blocked) showModal(t('gen.blockedTitle'), t('gen.' + blocked + 'Partial'));
+    else if (truncated) showModal(t('gen.truncatedTitle'), t('gen.truncated'));
+  } else if (error) showError(error.message);
+  else if (blocked) showError(t('gen.' + blocked));
   else if (failed) showError(t('gen.errorEnded'));
-  else if (!text) toast(t('gen.stopped'));
+  else if (truncated) showError(t('gen.truncatedEmpty'));
+  else if (aborted) toast(t('gen.stopped'));
+  // 正常结束却一个字都没有：例如接口把正文放进了思考字段，没法判断哪些是正文
+  else showError(t('gen.empty'));
 }
 
 function stop() {
@@ -1226,6 +1233,42 @@ async function backup() {
   download(`${t('export.backupPrefix')}-${dateStamp()}.json`, JSON.stringify(data, null, 2), 'application/json');
 }
 
+// 日志：最近一次请求模型时实际发送的请求和收到的原始回复，用于排查问题（只记在内存里，不保存）。
+// API Key 隐藏；请求来自还没解锁的加密世界卡时，受保护的设定也隐藏
+let logConv = null;
+
+function exportLog() {
+  const x = lastExchange;
+  if (!x) return toast(t('export.noLog'));
+  const headers = { ...x.request.headers };
+  if (headers['x-api-key']) headers['x-api-key'] = '***';
+  if (headers.authorization) headers.authorization = 'Bearer ***';
+  let body = x.request.body;
+  if (logConv && logConv.lock) {
+    const secrets = [...new Set([logConv.systemPrompt, logConv.worldText, logConv.greeting]
+      .filter((v) => v && v.trim()).flatMap((v) => [v, v.trim()]))].sort((a, b) => b.length - a.length);
+    const hide = (v) => secrets.reduce((out, sec) => out.split(sec).join(t('lock.protected')), v);
+    body = JSON.parse(JSON.stringify(body, (k, v) => (typeof v === 'string' ? hide(v) : v)));
+  }
+  const out = [
+    `Proteus log · ${x.time.toLocaleString()}`,
+    '',
+    '===== REQUEST =====',
+    `${x.request.method} ${x.request.url}`,
+    JSON.stringify(headers, null, 2),
+    '',
+    JSON.stringify(body, null, 2),
+    '',
+    '===== RESPONSE =====',
+  ];
+  if (x.response) out.push(`HTTP ${x.response.status}`, `content-type: ${x.response.contentType}`, '', x.response.body);
+  else out.push('(no response)');
+  if (x.error) out.push('', '===== ERROR =====', x.error);
+  const p = (n) => String(n).padStart(2, '0');
+  const tm = `${p(x.time.getHours())}${p(x.time.getMinutes())}${p(x.time.getSeconds())}`;
+  download(`proteus-log-${dateStamp()}-${tm}.txt`, out.join('\n'));
+}
+
 async function exportMenu() {
   const choice = await choose(t('export.menuTitle'), t('export.menuMessage'), [
     { label: t('btn.cancel'), value: null, ghost: true },
@@ -1234,12 +1277,14 @@ async function exportMenu() {
     { label: t('export.card'), value: 'card' },
     { label: t('export.conv'), value: 'conv', primary: true },
     { label: t('export.full'), value: 'full' },
+    { label: t('export.log'), value: 'log' },
   ]);
   if (choice === 'txt') exportText(false);
   else if (choice === 'md') exportText(true);
   else if (choice === 'card') await exportWorldCard();
   else if (choice === 'conv') await backupConv();
   else if (choice === 'full') await backup();
+  else if (choice === 'log') exportLog();
 }
 
 // 读取世界卡或完整备份（当前对话 / 全部对话）。剧情导出是 TXT/Markdown，不能读回
