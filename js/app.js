@@ -411,7 +411,8 @@ function updateView(v, it) {
   if (isGen) v.label.textContent += t('msg.generating');
   if (v.sendBox) {
     v.sendBox.checked = conv.greetingSend !== false;
-    v.sendBox.disabled = !!conv.lock;
+    // 锁定的世界卡、或者对话已经开始后，开场白的设置不能再改
+    v.sendBox.disabled = !!conv.lock || conv.messages.length > 0 || !!state.generating;
     v.sendText.textContent = ' ' + t('msg.greetingSend');
   }
 
@@ -452,14 +453,24 @@ function updateView(v, it) {
     return;
   }
   if (it.greeting) {
-    v.actions.append(
-      button(t('msg.copy'), () => copyText(conv.greeting)),
-      button(t('msg.edit'), () => startEdit(GREETING_ID, conv.greeting)),
-      disabled(button(t('msg.deleteGreeting'), deleteGreeting), busy),
-    );
+    v.actions.append(button(t('msg.copy'), () => copyText(conv.greeting)));
+    // 对话开始后开场白锁定：要换开场白请新建对话
+    if (!conv.messages.length) {
+      v.actions.append(
+        disabled(button(t('msg.edit'), () => startEdit(GREETING_ID, conv.greeting)), busy),
+        disabled(button(t('msg.deleteGreeting'), deleteGreeting), busy),
+      );
+    } else {
+      const tag = document.createElement('span');
+      tag.className = 'lock-tag';
+      tag.textContent = t('msg.greetingStarted');
+      v.actions.append(tag);
+    }
     return;
   }
   const isLast = it.i === conv.messages.length - 1;
+  // 只能编辑最近一次的用户消息和最近一次的模型回复
+  const latestOfRole = conv.messages.findLastIndex((x) => x.role === m.role) === it.i;
   if (m.role === 'assistant' && m.versions.length > 1) {
     const sw = document.createElement('span');
     sw.className = 'swipe';
@@ -473,14 +484,20 @@ function updateView(v, it) {
     v.actions.appendChild(sw);
   }
   v.actions.appendChild(button(t('msg.copy'), () => copyText(msgText(m))));
-  v.actions.appendChild(disabled(button(t('msg.edit'), () => startEdit(m.id, msgText(m))), isGen));
+  if (latestOfRole) {
+    v.actions.appendChild(disabled(button(t('msg.edit'), () => startEdit(m.id, msgText(m))), busy,
+      m.role === 'user' ? t('msg.editUserTitle') : t('msg.editStoryTitle')));
+  }
   if (m.role === 'assistant' && isLast) {
     v.actions.appendChild(disabled(button(t('msg.regenerate'), () => regenerate(m)), busy, t('msg.regenerateTitle')));
   }
   if (m.role === 'assistant' && m.versions.length > 1) {
     v.actions.appendChild(disabled(button(t('msg.deleteVersion'), () => deleteVersion(m)), busy));
   }
-  v.actions.appendChild(disabled(button(t('msg.rollback'), () => rollback(it.i)), busy || isLast, t('msg.rollbackTitle')));
+  // 回退只出现在模型回复上（回退到用户消息就要重新生成，直接编辑那条用户消息即可）
+  if (m.role === 'assistant') {
+    v.actions.appendChild(disabled(button(t('msg.rollback'), () => rollback(it.i)), busy || isLast, t('msg.rollbackTitle')));
+  }
 }
 
 function buildEditor(id) {
@@ -596,8 +613,25 @@ async function saveEdit() {
       state.conv.greeting = draft;
     }
   } else {
-    const m = state.conv.messages.find((x) => x.id === id);
-    if (m) m.versions[m.cur] = draft;
+    const msgs = state.conv.messages;
+    const i = msgs.findIndex((x) => x.id === id);
+    const m = msgs[i];
+    if (!m) return cancelEdit();
+    const changed = m.versions[m.cur] !== draft;
+    m.versions[m.cur] = draft;
+    state.editingId = null;
+    renderMessages();
+    await saveConv();
+    // 编辑模型回复：只保存（相当于你改写了剧情）。
+    // 编辑用户消息：保存后按新内容重新生成回复（旧回复保留为另一个版本）
+    if (m.role === 'user' && changed && !state.generating) {
+      const next = msgs[i + 1];
+      if (next && next.role === 'assistant') await regenerate(next);
+      else await generateReply();
+    } else {
+      toast(t('msg.saved'));
+    }
+    return;
   }
   state.editingId = null;
   renderMessages();
