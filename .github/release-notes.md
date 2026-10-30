@@ -9,6 +9,7 @@ Proteus 桌面版，自带 Chromium 浏览器内核，下载后即可使用，�
 | `Proteus-版本号-mac-arm64.dmg` | macOS，Apple 芯片（M1 及更新） |
 | `Proteus-版本号-mac-x64.dmg` | macOS，Intel 芯片 |
 | `Proteus-版本号-linux-x86_64.AppImage` | Linux（64 位）：加上可执行权限后直接运行 |
+| `Proteus-版本号-android.apk` | 安卓 7.0 及以上：下载后点击安装（需要允许“安装未知来源应用”） |
 
 > 安装程序没有经过付费的代码签名：
 >

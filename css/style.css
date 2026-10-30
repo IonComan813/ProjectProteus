@@ -489,6 +489,7 @@ textarea:focus, input:focus, select:focus { outline: 1px solid var(--accent); bo
 /* =====================================================================
    手机布局（窗口宽度 < 1000px，包括安卓版）：
    艺术图铺满背景并调暗，聊天区叠在上面；设置面板点齿轮从右侧滑出。
+   安全边距：安卓版由 Capacitor 写入 --safe-area-inset-*，浏览器里用 env() 的值。
    ===================================================================== */
 .icon-btn { font-size: 16px; line-height: 1; padding: 7px 10px; }
 
@@ -541,7 +542,7 @@ textarea:focus, input:focus, select:focus { outline: 1px solid var(--accent); bo
   .chat-header {
     gap: 6px;
     padding: 8px 10px;
-    padding-top: calc(8px + env(safe-area-inset-top, 0px));
+    padding-top: calc(8px + var(--safe-area-inset-top, env(safe-area-inset-top, 0px)));
     background: rgba(28, 29, 34, .88);
     -webkit-backdrop-filter: blur(6px);
     backdrop-filter: blur(6px);
@@ -557,7 +558,7 @@ textarea:focus, input:focus, select:focus { outline: 1px solid var(--accent); bo
 
   .composer {
     padding: 8px 10px;
-    padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(6px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
     background: rgba(28, 29, 34, .92);
   }
   .row-resizer { margin: -8px -10px 4px; height: 12px; touch-action: none; }
@@ -575,8 +576,8 @@ textarea:focus, input:focus, select:focus { outline: 1px solid var(--accent); bo
     width: min(100vw, 420px);
     z-index: 30;
     border-left: 1px solid var(--border);
-    padding-top: calc(12px + env(safe-area-inset-top, 0px));
-    padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    padding-top: calc(12px + var(--safe-area-inset-top, env(safe-area-inset-top, 0px)));
+    padding-bottom: calc(12px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
     transform: translateX(100%);
     visibility: hidden;
     transition: transform .2s ease, visibility 0s linear .2s;
@@ -600,7 +601,7 @@ textarea:focus, input:focus, select:focus { outline: 1px solid var(--accent); bo
   body.settings-open .settings-backdrop { opacity: 1; pointer-events: auto; }
   .settings-head {
     position: sticky;
-    top: calc(-12px - env(safe-area-inset-top, 0px));
+    top: calc(-12px - var(--safe-area-inset-top, env(safe-area-inset-top, 0px)));
     z-index: 5;
     display: flex;
     align-items: center;

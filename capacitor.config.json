@@ -1,0 +1,15 @@
+{
+  "appId": "io.github.ioncoman813.proteus",
+  "appName": "海神Proteus",
+  "webDir": "www",
+  "android": {
+    "backgroundColor": "#15161a"
+  },
+  "plugins": {
+    "SystemBars": {
+      "insetsHandling": "css",
+      "style": "DARK",
+      "initialViewportFitValueHint": "cover"
+    }
+  }
+}

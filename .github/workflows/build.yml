@@ -3,6 +3,10 @@
 #   在 Windows、Linux、macOS 上打包，并把安装包上传到这个版本的 Release。
 #   版本号直接取自标签（v0.2.0 → 0.2.0），不需要改 package.json。
 # - 在 Actions 页面手动运行（Run workflow）：只打包不发布，安装包在本次运行页面的 Artifacts 里下载。
+#
+# 安卓版签名：在仓库 Settings → Secrets and variables → Actions 里添加
+#   ANDROID_KEYSTORE_BASE64（签名密钥文件的 base64 文本）和 ANDROID_KEYSTORE_PASSWORD（密钥密码）。
+# 没有添加时改用临时的调试密钥签名：能安装，但以后的版本无法直接覆盖更新。
 
 name: Build desktop app
 
@@ -66,9 +70,82 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  android:
+    name: Build (Android)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+
+      - run: npm ci
+
+      - name: Work out the version number
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            version="${GITHUB_REF_NAME#v}"
+            if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+              echo "::error::Tag $GITHUB_REF_NAME is not a version like v1.2.3"
+              exit 1
+            fi
+          else
+            version=$(node -p "require('./package.json').version")
+          fi
+          echo "APP_VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Copy the web app into the Android project
+        run: npm run android:sync
+
+      - name: Prepare the signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        shell: bash
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+            echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+          else
+            echo "::warning::ANDROID_KEYSTORE_BASE64 is not set: the APK is signed with a temporary debug key and later versions cannot update it in place."
+          fi
+
+      - name: Build APK
+        working-directory: android
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: proteus
+        shell: bash
+        run: |
+          chmod +x gradlew
+          mkdir -p ../dist-android
+          if [ -n "$ANDROID_KEYSTORE_PATH" ]; then
+            ./gradlew --no-daemon assembleRelease -PappVersion="$APP_VERSION"
+            cp app/build/outputs/apk/release/app-release.apk "../dist-android/Proteus-$APP_VERSION-android.apk"
+          else
+            ./gradlew --no-daemon assembleDebug -PappVersion="$APP_VERSION"
+            cp app/build/outputs/apk/debug/app-debug.apk "../dist-android/Proteus-$APP_VERSION-android.apk"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Proteus-Android
+          path: dist-android/*.apk
+          if-no-files-found: error
+          retention-days: 30
+
   release:
     name: Publish release
-    needs: build
+    needs: [build, android]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
