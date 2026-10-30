@@ -10,14 +10,14 @@
 
 ### 桌面版（推荐）
 
-**Windows 用户可以直接下载：[Proteus-Setup-0.1.0-win-x64.exe](https://github.com/IonComan813/ProjectProteus/raw/downloads/Proteus-Setup-0.1.0-win-x64.exe)**（约 120 MB，存放在 [`downloads` 分支](https://github.com/IonComan813/ProjectProteus/tree/downloads)）。
-
-也可以到 [Releases 页面](https://github.com/IonComan813/ProjectProteus/releases) 下载各个版本：
+到 [Releases 页面](https://github.com/IonComan813/ProjectProteus/releases) 下载最新版本：
 
 | 文件 | 说明 |
 |---|---|
 | `Proteus-Setup-版本号-win-x64.exe` | Windows 安装程序，装好后桌面和开始菜单会有快捷方式 |
 | `Proteus-版本号-win-x64.zip` | Windows 免安装版，解压后双击 `Proteus.exe` |
+| `Proteus-版本号-mac-arm64.dmg` | macOS，Apple 芯片（M1 及更新） |
+| `Proteus-版本号-mac-x64.dmg` | macOS，Intel 芯片 |
 | `Proteus-版本号-linux-x86_64.AppImage` | Linux 版，加上可执行权限后直接运行 |
 
 桌面版自带 Chromium 浏览器内核，不需要另外安装浏览器，和网页版相比还有这些好处：
@@ -25,9 +25,10 @@
 - **没有跨域限制**：不允许浏览器直接访问的中转站也能正常使用
 - **数据和浏览器分开保存**：不会被清理浏览器数据误删，其他网页也读不到 Proteus 的数据
 
-> 安装程序没有经过付费的代码签名，第一次运行时 Windows 可能会弹出「Windows 已保护你的电脑」。点「**更多信息**」→「**仍要运行**」即可。
+> 安装程序没有经过付费的代码签名：
 >
-> 暂时没有 macOS 版本（需要在苹果电脑上打包）。
+> - **Windows** 第一次运行可能弹出「Windows 已保护你的电脑」，点「**更多信息**」→「**仍要运行**」即可
+> - **macOS** 第一次打开可能提示「无法验证开发者」，在「系统设置」→「隐私与安全性」底部点「**仍要打开**」即可
 
 ### 网页版
 
@@ -208,6 +209,25 @@ npm run dist:mac     # 打包 macOS 版（需要在苹果电脑上运行）
 ```
 
 打包结果在 `dist/` 文件夹里。
+
+### 自动打包与发布（GitHub Actions）
+
+仓库里的 `.github/workflows/build.yml` 会在 GitHub 的服务器上同时打包 Windows、Linux 和 macOS 版：
+
+- **发布新版本**：先把 `package.json` 里的 `version` 改成新版本号（例如 `0.2.0`）并提交，再推送同名标签：
+
+  ```bash
+  git tag v0.2.0
+  ```
+
+  ```bash
+  git push origin v0.2.0
+  ```
+
+  大约 5 分钟后，Releases 页面会自动出现这个版本和全部安装包。也可以直接在 GitHub 网页上「Draft a new release」并新建标签，效果相同。
+- **只想试试能不能打包**：在仓库的 Actions 页面选「Build desktop app」→「Run workflow」。只打包不发布，安装包在那次运行页面底部的 Artifacts 里，保留 30 天。
+
+Release 页面的说明文字来自 `.github/release-notes.md`。
 
 ## 多语言
 
