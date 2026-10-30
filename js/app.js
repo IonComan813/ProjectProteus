@@ -480,7 +480,7 @@ function updateView(v, it) {
   if (m.role === 'assistant' && m.versions.length > 1) {
     v.actions.appendChild(disabled(button(t('msg.deleteVersion'), () => deleteVersion(m)), busy));
   }
-  v.actions.appendChild(disabled(button(t('msg.rollback'), () => rollback(it.i)), busy, t('msg.rollbackTitle')));
+  v.actions.appendChild(disabled(button(t('msg.rollback'), () => rollback(it.i)), busy || isLast, t('msg.rollbackTitle')));
 }
 
 function buildEditor(id) {
@@ -628,12 +628,13 @@ async function deleteVersion(m) {
   await saveConv();
 }
 
+// 回退到当前：保留第 i 条，删除它之后的所有消息
 async function rollback(i) {
   const msgs = state.conv.messages;
-  if (!confirm(t('msg.rollbackConfirm', { n: msgs.length - i }))) return;
-  const removed = msgs.splice(i);
-  // 如果回退的是自己的消息，把它放回输入框方便修改后重发
-  if (removed[0].role === 'user' && !els.input.value.trim()) els.input.value = msgText(removed[0]);
+  const n = msgs.length - i - 1;
+  if (n <= 0) return;
+  if (!confirm(t('msg.rollbackConfirm', { n }))) return;
+  msgs.splice(i + 1);
   state.editingId = null;
   showError('');
   renderMessages();
