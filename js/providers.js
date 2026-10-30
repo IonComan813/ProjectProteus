@@ -1,6 +1,6 @@
 // 和各家模型接口通信。服务商的显示名称在 i18n.js 里（provider.<键名>）。支持两种格式：
 //   - Anthropic 格式（Claude 官方，以及兼容它的中转站）
-//   - OpenAI 格式（OpenAI 官方、OpenRouter、DeepSeek 和大多数中转站）
+//   - OpenAI 格式（OpenAI 官方、Gemini、OpenRouter、DeepSeek 和大多数中转站）
 // 所有请求都用流式输出，文字会一边生成一边显示。
 
 const PROVIDERS = {
@@ -22,12 +22,6 @@ const PROVIDERS = {
     // 免费额度下较大的模型常常繁忙（503）或长时间排队，默认用最稳定的 3.5-flash-lite
     models: ['gemini-3.5-flash-lite', 'gemini-3.5-flash', 'gemini-3-flash-preview', 'gemini-3.8-flash', 'gemini-3.1-pro-preview'],
     defaultModel: 'gemini-3.5-flash-lite',
-  },
-  openrouter: {
-    format: 'openai',
-    baseUrl: 'https://openrouter.ai/api/v1',
-    models: ['anthropic/claude-opus-5-5', 'anthropic/claude-sonnet-5-5'],
-    defaultModel: '',
   },
   custom_openai: {
     format: 'openai',
@@ -79,10 +73,7 @@ function buildRequest(cfg, system, messages) {
       stream: true,
       messages: msgs,
     };
-    if (system) {
-      // cache_control：世界观等固定内容会被缓存，后续请求更便宜、更快
-      body.system = [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }];
-    }
+    if (system) body.system = system;
     if (cfg.effort) body.output_config = { effort: cfg.effort };
     const headers = {
       'content-type': 'application/json',
@@ -100,19 +91,10 @@ function buildRequest(cfg, system, messages) {
   }
 
   // OpenAI 格式
-  let systemMsg = null;
-  if (system) {
-    if (cfg.provider === 'openrouter' && /^anthropic\//.test(cfg.model)) {
-      // OpenRouter 上的 Claude 模型也支持缓存，需要这种写法
-      systemMsg = { role: 'system', content: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }] };
-    } else {
-      systemMsg = { role: 'system', content: system };
-    }
-  }
   const body = {
     model: cfg.model,
     stream: true,
-    messages: systemMsg ? [systemMsg, ...msgs] : msgs,
+    messages: system ? [{ role: 'system', content: system }, ...msgs] : msgs,
   };
   if (cfg.maxTokens) {
     // OpenAI 官方的新模型用 max_completion_tokens，其他兼容接口大多仍用 max_tokens
@@ -124,7 +106,8 @@ function buildRequest(cfg, system, messages) {
     'content-type': 'application/json',
     authorization: 'Bearer ' + cfg.apiKey,
   };
-  if (cfg.provider === 'openrouter') headers['X-Title'] = 'Proteus';
+  // OpenRouter 没有单独的选项，按接口地址认出来，带上应用名
+  if (/^https:\/\/openrouter\.ai\//i.test(base)) headers['X-Title'] = 'Proteus';
   return { format: 'openai', url: base + '/chat/completions', headers, body };
 }
 
