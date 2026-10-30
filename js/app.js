@@ -883,17 +883,15 @@ async function runGeneration(m, context) {
 
   state.generating = null;
   const text = m.versions[ver];
-
-  if (result && result.stopReason === 'refusal') {
-    error = new Error(t('gen.refused'));
-    m.versions[ver] = '';
-  }
-  const kept = !!m.versions[ver];
-  const truncated = !!result && (result.stopReason === 'max_tokens' || result.stopReason === 'length');
-  const failed = !!result && result.stopReason === 'error'; // 部分接口（如 OpenRouter）用 finish_reason 报告中途出错
+  const kept = !!text;
+  const reason = result && result.stopReason;
+  const truncated = reason === 'max_tokens' || reason === 'length';
+  const failed = reason === 'error'; // 部分接口（如 OpenRouter）用 finish_reason 报告中途出错
+  // 被拦截：模型的安全机制拒绝（Anthropic 的 refusal），或接口的内容过滤（OpenAI 格式的 content_filter）
+  const blocked = reason === 'refusal' ? 'refused' : reason === 'content_filter' ? 'filtered' : null;
 
   // 没有生成出任何文字时，撤掉这个空版本
-  if (!m.versions[ver]) {
+  if (!kept) {
     m.versions.splice(ver, 1);
     if (!m.versions.length) conv.messages.splice(conv.messages.indexOf(m), 1);
     else m.cur = m.versions.length - 1;
@@ -902,12 +900,16 @@ async function runGeneration(m, context) {
   if (state.conv === conv) renderMessages();
   await saveConv(conv);
 
-  // 回复没写完就结束了（出错或达到最大输出长度）：已经输出的部分照常显示和保存，弹窗说明一下
-  if (kept && (error || failed)) showModal(t('gen.interruptedTitle'), t('gen.interrupted') + (error ? '\n\n' + error.message : ''));
-  else if (kept && truncated) showModal(t('gen.truncatedTitle'), t('gen.truncated'));
-  else if (error) showError(error.message);
+  // 只要有输出就照常显示和保存；回复没写完就结束的（出错、被拦截、达到最大输出长度），弹窗说明一下
+  if (kept) {
+    if (error || failed) showModal(t('gen.interruptedTitle'), t('gen.interrupted') + (error ? '\n\n' + error.message : ''));
+    else if (blocked) showModal(t('gen.blockedTitle'), t('gen.' + blocked + 'Partial'));
+    else if (truncated) showModal(t('gen.truncatedTitle'), t('gen.truncated'));
+  } else if (error) showError(error.message);
+  else if (blocked) showError(t('gen.' + blocked));
   else if (failed) showError(t('gen.errorEnded'));
-  else if (!text) toast(t('gen.stopped'));
+  else if (truncated) showError(t('gen.truncatedEmpty'));
+  else toast(t('gen.stopped'));
 }
 
 function stop() {

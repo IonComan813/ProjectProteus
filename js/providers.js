@@ -119,7 +119,7 @@ async function readError(res) {
     if (Array.isArray(j)) j = j[0] || {}; // Gemini 的错误信息包在数组里
     msg = (j.error && (j.error.message || j.error.type)) || j.message || text;
   } catch (_) { /* 不是 JSON，直接用原文 */ }
-  const hint = [401, 403, 404, 429, 500, 502, 503, 504].includes(res.status) ? t('api.' + res.status) : '';
+  const hint = [400, 401, 402, 403, 404, 413, 429, 500, 502, 503, 504, 529].includes(res.status) ? t('api.' + res.status) : '';
   return new Error(`HTTP ${res.status}${hint ? ' — ' + hint : ''}\n${String(msg).slice(0, 600)}`);
 }
 
