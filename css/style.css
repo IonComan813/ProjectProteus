@@ -302,23 +302,23 @@ body.resizing iframe { pointer-events: none; }
   z-index: 20;
   max-height: 280px;
   overflow-y: auto;
-  background: #121317;
-  border: 1px solid var(--accent);
-  border-radius: 6px;
-  padding: 4px 0;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, .5);
+  /* 和浏览器原生下拉框一致：浅色细边框、黑底白字、无圆角 */
+  background: #1b1b1b;
+  border: 1px solid #c8c8c8;
+  border-radius: 0;
+  padding: 0;
 }
 .combo-item {
-  padding: 5px 10px;
+  padding: 1px 8px;
+  line-height: 22px;
   font-size: 13px;
-  color: var(--text);
-  cursor: pointer;
+  color: #fff;
+  cursor: default;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.combo-item.active { background: #3a3c44; }
-.combo-item.current { color: var(--accent); }
+.combo-item.active { background: #d6d6d6; color: #000; }  /* 悬停或键盘选中：浅色横条、黑字 */
 .combo-empty { padding: 6px 10px; font-size: 12px; color: var(--muted); white-space: normal; }
 
 .pw-fields { padding: 0 16px 8px; }
