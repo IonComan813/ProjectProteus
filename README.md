@@ -37,7 +37,7 @@
 
 - 界面是手机布局：艺术图作为调暗的背景，聊天区叠在上面；点右上角的 ⚙ 打开设置
 - 导出剧情、世界卡和备份时会弹出系统的分享菜单，可以存到"文件"、网盘或发给别人
-- 安卓版和网页版一样受浏览器的跨域限制：Claude、OpenAI、Gemini、OpenRouter 官方接口都能用，少数不允许浏览器访问的中转站用不了（这类中转站请用桌面版）
+- 安卓版和网页版一样受浏览器的跨域限制：Claude、OpenAI、Gemini 官方接口和 OpenRouter 都能用，少数不允许浏览器访问的中转站用不了（这类中转站请用桌面版）
 - 手机上的数据和电脑上的数据互不相通，可以用「完整备份（全部对话）」转移
 
 ### 网页版
@@ -83,6 +83,7 @@
   ```
   【开场白】
   ……开场白内容……
+  【开场白结束】
 
   【用户】
   ……你的第一条消息……
@@ -177,9 +178,8 @@ Proteus 在使用者自己的电脑上运行，API Key 只保存在本机浏览�
 | Anthropic（Claude 官方） | 直接调用 Claude。已启用提示词缓存：世界观等固定内容会被缓存，后续请求更便宜、更快 |
 | OpenAI 官方 | |
 | Google Gemini | 使用 Gemini 的 OpenAI 兼容接口，在 [Google AI Studio](https://aistudio.google.com/) 申请 API Key 即可。免费额度下较大的模型经常繁忙（HTTP 503）或长时间无响应，所以默认用 `gemini-3.5-flash-lite`；遇到 503 时稍等再点「生成回复」或「重新生成」即可 |
-| OpenRouter | 一个 Key 就能用很多家的模型。用 `anthropic/` 开头的 Claude 模型时同样会启用缓存 |
-| 其他 OpenAI 兼容接口 | DeepSeek、各种中转站等。需要自己填写接口地址，通常以 `/v1` 结尾 |
-| 其他 Anthropic 兼容接口 | 提供 Claude 原生格式的中转站 |
+| 其他 OpenAI 兼容格式（大多数中转站） | OpenRouter、DeepSeek、各种中转站等。需要自己填写接口地址，通常以 `/v1` 结尾（OpenRouter 是 `https://openrouter.ai/api/v1`）。在 OpenRouter 上用 `anthropic/` 开头的 Claude 模型时同样会启用缓存 |
+| 其他 Anthropic 兼容格式（部分中转站） | 提供 Claude 原生格式的中转站 |
 
 点击「获取列表」可以从接口拉取可用的模型名称，之后点模型输入框右侧的 ▾ 就能从列表里选择（也可以直接输入，输入时列表会按文字筛选）。获取到的列表会被记住。
 
@@ -273,7 +273,7 @@ keytool -genkeypair -v -keystore proteus.jks -alias proteus -keyalg RSA -keysize
 
 切换界面语言时，除了界面文字，以下内容也会跟着变：
 
-- 发给模型的标签：【世界观设定】【用户角色人设】【开场白】【用户】（英文为 `[World Setting]` `[User's Character]` `[Opening]` `[User]`，以此类推）
+- 发给模型的标签：【世界观设定】【用户角色人设】【开场白】【开场白结束】【用户】（英文为 `[World Setting]` `[User's Character]` `[Opening]` `[End of Opening]` `[User]`，以此类推）
 - 默认 System Prompt：如果当前对话的 System Prompt 没有改过（还是某种语言的默认内容），会换成新语言的默认内容；改过的不会动
 
 世界观、人设、开场白等内容是使用者自己写的，不会被翻译。

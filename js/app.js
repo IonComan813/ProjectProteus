@@ -202,7 +202,7 @@ function buildSystem(conv = state.conv) {
 
 // 开场白和用户第一条消息合在一起，作为发给模型的第一条消息
 function withGreeting(greeting, text) {
-  return `${t('greet.header')}\n${greeting}\n\n${t('greet.user')}\n${text}`;
+  return `${t('greet.header')}\n${greeting}\n${t('greet.footer')}\n\n${t('greet.user')}\n${text}`;
 }
 
 // 要发给模型的开场白：没有开场白或设为“不发送”时为 null
@@ -1793,6 +1793,16 @@ async function boot() {
     state.settings[k] = { ...DEFAULT_SETTINGS[k], ...(saved[k] || {}) };
   }
   if (sessionKeys) state.settings.apiKeys = sessionKeys; // 不记住 Key 时，本次打开期间填过的 Key 继续有效
+  // OpenRouter 不再单列，归到“其他 OpenAI 兼容格式”：之前选的是它时，把 Key 和模型搬过去（那边还空着时）
+  if (state.settings.provider === 'openrouter') {
+    const s = state.settings;
+    if (!s.apiKeys.custom_openai && !s.baseUrls.custom_openai) {
+      s.apiKeys.custom_openai = s.apiKeys.openrouter || '';
+      s.baseUrls.custom_openai = 'https://openrouter.ai/api/v1';
+      s.models.custom_openai = s.models.openrouter || '';
+    }
+    s.provider = 'custom_openai';
+  }
   if (!PROVIDERS[state.settings.provider]) state.settings.provider = 'anthropic';
   state.settings.rounds = Math.min(ROUNDS_MAX, Math.max(ROUNDS_MIN, Number(state.settings.rounds) || 12));
   setLang(state.settings.lang || detectLang());

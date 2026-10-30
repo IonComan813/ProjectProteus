@@ -1,6 +1,6 @@
 // 和各家模型接口通信。服务商的显示名称在 i18n.js 里（provider.<键名>）。支持两种格式：
 //   - Anthropic 格式（Claude 官方，以及兼容它的中转站）
-//   - OpenAI 格式（OpenAI 官方、OpenRouter、DeepSeek 和大多数中转站）
+//   - OpenAI 格式（OpenAI 官方、Gemini、OpenRouter、DeepSeek 和大多数中转站）
 // 所有请求都用流式输出，文字会一边生成一边显示。
 
 const PROVIDERS = {
@@ -22,12 +22,6 @@ const PROVIDERS = {
     // 免费额度下较大的模型常常繁忙（503）或长时间排队，默认用最稳定的 3.5-flash-lite
     models: ['gemini-3.5-flash-lite', 'gemini-3.5-flash', 'gemini-3-flash-preview', 'gemini-3.8-flash', 'gemini-3.1-pro-preview'],
     defaultModel: 'gemini-3.5-flash-lite',
-  },
-  openrouter: {
-    format: 'openai',
-    baseUrl: 'https://openrouter.ai/api/v1',
-    models: ['anthropic/claude-opus-5-5', 'anthropic/claude-sonnet-5-5'],
-    defaultModel: '',
   },
   custom_openai: {
     format: 'openai',
@@ -99,10 +93,11 @@ function buildRequest(cfg, system, messages) {
     return { format: 'anthropic', url: base + '/v1/messages', headers, body };
   }
 
-  // OpenAI 格式
+  // OpenAI 格式。OpenRouter 没有单独的选项，按接口地址认出来
+  const openrouter = /^https:\/\/openrouter\.ai\//i.test(base);
   let systemMsg = null;
   if (system) {
-    if (cfg.provider === 'openrouter' && /^anthropic\//.test(cfg.model)) {
+    if (openrouter && /^anthropic\//.test(cfg.model)) {
       // OpenRouter 上的 Claude 模型也支持缓存，需要这种写法
       systemMsg = { role: 'system', content: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }] };
     } else {
@@ -124,7 +119,7 @@ function buildRequest(cfg, system, messages) {
     'content-type': 'application/json',
     authorization: 'Bearer ' + cfg.apiKey,
   };
-  if (cfg.provider === 'openrouter') headers['X-Title'] = 'Proteus';
+  if (openrouter) headers['X-Title'] = 'Proteus';
   return { format: 'openai', url: base + '/chat/completions', headers, body };
 }
 
