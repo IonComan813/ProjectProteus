@@ -1,0 +1,70 @@
+# 安卓冒烟测试（手动运行）：在 GitHub 的安卓模拟器里安装并打开应用，截图并收集日志，
+# 用来确认安卓版能正常启动和显示。结果在本次运行页面的 Artifacts 里。
+
+name: Android smoke test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+
+      - run: npm ci
+
+      - name: Build a debug APK
+        run: |
+          npm run android:sync
+          cd android && chmod +x gradlew && ./gradlew --no-daemon assembleDebug
+
+      - name: Enable KVM for the emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Install, launch and screenshot in the emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: |
+            mkdir -p smoke
+            adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+            adb logcat -c
+            adb shell am start -W -n io.github.ioncoman813.proteus/.MainActivity
+            sleep 25
+            adb exec-out screencap -p > smoke/1-launch.png
+            adb shell wm size > smoke/screen.txt
+            adb shell input tap 1000 190
+            sleep 3
+            adb exec-out screencap -p > smoke/2-after-tap-gear.png
+            adb logcat -d > smoke/logcat.txt
+            adb shell dumpsys package io.github.ioncoman813.proteus | grep -E "versionName|versionCode" > smoke/version.txt || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-smoke
+          path: smoke/
+          retention-days: 7
