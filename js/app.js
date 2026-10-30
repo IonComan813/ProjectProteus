@@ -488,7 +488,10 @@ function updateView(v, it) {
   const isLast = it.i === conv.messages.length - 1;
   // 只能编辑最近一次的用户消息和最近一次的模型回复
   const latestOfRole = conv.messages.findLastIndex((x) => x.role === m.role) === it.i;
-  if (m.role === 'assistant' && m.versions.length > 1) {
+  // 切换、删除版本也只在最后一组（最新的用户消息和最后一条模型回复）上，否则后面的剧情会接不上。
+  // 更早消息的其他版本仍然保存着，回退到那里后又可以切换
+  const tail = m.role === 'user' ? latestOfRole : isLast;
+  if (tail && m.versions.length > 1) {
     const sw = document.createElement('span');
     sw.className = 'swipe';
     const n = document.createElement('span');
@@ -508,7 +511,7 @@ function updateView(v, it) {
   if (m.role === 'assistant' && isLast) {
     v.actions.appendChild(disabled(button(t('msg.regenerate'), () => regenerate(m)), busy, t('msg.regenerateTitle')));
   }
-  if (m.role === 'assistant' && m.versions.length > 1) {
+  if (m.role === 'assistant' && tail && m.versions.length > 1) {
     v.actions.appendChild(disabled(button(t('msg.deleteVersion'), () => deleteVersion(m)), busy));
   }
   // 回退只出现在模型回复上（回退到用户消息就要重新生成，直接编辑那条用户消息即可）
@@ -645,24 +648,26 @@ async function saveEdit() {
       state.conv.greeting = draft;
     }
   } else {
-    const msgs = state.conv.messages;
-    const i = msgs.findIndex((x) => x.id === id);
-    const m = msgs[i];
+    const m = state.conv.messages.find((x) => x.id === id);
     if (!m) return cancelEdit();
     const changed = m.versions[m.cur] !== draft;
-    m.versions[m.cur] = draft;
     state.editingId = null;
+    // 编辑用户消息：存成这条消息的新版本，按新内容生成回复。
+    // 旧版本和它的那一组回复都保留，切回旧版本时一起回来
+    if (m.role === 'user' && changed && !state.generating) {
+      stashReplies(m);
+      m.versions.push(draft);
+      m.cur = m.versions.length - 1;
+      renderMessages();
+      await saveConv();
+      await generateReply();
+      return;
+    }
+    // 编辑模型回复：直接改这个版本（相当于你改写了剧情），不重新生成
+    m.versions[m.cur] = draft;
     renderMessages();
     await saveConv();
-    // 编辑模型回复：只保存（相当于你改写了剧情）。
-    // 编辑用户消息：保存后按新内容重新生成回复（旧回复保留为另一个版本）
-    if (m.role === 'user' && changed && !state.generating) {
-      const next = msgs[i + 1];
-      if (next && next.role === 'assistant') await regenerate(next);
-      else await generateReply();
-    } else {
-      toast(t('msg.saved'));
-    }
+    toast(t('msg.saved'));
     return;
   }
   state.editingId = null;
@@ -681,9 +686,37 @@ async function deleteGreeting() {
 
 async function switchVersion(m, delta) {
   const n = m.versions.length;
-  m.cur = (m.cur + delta + n) % n;
+  const to = (m.cur + delta + n) % n;
+  if (m.role === 'user') switchUserVersion(m, to);
+  else m.cur = to;
   renderMessages();
   await saveConv();
+}
+
+// 用户消息的每个版本各有自己的一组模型回复：当前版本的那一组就是紧跟在后面的模型回复，
+// 其他版本的存在 m.replies[版本序号] 里（{ id, versions, cur }，没有回复时为 null）。
+// 只有最新的用户消息能切换版本，所以它后面最多只有一条模型回复。
+
+// 把紧跟在后面的模型回复收进当前版本名下，并从对话里拿掉
+function stashReplies(m) {
+  const msgs = state.conv.messages;
+  const next = msgs[msgs.indexOf(m) + 1];
+  const hasReply = next && next.role === 'assistant';
+  if (!m.replies) m.replies = [];
+  m.replies[m.cur] = hasReply ? { id: next.id, versions: next.versions, cur: next.cur } : null;
+  if (hasReply) msgs.splice(msgs.indexOf(next), 1);
+}
+
+// 切换到第 to 个版本，换上它那一组回复
+function switchUserVersion(m, to) {
+  stashReplies(m);
+  m.cur = to;
+  const set = m.replies[to];
+  m.replies[to] = null;
+  if (set) {
+    const msgs = state.conv.messages;
+    msgs.splice(msgs.indexOf(m) + 1, 0, { id: set.id, role: 'assistant', versions: set.versions, cur: set.cur });
+  }
 }
 
 async function deleteVersion(m) {
@@ -1058,10 +1091,14 @@ async function importArt(convId, art) {
 }
 
 // 备份里的对话：先整体检查，不合格就不读取（读取完整备份会先清空现有数据）
+function validVersions(x) {
+  return !!x && Array.isArray(x.versions) && x.versions.length > 0 && x.versions.every((v) => typeof v === 'string')
+    && Number.isInteger(x.cur) && x.cur >= 0 && x.cur < x.versions.length;
+}
+
 function validMessage(m) {
-  return !!m && (m.role === 'user' || m.role === 'assistant')
-    && Array.isArray(m.versions) && m.versions.length > 0 && m.versions.every((v) => typeof v === 'string')
-    && Number.isInteger(m.cur) && m.cur >= 0 && m.cur < m.versions.length;
+  return !!m && (m.role === 'user' || m.role === 'assistant') && validVersions(m)
+    && (m.replies === undefined || (Array.isArray(m.replies) && m.replies.every((x) => x == null || (typeof x.id === 'string' && validVersions(x)))));
 }
 
 function validBackupConv(c) {
