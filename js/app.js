@@ -886,6 +886,34 @@ function askPassword(title, message, confirm) {
   });
 }
 
+// 文字输入框（代替浏览器的 prompt()，Electron 里不支持 prompt）。返回输入的文字，取消则为 null
+function askText(title, message, value) {
+  return new Promise((resolve) => {
+    els.textTitle.textContent = title;
+    els.textMessage.textContent = message;
+    els.textInput.value = value || '';
+    els.textDialog.hidden = false;
+    els.textInput.focus();
+    els.textInput.select();
+    const done = (result) => {
+      els.textDialog.hidden = true;
+      els.textOk.removeEventListener('click', ok);
+      els.textCancel.removeEventListener('click', cancel);
+      document.removeEventListener('keydown', onKey, true);
+      resolve(result);
+    };
+    const ok = () => done(els.textInput.value);
+    const cancel = () => done(null);
+    const onKey = (e) => {
+      if (e.key === 'Escape') { e.stopPropagation(); cancel(); }
+      if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); ok(); }
+    };
+    els.textOk.addEventListener('click', ok);
+    els.textCancel.addEventListener('click', cancel);
+    document.addEventListener('keydown', onKey, true);
+  });
+}
+
 // 输入密码解锁当前对话：变回普通对话，可以查看、修改和明文导出
 async function unlockConv() {
   const conv = state.conv;
@@ -973,7 +1001,7 @@ async function exportWorldCard() {
       if (password === null) return;
     }
   }
-  const name = prompt(t('export.cardName'), conv.title || '');
+  const name = await askText(t('export.card'), t('export.cardName'), conv.title || '');
   if (name === null) return;
   const data = {
     app: 'proteus',
@@ -1522,7 +1550,7 @@ function bindChat() {
   els.convSelect.addEventListener('change', () => switchConv(els.convSelect.value));
   els.btnNewConv.addEventListener('click', createConversation);
   els.btnRenameConv.addEventListener('click', async () => {
-    const name = prompt(t('conv.renamePrompt'), state.conv.title);
+    const name = await askText(t('conv.rename'), t('conv.renamePrompt'), state.conv.title);
     if (name === null || !name.trim()) return;
     state.conv.title = name.trim();
     await saveConv();

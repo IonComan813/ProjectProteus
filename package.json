@@ -1,0 +1,72 @@
+{
+  "name": "proteus",
+  "productName": "Proteus",
+  "version": "0.1.0",
+  "description": "Roleplay chat app for large language models (desktop version with built-in Chromium)",
+  "main": "electron/main.js",
+  "author": "IonComan813",
+  "license": "GPL-3.0-only",
+  "homepage": "https://github.com/IonComan813/ProjectProteus",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/IonComan813/ProjectProteus.git"
+  },
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist:win": "electron-builder --win --x64",
+    "dist:linux": "electron-builder --linux --x64",
+    "dist:mac": "electron-builder --mac"
+  },
+  "devDependencies": {
+    "electron": "44.7.2",
+    "electron-builder": "26.17.0"
+  },
+  "build": {
+    "appId": "io.github.ioncoman813.proteus",
+    "productName": "Proteus",
+    "copyright": "Copyright © 2026 IonComan813 · GPL-3.0",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "index.html",
+      "css/**",
+      "js/**",
+      "electron/**",
+      "build/icon.png",
+      "LICENSE"
+    ],
+    "artifactName": "Proteus-${version}-${os}-${arch}.${ext}",
+    "publish": null,
+    "win": {
+      "icon": "build/icon.png",
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "zip", "arch": ["x64"] }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Proteus",
+      "license": "LICENSE",
+      "artifactName": "Proteus-Setup-${version}-win-x64.${ext}"
+    },
+    "linux": {
+      "icon": "build/icon.png",
+      "category": "Game",
+      "target": [
+        { "target": "AppImage", "arch": ["x64"] }
+      ]
+    },
+    "mac": {
+      "icon": "build/icon.png",
+      "category": "public.app-category.role-playing-games",
+      "target": ["dmg"]
+    }
+  }
+}

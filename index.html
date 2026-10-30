@@ -228,6 +228,21 @@
     </div>
   </div>
 
+  <div class="modal" id="textDialog" hidden>
+    <div class="modal-box dialog-box">
+      <div class="modal-head"><strong id="textTitle"></strong></div>
+      <div class="pw-fields">
+        <label class="field"><span id="textMessage"></span>
+          <input type="text" id="textInput" maxlength="100" spellcheck="false">
+        </label>
+      </div>
+      <div class="dialog-buttons">
+        <button class="btn btn-ghost" id="textCancel" data-i18n="btn.cancel"></button>
+        <button class="btn btn-primary" id="textOk" data-i18n="pw.ok"></button>
+      </div>
+    </div>
+  </div>
+
   <div class="toast" id="toast" hidden></div>
 
   <script src="js/vendor/marked.min.js"></script>

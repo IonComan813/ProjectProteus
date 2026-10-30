@@ -1,20 +1,44 @@
 # Proteus
 
-一个在浏览器里运行的角色扮演聊天工具，可以接入大语言模型（LLM），玩法类似 SillyTavern。
+一个接入大语言模型（LLM）的角色扮演聊天工具，玩法类似 SillyTavern。有桌面版（自带浏览器内核）和网页版两种用法。
 
 界面支持简体中文、繁體中文、English、日本語（右侧设置最下方切换）。基于 GPL v3 开源；使用者需自备 API Key。
 
 ![界面截图](docs/screenshot.png)
 
-## 怎么打开
+## 下载与安装
+
+### 桌面版（推荐）
+
+到 [Releases 页面](https://github.com/IonComan813/ProjectProteus/releases) 下载最新版本：
+
+| 文件 | 说明 |
+|---|---|
+| `Proteus-Setup-版本号-win-x64.exe` | Windows 安装程序，装好后桌面和开始菜单会有快捷方式 |
+| `Proteus-版本号-win-x64.zip` | Windows 免安装版，解压后双击 `Proteus.exe` |
+| `Proteus-版本号-linux-x86_64.AppImage` | Linux 版，加上可执行权限后直接运行 |
+
+桌面版自带 Chromium 浏览器内核，不需要另外安装浏览器，和网页版相比还有这些好处：
+
+- **没有跨域限制**：不允许浏览器直接访问的中转站也能正常使用
+- **数据和浏览器分开保存**：不会被清理浏览器数据误删，其他网页也读不到 Proteus 的数据
+
+> 安装程序没有经过付费的代码签名，第一次运行时 Windows 可能会弹出「Windows 已保护你的电脑」。点「**更多信息**」→「**仍要运行**」即可。
+>
+> 暂时没有 macOS 版本（需要在苹果电脑上打包）。
+
+### 网页版
 
 不需要安装任何东西：
 
 1. 下载整个文件夹（GitHub 页面上的 **Code → Download ZIP**，然后解压）
 2. 双击 `index.html`，用 Chrome 或 Edge 打开即可
 
-> 所有数据（设定、对话、图片、API Key）都只保存在**这台电脑的这个浏览器**里。
-> 换浏览器、换电脑，或者清除浏览器数据都会看不到原来的内容，所以请定期用右侧「导出 / 备份…」里的「完整备份」导出一份。
+### 数据保存在哪里
+
+所有数据（设定、对话、图片、API Key）都只保存在**这台电脑上**：桌面版保存在软件自己的数据文件夹里，网页版保存在打开它的浏览器里。桌面版和网页版的数据互不相通，可以用「完整备份」在两者之间转移。
+
+换电脑、重装系统，或者（网页版）清除浏览器数据都会看不到原来的内容，所以请定期用右侧「导出 / 备份…」里的「完整备份」导出一份。
 
 ## 界面
 
@@ -123,9 +147,9 @@
 
 Proteus 在使用者自己的电脑上运行，API Key 只保存在本机浏览器里，不会经过任何第三方服务器，导出的世界卡和备份里也不包含 Key。需要注意：
 
-- Chrome 里所有用双击方式打开的本地网页共用同一块存储空间，理论上一个恶意的本地 HTML 文件可以读到 Proteus 保存的数据。不要用同一个浏览器打开来路不明的 HTML 文件，或在公用电脑上取消「记住 API Key」
+- （网页版）Chrome 里所有用双击方式打开的本地网页共用同一块存储空间，理论上一个恶意的本地 HTML 文件可以读到 Proteus 保存的数据。不要用同一个浏览器打开来路不明的 HTML 文件，或者改用桌面版——桌面版的数据和浏览器完全分开
 - 别人分享的世界卡里，开场白可以带 JS。它运行在隔离的沙箱里，读不到 API Key 和你的数据，但可以加载外部图片等资源（也就能知道有人打开了这张卡）
-- 目前只在 Chrome / Edge 中测试过；Firefox、Safari 对本地网页的存储支持不稳定
+- 网页版目前只在 Chrome / Edge 中测试过；Firefox、Safari 对本地网页的存储支持不稳定
 
 ## 支持的模型服务商
 
@@ -148,7 +172,7 @@ Proteus 在使用者自己的电脑上运行，API Key 只保存在本机浏览�
 
 ### 如果提示「无法连接到接口」
 
-浏览器出于安全考虑，会拦截一部分直接访问外部接口的请求（"跨域限制"）。Claude 官方、OpenAI 官方和 OpenRouter 都允许浏览器直接访问；少数中转站不允许。以后套上 Electron 外壳，就不会再有这个限制。
+浏览器出于安全考虑，会拦截一部分直接访问外部接口的请求（"跨域限制"）。Claude 官方、OpenAI 官方、Gemini 和 OpenRouter 都允许浏览器直接访问；少数中转站不允许。**桌面版没有这个限制**，遇到这种情况请改用桌面版。
 
 ## 文件结构
 
@@ -162,9 +186,26 @@ js/providers.js   和各家模型接口通信
 js/render.js      消息显示（Markdown/HTML，沙箱隔离）
 js/app.js         界面逻辑、对话管理、上下文拼装
 js/vendor/        第三方库（marked：Markdown 解析，MIT 许可）
+electron/main.js  桌面版入口（窗口、安全设置、解除跨域限制）
+build/icon.png    应用图标
+package.json      桌面版的依赖和打包配置
 ```
 
-全部是普通的 HTML/CSS/JavaScript，不需要编译，以后可以直接放进 Electron 里运行。
+网页部分全部是普通的 HTML/CSS/JavaScript，不需要编译。桌面版用 [Electron](https://www.electronjs.org/) 把同一套网页和 Chromium 内核打包在一起。
+
+### 自己打包桌面版
+
+需要先安装 [Node.js](https://nodejs.org/)：
+
+```bash
+npm install
+npm start            # 直接运行桌面版
+npm run dist:win     # 打包 Windows 版（在 Linux 上打包需要安装 wine）
+npm run dist:linux   # 打包 Linux 版
+npm run dist:mac     # 打包 macOS 版（需要在苹果电脑上运行）
+```
+
+打包结果在 `dist/` 文件夹里。
 
 ## 多语言
 
