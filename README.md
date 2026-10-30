@@ -175,10 +175,10 @@ Proteus 在使用者自己的电脑上运行，API Key 只保存在本机浏览�
 
 | 选项 | 说明 |
 |---|---|
-| Anthropic（Claude 官方） | 直接调用 Claude。已启用提示词缓存：世界观等固定内容会被缓存，后续请求更便宜、更快 |
+| Anthropic（Claude 官方） | 直接调用 Claude |
 | OpenAI 官方 | |
 | Google Gemini | 使用 Gemini 的 OpenAI 兼容接口，在 [Google AI Studio](https://aistudio.google.com/) 申请 API Key 即可。免费额度下较大的模型经常繁忙（HTTP 503）或长时间无响应，所以默认用 `gemini-3.5-flash-lite`；遇到 503 时稍等再点「生成回复」或「重新生成」即可 |
-| 其他 OpenAI 兼容格式（大多数中转站） | OpenRouter、DeepSeek、各种中转站等。需要自己填写接口地址，通常以 `/v1` 结尾（OpenRouter 是 `https://openrouter.ai/api/v1`）。在 OpenRouter 上用 `anthropic/` 开头的 Claude 模型时同样会启用缓存 |
+| 其他 OpenAI 兼容格式（大多数中转站） | OpenRouter、DeepSeek、各种中转站等。需要自己填写接口地址，通常以 `/v1` 结尾（OpenRouter 是 `https://openrouter.ai/api/v1`） |
 | 其他 Anthropic 兼容格式（部分中转站） | 提供 Claude 原生格式的中转站 |
 
 点击「获取列表」可以从接口拉取可用的模型名称，之后点模型输入框右侧的 ▾ 就能从列表里选择（也可以直接输入，输入时列表会按文字筛选）。获取到的列表会被记住。

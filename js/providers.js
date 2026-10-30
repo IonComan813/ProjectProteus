@@ -73,10 +73,7 @@ function buildRequest(cfg, system, messages) {
       stream: true,
       messages: msgs,
     };
-    if (system) {
-      // cache_control：世界观等固定内容会被缓存，后续请求更便宜、更快
-      body.system = [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }];
-    }
+    if (system) body.system = system;
     if (cfg.effort) body.output_config = { effort: cfg.effort };
     const headers = {
       'content-type': 'application/json',
@@ -93,21 +90,11 @@ function buildRequest(cfg, system, messages) {
     return { format: 'anthropic', url: base + '/v1/messages', headers, body };
   }
 
-  // OpenAI 格式。OpenRouter 没有单独的选项，按接口地址认出来
-  const openrouter = /^https:\/\/openrouter\.ai\//i.test(base);
-  let systemMsg = null;
-  if (system) {
-    if (openrouter && /^anthropic\//.test(cfg.model)) {
-      // OpenRouter 上的 Claude 模型也支持缓存，需要这种写法
-      systemMsg = { role: 'system', content: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }] };
-    } else {
-      systemMsg = { role: 'system', content: system };
-    }
-  }
+  // OpenAI 格式
   const body = {
     model: cfg.model,
     stream: true,
-    messages: systemMsg ? [systemMsg, ...msgs] : msgs,
+    messages: system ? [{ role: 'system', content: system }, ...msgs] : msgs,
   };
   if (cfg.maxTokens) {
     // OpenAI 官方的新模型用 max_completion_tokens，其他兼容接口大多仍用 max_tokens
@@ -119,7 +106,8 @@ function buildRequest(cfg, system, messages) {
     'content-type': 'application/json',
     authorization: 'Bearer ' + cfg.apiKey,
   };
-  if (openrouter) headers['X-Title'] = 'Proteus';
+  // OpenRouter 没有单独的选项，按接口地址认出来，带上应用名
+  if (/^https:\/\/openrouter\.ai\//i.test(base)) headers['X-Title'] = 'Proteus';
   return { format: 'openai', url: base + '/chat/completions', headers, body };
 }
 
