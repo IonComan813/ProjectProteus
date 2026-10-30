@@ -12,7 +12,7 @@ const Render = (() => {
     body {
       display: flow-root;
       color: #e6e4df;
-      font-family: "Noto Serif SC", "Source Han Serif SC", "Songti SC", Georgia, serif;
+      font-family: "Noto Serif SC", "Noto Serif TC", "Noto Serif JP", "Source Han Serif SC", "Songti SC", "Hiragino Mincho ProN", "Yu Mincho", Georgia, serif;
       font-size: 16px;
       line-height: 1.85;
       word-break: break-word;

@@ -12,8 +12,8 @@
   --ai-bg: transparent;
   --danger: #d9776c;
   --radius: 8px;
-  --font: "Noto Serif SC", "Source Han Serif SC", "Songti SC", Georgia, serif;
-  --ui-font: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font: "Noto Serif SC", "Noto Serif TC", "Noto Serif JP", "Source Han Serif SC", "Songti SC", "Hiragino Mincho ProN", "Yu Mincho", Georgia, serif;
+  --ui-font: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", "Hiragino Sans", "Yu Gothic UI", sans-serif;
 }
 
 * { box-sizing: border-box; }
@@ -251,6 +251,17 @@ body.resizing iframe { pointer-events: none; }
 
 .row.stepper input[type=number] { width: 64px; text-align: center; flex: none; }
 .composer-status { max-width: 900px; margin: 6px auto 0; min-height: 16px; }
+.composer-footer {
+  max-width: 900px;
+  margin: 4px auto 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #6c6e76;
+}
+.composer-footer a { color: inherit; }
+.composer-footer a:hover { color: var(--accent); }
+.hint.per-conv { margin: 8px 0 0; }
+.settings-pane select#langSelect { width: 100%; }
 .error-bar {
   max-width: 900px;
   margin: 0 auto 8px;

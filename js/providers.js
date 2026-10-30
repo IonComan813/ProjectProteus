@@ -1,25 +1,22 @@
-// 和各家模型接口通信。支持两种格式：
+// 和各家模型接口通信。服务商的显示名称在 i18n.js 里（provider.<键名>）。支持两种格式：
 //   - Anthropic 格式（Claude 官方，以及兼容它的中转站）
 //   - OpenAI 格式（OpenAI 官方、OpenRouter、DeepSeek 和大多数中转站）
 // 所有请求都用流式输出，文字会一边生成一边显示。
 
 const PROVIDERS = {
   anthropic: {
-    label: 'Anthropic（Claude 官方）',
     format: 'anthropic',
     baseUrl: 'https://api.anthropic.com',
     models: ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-fable-5-1'],
     defaultModel: 'claude-opus-5-5',
   },
   openai: {
-    label: 'OpenAI 官方',
     format: 'openai',
     baseUrl: 'https://api.openai.com/v1',
     models: [],
     defaultModel: '',
   },
   gemini: {
-    label: 'Google Gemini',
     format: 'openai', // 使用 Gemini 提供的 OpenAI 兼容接口
     baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
     // 免费额度下较大的模型常常繁忙（503）或长时间排队，默认用最稳定的 3.5-flash-lite
@@ -27,21 +24,18 @@ const PROVIDERS = {
     defaultModel: 'gemini-3.5-flash-lite',
   },
   openrouter: {
-    label: 'OpenRouter',
     format: 'openai',
     baseUrl: 'https://openrouter.ai/api/v1',
     models: ['anthropic/claude-opus-5-5', 'anthropic/claude-sonnet-5-5'],
     defaultModel: '',
   },
   custom_openai: {
-    label: '其他 OpenAI 兼容接口（DeepSeek、中转站等）',
     format: 'openai',
     baseUrl: '',
     models: [],
     defaultModel: '',
   },
   custom_anthropic: {
-    label: '其他 Anthropic 兼容接口（中转站）',
     format: 'anthropic',
     baseUrl: '',
     models: ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5'],
@@ -72,13 +66,13 @@ function mergeSameRole(messages) {
 function buildRequest(cfg, system, messages) {
   const provider = PROVIDERS[cfg.provider];
   const base = trimSlash(cfg.baseUrl || provider.baseUrl);
-  if (!base) throw new Error('请先填写接口地址（Base URL）。');
-  if (!cfg.model) throw new Error('请先填写模型名称。');
+  if (!base) throw new Error(t('api.needBaseUrl'));
+  if (!cfg.model) throw new Error(t('api.needModel'));
   let msgs = mergeSameRole(messages);
 
   if (provider.format === 'anthropic') {
     // Anthropic 要求第一条必须是用户消息
-    if (msgs.length && msgs[0].role !== 'user') msgs.unshift({ role: 'user', content: '（前情省略）' });
+    if (msgs.length && msgs[0].role !== 'user') msgs.unshift({ role: 'user', content: t('greet.omitted') });
     const body = {
       model: cfg.model,
       max_tokens: cfg.maxTokens || 8192,
@@ -142,17 +136,8 @@ async function readError(res) {
     if (Array.isArray(j)) j = j[0] || {}; // Gemini 的错误信息包在数组里
     msg = (j.error && (j.error.message || j.error.type)) || j.message || text;
   } catch (_) { /* 不是 JSON，直接用原文 */ }
-  const hints = {
-    401: 'API Key 无效或填错了。',
-    403: '没有权限访问这个模型或接口。',
-    404: '接口地址或模型名称不对。',
-    429: '请求太频繁或额度用完了，稍后再试。',
-    500: '服务器内部错误，稍后再试。',
-    502: '服务器暂时不可用，稍后再试。',
-    503: '服务器繁忙（免费额度时常见），稍后再试或换一个模型。',
-    504: '服务器响应超时，稍后再试。',
-  };
-  return new Error(`HTTP ${res.status}${hints[res.status] ? '：' + hints[res.status] : ''}\n${String(msg).slice(0, 600)}`);
+  const hint = [401, 403, 404, 429, 500, 502, 503, 504].includes(res.status) ? t('api.' + res.status) : '';
+  return new Error(`HTTP ${res.status}${hint ? ' — ' + hint : ''}\n${String(msg).slice(0, 600)}`);
 }
 
 // 逐行读取服务器推送的流（SSE），每拿到一个 data 就回调一次
@@ -183,13 +168,13 @@ async function readSSE(res, onData) {
 // 返回 { stopReason }。
 async function streamChat(cfg, system, messages, { signal, onText, onThinking }) {
   const req = buildRequest(cfg, system, messages);
-  if (!cfg.apiKey) throw new Error('请先在右侧填写 API Key。');
+  if (!cfg.apiKey) throw new Error(t('api.needKey'));
   let res;
   try {
     res = await fetch(req.url, { method: 'POST', headers: req.headers, body: JSON.stringify(req.body), signal });
   } catch (e) {
     if (e.name === 'AbortError') throw e;
-    throw new Error('无法连接到接口。可能是网络问题、接口地址错误，或者这个接口不允许浏览器直接访问（跨域限制）。\n' + e.message);
+    throw new Error(t('api.connectFailed') + '\n' + e.message);
   }
   if (!res.ok) throw await readError(res);
 
@@ -199,11 +184,11 @@ async function streamChat(cfg, system, messages, { signal, onText, onThinking })
       if (ev.type === 'content_block_start' && ev.content_block && ev.content_block.type === 'thinking') onThinking && onThinking();
       else if (ev.type === 'content_block_delta' && ev.delta && ev.delta.type === 'text_delta') onText(ev.delta.text);
       else if (ev.type === 'message_delta' && ev.delta && ev.delta.stop_reason) stopReason = ev.delta.stop_reason;
-      else if (ev.type === 'error') throw new Error('接口返回错误：' + ((ev.error && ev.error.message) || JSON.stringify(ev)));
+      else if (ev.type === 'error') throw new Error(t('api.errorEvent') + ((ev.error && ev.error.message) || JSON.stringify(ev)));
     });
   } else {
     await readSSE(res, (ev) => {
-      if (ev.error) throw new Error('接口返回错误：' + (ev.error.message || JSON.stringify(ev.error)));
+      if (ev.error) throw new Error(t('api.errorEvent') + (ev.error.message || JSON.stringify(ev.error)));
       const choice = ev.choices && ev.choices[0];
       if (!choice) return;
       const d = choice.delta || {};
@@ -219,7 +204,7 @@ async function streamChat(cfg, system, messages, { signal, onText, onThinking })
 async function fetchModels(cfg) {
   const provider = PROVIDERS[cfg.provider];
   const base = trimSlash(cfg.baseUrl || provider.baseUrl);
-  if (!base) throw new Error('请先填写接口地址。');
+  if (!base) throw new Error(t('api.needBaseUrl'));
   let url, headers;
   if (provider.format === 'anthropic') {
     url = base + '/v1/models?limit=100';
@@ -234,7 +219,7 @@ async function fetchModels(cfg) {
   }
   let res;
   try { res = await fetch(url, { headers }); } catch (e) {
-    throw new Error('无法连接到接口：' + e.message);
+    throw new Error(t('api.connectFailedShort') + e.message);
   }
   if (!res.ok) throw await readError(res);
   const j = await res.json();

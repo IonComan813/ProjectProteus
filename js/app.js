@@ -1,18 +1,15 @@
 // 主程序：界面、对话管理、上下文拼装。
-
-const DEFAULT_SYSTEM_PROMPT = `你是一名角色扮演叙事者。根据下方的世界观设定推进剧情，扮演世界中除用户角色以外的所有角色，并描写环境与事件。
-- 始终与世界观设定保持一致。
-- 不要替用户角色说话、行动或做决定。
-- 每次回复描写场景、其他角色的言行与事件发展，篇幅适中，结尾给用户留出行动的空间。
-- 使用中文写作。`;
+//
+// 数据分两类：
+//   - 每个对话各自保存：System Prompt、世界观、用户人设、开场白、剧情，以及艺术图（存在 art:<对话id>）。
+//     新建对话时复制当前对话的设定，之后互不影响。
+//   - 软件设置（所有对话共用）：界面语言、记忆长度、模型与接口、API Key、布局。
 
 const ROUNDS_MIN = 1;
 const ROUNDS_MAX = 40;
 
 const DEFAULT_SETTINGS = {
-  systemPrompt: DEFAULT_SYSTEM_PROMPT,
-  worldText: '',
-  persona: '',
+  lang: null,          // null = 按浏览器语言
   rounds: 12,
   artWidth: null,      // 左栏宽度（像素），null = 自动
   inputHeight: 88,     // 输入框高度（像素）
@@ -41,7 +38,6 @@ const state = {
   greetingMode: null,  // 正在用输入框编辑开场白时为 { preview }
 };
 
-const $ = (id) => document.getElementById(id);
 const els = {};
 
 // ---------------- 工具函数 ----------------
@@ -99,17 +95,40 @@ function download(filename, content, type) {
 }
 
 function safeFilename(s) {
-  return (s || '剧情').replace(/[\\/:*?"<>|\n]/g, '_').slice(0, 60);
+  return (s || 'proteus').replace(/[\\/:*?"<>|\n]/g, '_').slice(0, 60);
 }
 
 const msgText = (m) => m.versions[m.cur] || '';
+const convTitle = (c) => c.title || t('conv.untitled');
+const artKey = (id) => 'art:' + id;
 
-// ---------------- 设定的保存 ----------------
+// ---------------- 保存 ----------------
 
 let saveTimer = null;
 function saveSettingsSoon() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => DB.set('settings', state.settings), 300);
+}
+
+async function saveConv(conv = state.conv) {
+  conv.updatedAt = Date.now();
+  await DB.putConversation(conv);
+  renderConvSelect();
+}
+
+// 右侧设定改动频繁，稍等一下再保存；切换对话前会先存掉
+let convSaveTimer = null;
+let convSavePending = null;
+function saveConvSoon() {
+  convSavePending = state.conv;
+  clearTimeout(convSaveTimer);
+  convSaveTimer = setTimeout(flushConvSave, 400);
+}
+async function flushConvSave() {
+  clearTimeout(convSaveTimer);
+  const c = convSavePending;
+  convSavePending = null;
+  if (c) await saveConv(c);
 }
 
 function providerCfg() {
@@ -128,20 +147,19 @@ function providerCfg() {
 }
 
 // ---------------- 上下文拼装 ----------------
-// 顺序：System Prompt → 世界观 → 用户角色人设
+// 顺序：System Prompt → 世界观 → 用户角色人设（都取自当前对话）
 
-function buildSystem() {
-  const s = state.settings;
+function buildSystem(conv = state.conv) {
   const parts = [];
-  if (s.systemPrompt.trim()) parts.push(s.systemPrompt.trim());
-  if (s.worldText.trim()) parts.push('【世界观设定】\n' + s.worldText.trim());
-  if (s.persona.trim()) parts.push('【用户角色人设】\n' + s.persona.trim());
+  if (conv.systemPrompt.trim()) parts.push(conv.systemPrompt.trim());
+  if (conv.worldText.trim()) parts.push(t('sys.world') + '\n' + conv.worldText.trim());
+  if (conv.persona.trim()) parts.push(t('sys.persona') + '\n' + conv.persona.trim());
   return parts.join('\n\n');
 }
 
 // 开场白和用户第一条消息合在一起，作为发给模型的第一条消息
 function withGreeting(greeting, text) {
-  return `【开场白】\n${greeting}\n\n【用户】\n${text}`;
+  return `${t('greet.header')}\n${greeting}\n\n${t('greet.user')}\n${text}`;
 }
 
 // 要发给模型的开场白：没有开场白或设为“不发送”时为 null
@@ -171,30 +189,65 @@ function memoryCutoff() {
 
 // ---------------- 对话管理 ----------------
 
-function newConversation() {
+// 新建对话。from 是要复制设定的对话（不复制剧情和开场白）
+function newConversation(from) {
   const now = Date.now();
-  return { id: uid(), title: '新对话', greeting: null, greetingSend: true, createdAt: now, updatedAt: now, messages: [] };
+  return {
+    id: uid(),
+    title: '',
+    systemPrompt: from ? from.systemPrompt : t('defaultSystemPrompt'),
+    worldText: from ? from.worldText : '',
+    persona: from ? from.persona : '',
+    greeting: null,
+    greetingSend: true,
+    createdAt: now,
+    updatedAt: now,
+    messages: [],
+  };
 }
 
-async function saveConv(conv = state.conv) {
-  conv.updatedAt = Date.now();
-  await DB.putConversation(conv);
-  renderConvSelect();
+// 补齐旧版本数据缺少的字段
+function normalizeConv(c, legacy) {
+  if (c.title === '新对话') c.title = '';
+  if (typeof c.systemPrompt !== 'string') c.systemPrompt = legacy && typeof legacy.systemPrompt === 'string' ? legacy.systemPrompt : t('defaultSystemPrompt');
+  if (typeof c.worldText !== 'string') c.worldText = (legacy && legacy.worldText) || '';
+  if (typeof c.persona !== 'string') c.persona = (legacy && legacy.persona) || '';
+  if (c.greeting === undefined) c.greeting = null;
+  if (c.greetingSend === undefined) c.greetingSend = true;
+  if (!Array.isArray(c.messages)) c.messages = [];
+  return c;
 }
 
 async function switchConv(id) {
-  if (state.generating) return toast('请先停止当前生成');
+  if (state.generating) return toast(t('conv.stopFirst'));
   const conv = state.conversations.find((c) => c.id === id);
   if (!conv) return;
+  await flushConvSave();
   state.conv = conv;
   state.editingId = null;
-  exitGreetingMode();
+  state.greetingMode = null;
   state.settings.activeConvId = id;
   saveSettingsSoon();
   showError('');
+  fillConvFields();
   renderConvSelect();
   renderMessages();
   scrollToBottom();
+  await loadArt();
+}
+
+// 新建一个对话，复制当前对话的设定和艺术图
+async function createConversation() {
+  if (state.generating) return toast(t('conv.stopFirst'));
+  await flushConvSave();
+  const from = state.conv;
+  const c = newConversation(from);
+  state.conversations.push(c);
+  await DB.putConversation(c);
+  const art = from && (await DB.get(artKey(from.id)));
+  if (art) await DB.set(artKey(c.id), art);
+  await switchConv(c.id);
+  els.input.focus();
 }
 
 function renderConvSelect() {
@@ -203,7 +256,7 @@ function renderConvSelect() {
   for (const c of sorted) {
     const o = document.createElement('option');
     o.value = c.id;
-    o.textContent = `${c.title}　·　${c.messages.length} 条　·　${fmtTime(c.updatedAt)}`;
+    o.textContent = t('conv.option', { title: convTitle(c), n: c.messages.length, time: fmtTime(c.updatedAt) });
     if (state.conv && c.id === state.conv.id) o.selected = true;
     els.convSelect.appendChild(o);
   }
@@ -217,7 +270,7 @@ function titleFrom(text) {
     .replace(/[#*_`>~|-]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
-  return plain.slice(0, 20) || '新对话';
+  return plain.slice(0, 20);
 }
 
 // ---------------- 消息渲染 ----------------
@@ -251,11 +304,15 @@ function renderMessages() {
   if (!items.length) {
     const hint = document.createElement('div');
     hint.className = 'empty-hint';
-    hint.innerHTML = gm
-      ? '正在编辑开场白。写好后点右下角的“重载”可以在这里预览效果。'
-      : `在下方写下第一条消息，开始故事；也可以先点“添加开场白”。<br>
-      <span class="small">消息支持 Markdown 和 HTML/CSS 美化，开场白还可以使用 JS。<br>
-      右侧可以设置 System Prompt、世界观、你的角色和模型。</span>`;
+    if (gm) {
+      hint.textContent = t('msg.emptyGreetingMode');
+    } else {
+      hint.append(t('msg.empty'), document.createElement('br'));
+      const sub = document.createElement('span');
+      sub.className = 'small';
+      sub.append(t('msg.emptySub1'), document.createElement('br'), t('msg.emptySub2'));
+      hint.appendChild(sub);
+    }
     box.appendChild(hint);
     updateComposer();
     return;
@@ -275,7 +332,7 @@ function renderMessages() {
   if (cutoff > 0) {
     const d = document.createElement('div');
     d.className = 'memory-divider';
-    d.textContent = `↑ 以上${sentGreeting(conv) != null ? '开场白和' : ''} ${cutoff} 条消息超出记忆长度，模型看不到`;
+    d.textContent = t(sentGreeting(conv) != null ? 'msg.memoryDividerGreeting' : 'msg.memoryDivider', { n: cutoff });
     box.insertBefore(d, state.views.get(conv.messages[cutoff].id).el);
   }
   updateComposer();
@@ -291,6 +348,7 @@ function createView(it) {
   actions.className = 'msg-actions';
   el.append(label, holder);
   let sendBox = null;
+  let sendText = null;
   if (it.greeting) {
     // 开场白下方常驻的勾选框：是否发给模型
     const row = document.createElement('label');
@@ -302,11 +360,12 @@ function createView(it) {
       renderMessages();
       await saveConv();
     });
-    row.append(sendBox, ' 发送给模型（和你发送的第一条消息合并，作为第一条消息）');
+    sendText = document.createElement('span');
+    row.append(sendBox, sendText);
     el.appendChild(row);
   }
   el.appendChild(actions);
-  return { el, label, holder, actions, sendBox, frame: null, editor: null, shownText: null };
+  return { el, label, holder, actions, sendBox, sendText, frame: null, editor: null, shownText: null };
 }
 
 function updateView(v, it) {
@@ -320,9 +379,12 @@ function updateView(v, it) {
   v.el.className = 'msg ' + role + (it.preview ? ' preview' : '');
   v.el.dataset.id = it.id;
   v.el.classList.toggle('generating', isGen);
-  v.label.textContent = it.greeting ? '开场白' : it.preview ? '开场白（预览，尚未保存）' : m.role === 'user' ? '你' : '剧情';
-  if (isGen) v.label.textContent += ' · 生成中……';
-  if (v.sendBox) v.sendBox.checked = conv.greetingSend !== false;
+  v.label.textContent = it.greeting ? t('msg.greeting') : it.preview ? t('msg.greetingPreview') : m.role === 'user' ? t('msg.you') : t('msg.story');
+  if (isGen) v.label.textContent += t('msg.generating');
+  if (v.sendBox) {
+    v.sendBox.checked = conv.greetingSend !== false;
+    v.sendText.textContent = ' ' + t('msg.greetingSend');
+  }
 
   // 编辑状态：隐藏显示区域，换成文本框
   const editing = state.editingId === it.id;
@@ -341,7 +403,7 @@ function updateView(v, it) {
   if (isGen) {
     if (!v.frame) { v.frame = Render.create('', { scripts }); v.holder.appendChild(v.frame); }
     v.shownText = null; // 生成结束后用完整内容再显示一次
-    if (!text) Render.stream(v.frame, '', Render.thinkingHtml('等待模型回复……'));
+    if (!text) Render.stream(v.frame, '', Render.thinkingHtml(t('msg.waiting')));
   } else if (v.shownText !== text) {
     if (!v.frame) { v.frame = Render.create(text, { scripts }); v.holder.appendChild(v.frame); }
     else Render.set(v.frame, text);
@@ -353,9 +415,9 @@ function updateView(v, it) {
   if (editing || it.preview) return;
   if (it.greeting) {
     v.actions.append(
-      button('复制', () => copyText(conv.greeting)),
-      button('编辑', () => startEdit(GREETING_ID, conv.greeting)),
-      disabled(button('删除开场白', deleteGreeting), busy),
+      button(t('msg.copy'), () => copyText(conv.greeting)),
+      button(t('msg.edit'), () => startEdit(GREETING_ID, conv.greeting)),
+      disabled(button(t('msg.deleteGreeting'), deleteGreeting), busy),
     );
     return;
   }
@@ -366,21 +428,21 @@ function updateView(v, it) {
     const n = document.createElement('span');
     n.textContent = `${m.cur + 1}/${m.versions.length}`;
     sw.append(
-      disabled(button('‹', () => switchVersion(m, -1)), busy, '上一个版本'),
+      disabled(button('‹', () => switchVersion(m, -1)), busy, t('msg.prevVersion')),
       n,
-      disabled(button('›', () => switchVersion(m, 1)), busy, '下一个版本'),
+      disabled(button('›', () => switchVersion(m, 1)), busy, t('msg.nextVersion')),
     );
     v.actions.appendChild(sw);
   }
-  v.actions.appendChild(button('复制', () => copyText(msgText(m))));
-  v.actions.appendChild(disabled(button('编辑', () => startEdit(m.id, msgText(m))), isGen));
+  v.actions.appendChild(button(t('msg.copy'), () => copyText(msgText(m))));
+  v.actions.appendChild(disabled(button(t('msg.edit'), () => startEdit(m.id, msgText(m))), isGen));
   if (m.role === 'assistant' && isLast) {
-    v.actions.appendChild(disabled(button('重新生成', () => regenerate(m)), busy, '生成一个新版本，旧版本会保留，可用 ‹ › 切换'));
+    v.actions.appendChild(disabled(button(t('msg.regenerate'), () => regenerate(m)), busy, t('msg.regenerateTitle')));
   }
   if (m.role === 'assistant' && m.versions.length > 1) {
-    v.actions.appendChild(disabled(button('删除此版本', () => deleteVersion(m)), busy));
+    v.actions.appendChild(disabled(button(t('msg.deleteVersion'), () => deleteVersion(m)), busy));
   }
-  v.actions.appendChild(disabled(button('回退到此前', () => rollback(it.i)), busy, '删除这条消息以及之后的所有消息'));
+  v.actions.appendChild(disabled(button(t('msg.rollback'), () => rollback(it.i)), busy, t('msg.rollbackTitle')));
 }
 
 function buildEditor(id) {
@@ -395,7 +457,7 @@ function buildEditor(id) {
   });
   const row = document.createElement('div');
   row.className = 'row';
-  row.append(button('取消', cancelEdit, 'btn btn-small btn-ghost'), button('保存（Ctrl+Enter）', saveEdit, 'btn btn-small btn-primary'));
+  row.append(button(t('msg.cancel'), cancelEdit, 'btn btn-small btn-ghost'), button(t('msg.save'), saveEdit, 'btn btn-small btn-primary'));
   wrap.append(ta, row);
   setTimeout(() => { ta.focus(); ta.style.height = Math.min(ta.scrollHeight + 4, window.innerHeight * 0.6) + 'px'; }, 0);
   return wrap;
@@ -430,18 +492,19 @@ function updateComposer() {
   els.btnGreetingConfirm.hidden = !gm;
   els.btnGreetingCancel.hidden = !gm;
   els.composer.classList.toggle('greeting-mode', gm);
-  els.input.placeholder = gm
-    ? '在这里编辑开场白，支持 Markdown、HTML、CSS 和 JS。点“重载”在上方预览，点“确认”保存。（Ctrl + Enter = 重载）'
-    : '写下你的行动或对话……支持 Markdown 和 HTML（Ctrl + Enter 发送）';
+  els.input.placeholder = t(gm ? 'input.greetingPlaceholder' : 'input.placeholder');
   updateStatus();
 }
 
 function updateStatus() {
-  if (state.generating) { els.status.textContent = '生成中……可以随时向上滚动阅读，点“停止”可中断。'; return; }
-  if (state.greetingMode) { els.status.textContent = '正在编辑开场白：确认之前不会保存，也不会发给模型。'; return; }
+  if (state.generating) { els.status.textContent = t('status.generating'); return; }
+  if (state.greetingMode) { els.status.textContent = t('status.greetingMode'); return; }
   const s = state.settings;
-  const sys = estimateTokens(buildSystem());
-  els.status.textContent = `记忆：最近 ${s.rounds} 轮　·　每次固定发送设定约 ${sys.toLocaleString()} token（粗略估计）　·　模型：${s.models[s.provider] || '未设置'}`;
+  els.status.textContent = t('status.idle', {
+    rounds: s.rounds,
+    tokens: estimateTokens(buildSystem()).toLocaleString(),
+    model: s.models[s.provider] || t('status.noModel'),
+  });
 }
 
 // ---------------- 滚动 ----------------
@@ -459,9 +522,9 @@ function scrollToBottom() {
 
 // ---------------- 消息操作 ----------------
 
-async function copyText(t) {
-  try { await navigator.clipboard.writeText(t); toast('已复制'); }
-  catch (_) { toast('复制失败，请手动选择文字复制'); }
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); toast(t('msg.copied')); }
+  catch (_) { toast(t('msg.copyFailed')); }
 }
 
 function startEdit(id, text) {
@@ -480,7 +543,7 @@ async function saveEdit() {
   const draft = state.editDraft;
   if (id === GREETING_ID) {
     if (!draft.trim()) {
-      if (!confirm('开场白为空，要删除开场白吗？')) return;
+      if (!confirm(t('msg.emptyGreetingConfirm'))) return;
       state.conv.greeting = null;
     } else {
       state.conv.greeting = draft;
@@ -492,11 +555,11 @@ async function saveEdit() {
   state.editingId = null;
   renderMessages();
   await saveConv();
-  toast('已保存修改');
+  toast(t('msg.saved'));
 }
 
 async function deleteGreeting() {
-  if (!confirm('删除本对话的开场白？')) return;
+  if (!confirm(t('msg.deleteGreetingConfirm'))) return;
   state.conv.greeting = null;
   if (state.editingId === GREETING_ID) state.editingId = null;
   renderMessages();
@@ -511,7 +574,7 @@ async function switchVersion(m, delta) {
 }
 
 async function deleteVersion(m) {
-  if (!confirm('删除当前显示的这个版本？')) return;
+  if (!confirm(t('msg.deleteVersionConfirm'))) return;
   m.versions.splice(m.cur, 1);
   m.cur = Math.min(m.cur, m.versions.length - 1);
   renderMessages();
@@ -520,8 +583,7 @@ async function deleteVersion(m) {
 
 async function rollback(i) {
   const msgs = state.conv.messages;
-  const count = msgs.length - i;
-  if (!confirm(`将删除这条消息以及之后的共 ${count} 条消息（包括它们的所有版本），确定吗？`)) return;
+  if (!confirm(t('msg.rollbackConfirm', { n: msgs.length - i }))) return;
   const removed = msgs.splice(i);
   // 如果回退的是自己的消息，把它放回输入框方便修改后重发
   if (removed[0].role === 'user' && !els.input.value.trim()) els.input.value = msgText(removed[0]);
@@ -566,14 +628,14 @@ function enterGreetingMode() {
 function exitGreetingMode() {
   if (!state.greetingMode) return;
   state.greetingMode = null;
-  if (state.conv) renderMessages();
+  renderMessages();
 }
 
 // 重载：在聊天区显示渲染后的开场白，输入框内容不动
 function reloadGreetingPreview() {
   if (!state.greetingMode) return;
   const text = els.input.value;
-  if (!text.trim()) return toast('输入框还是空的');
+  if (!text.trim()) return toast(t('greeting.empty'));
   state.greetingMode.preview = text;
   const v = state.views.get(PREVIEW_ID);
   if (v) v.shownText = null; // 内容相同也重新加载，让里面的脚本重新运行
@@ -586,25 +648,22 @@ async function confirmGreeting() {
   const conv = state.conv;
   const text = els.input.value.trim();
   if (!state.greetingMode) return;
-  if (!text) return toast('输入框还是空的');
-  const send = await choose('开场白', '开场白是否发送给模型？\n\n'
-    + '· 发送：你之后发送的第一条消息会和开场白合并，作为第一条消息发给模型。\n'
-    + '· 不发送：开场白只显示在聊天区，模型看不到它；你之后发送的第一条消息就是第一条消息。\n\n'
-    + '之后也可以随时用开场白下方的勾选框更改。', [
-    { label: '取消', value: null, ghost: true },
-    { label: '不发送', value: 'no' },
-    { label: '发送给模型', value: 'yes', primary: true },
+  if (!text) return toast(t('greeting.empty'));
+  const send = await choose(t('greeting.dialogTitle'), t('greeting.dialogMessage'), [
+    { label: t('btn.cancel'), value: null, ghost: true },
+    { label: t('greeting.noSend'), value: 'no' },
+    { label: t('greeting.send'), value: 'yes', primary: true },
   ]);
   if (!send || conv !== state.conv || !state.greetingMode) return;
   conv.greeting = text;
   conv.greetingSend = send === 'yes';
-  if (conv.title === '新对话') conv.title = titleFrom(text);
+  if (!conv.title) conv.title = titleFrom(text);
   state.greetingMode = null;
   els.input.value = '';
   renderMessages();
   els.messages.scrollTop = 0;
   await saveConv();
-  toast('开场白已保存');
+  toast(t('greeting.saved'));
 }
 
 async function send() {
@@ -612,9 +671,8 @@ async function send() {
   const text = els.input.value.trim();
   if (!text) return;
   const conv = state.conv;
-
   conv.messages.push({ id: uid(), role: 'user', versions: [text], cur: 0 });
-  if (conv.title === '新对话') conv.title = titleFrom(text);
+  if (!conv.title) conv.title = titleFrom(text);
   els.input.value = '';
   await saveConv();
   await generateReply();
@@ -641,6 +699,7 @@ async function runGeneration(m, context) {
   const controller = new AbortController();
   state.generating = { controller, msgId: m.id };
   showError('');
+  await flushConvSave();
   renderMessages();
   scrollToBottom();
 
@@ -660,15 +719,15 @@ async function runGeneration(m, context) {
   };
 
   try {
-    result = await streamChat(providerCfg(), buildSystem(), windowOf(context, sentGreeting(conv)), {
+    result = await streamChat(providerCfg(), buildSystem(conv), windowOf(context, sentGreeting(conv)), {
       signal: controller.signal,
-      onText: (t) => {
-        m.versions[ver] += t;
+      onText: (text) => {
+        m.versions[ver] += text;
         if (!pendingPaint) { pendingPaint = true; requestAnimationFrame(paint); }
       },
       onThinking: () => {
         const f = frame();
-        if (f && !m.versions[ver]) Render.stream(f, '', Render.thinkingHtml('模型思考中……'));
+        if (f && !m.versions[ver]) Render.stream(f, '', Render.thinkingHtml(t('msg.thinking')));
       },
     });
   } catch (e) {
@@ -679,7 +738,7 @@ async function runGeneration(m, context) {
   const text = m.versions[ver];
 
   if (result && result.stopReason === 'refusal') {
-    error = new Error('模型拒绝了这次请求（被安全机制拦截）。可以修改上一条消息后重试，或换一个模型。');
+    error = new Error(t('gen.refused'));
     m.versions[ver] = '';
   }
 
@@ -694,9 +753,8 @@ async function runGeneration(m, context) {
   await saveConv(conv);
 
   if (error) showError(error.message);
-  else if (result && (result.stopReason === 'max_tokens' || result.stopReason === 'length')) {
-    showError('提示：回复达到了“最大输出长度”被截断。可以在右侧调大这个数值。');
-  } else if (!text) toast('已停止');
+  else if (result && (result.stopReason === 'max_tokens' || result.stopReason === 'length')) showError(t('gen.truncated'));
+  else if (!text) toast(t('gen.stopped'));
 }
 
 function stop() {
@@ -710,37 +768,40 @@ function preview() {
   const pending = els.input.value.trim();
   const last = msgs[msgs.length - 1];
   let note;
-  if (pending) {
+  if (pending && !state.greetingMode) {
     msgs.push({ role: 'user', versions: [pending], cur: 0 });
-    note = '（包含输入框里尚未发送的内容）';
+    note = t('preview.withPending');
   } else if (last && last.role === 'user') {
-    note = '（点击“生成回复”时发送的内容）';
+    note = t('preview.reply');
   } else {
-    msgs.push({ role: 'user', versions: ['<你下一次的回复>'], cur: 0 });
-    note = '（最后一条用占位符代替你下一次的回复）';
+    msgs.push({ role: 'user', versions: [t('preview.placeholderText')], cur: 0 });
+    note = t('preview.placeholder');
   }
   const win = windowOf(msgs);
   const dropped = msgs.length - win.length;
   const system = buildSystem();
   const lines = [];
-  lines.push(`说明 ${note}`);
-  lines.push(`记忆长度 ${state.settings.rounds} 轮：发送最近 ${win.length} 条消息，${dropped > 0 ? `更早的 ${dropped} 条${sentGreeting(state.conv) != null ? '和开场白' : ''}不发送。` : '目前全部消息都在范围内。'}`);
-  lines.push(`粗略估计共约 ${(estimateTokens(system) + win.reduce((a, m) => a + estimateTokens(m.content), 0)).toLocaleString()} token。`);
+  lines.push(t('preview.note', { note }));
+  lines.push(t('preview.window', { rounds: state.settings.rounds, n: win.length })
+    + (dropped > 0 ? t(sentGreeting(state.conv) != null ? 'preview.droppedGreeting' : 'preview.dropped', { n: dropped }) : t('preview.allIn')));
+  lines.push(t('preview.tokens', { n: (estimateTokens(system) + win.reduce((a, x) => a + estimateTokens(x.content), 0)).toLocaleString() }));
   lines.push('');
   lines.push('════════ system ════════');
-  lines.push(system || '（空）');
-  for (const m of win) {
+  lines.push(system || t('preview.empty'));
+  for (const x of win) {
     lines.push('');
-    lines.push(`════════ ${m.role === 'user' ? 'user（你）' : 'assistant（模型）'} ════════`);
-    lines.push(m.content);
+    lines.push(`════════ ${t(x.role === 'user' ? 'preview.user' : 'preview.assistant')} ════════`);
+    lines.push(x.content);
   }
-  showModal('下一次将发送给模型的内容', lines.join('\n'));
+  showModal(t('preview.title'), lines.join('\n'));
 }
 
-// ---------------- 艺术图 ----------------
+// ---------------- 艺术图（每个对话一张） ----------------
 
 async function loadArt() {
-  const blob = await DB.get('art');
+  const conv = state.conv;
+  const blob = await DB.get(artKey(conv.id));
+  if (conv !== state.conv) return;
   if (state.artUrl) URL.revokeObjectURL(state.artUrl);
   state.artUrl = blob ? URL.createObjectURL(blob) : null;
   els.artImage.hidden = !blob;
@@ -750,10 +811,10 @@ async function loadArt() {
 }
 
 async function setArt(file) {
-  if (!file || !file.type.startsWith('image/')) return toast('请选择图片文件');
-  await DB.set('art', file);
+  if (!file || !file.type.startsWith('image/')) return toast(t('art.notImage'));
+  await DB.set(artKey(state.conv.id), file);
   await loadArt();
-  toast('艺术图已更新');
+  toast(t('art.updated'));
 }
 
 // ---------------- 导出与备份 ----------------
@@ -761,23 +822,20 @@ async function setArt(file) {
 // 导出剧情：开场白 + 全部消息，不含 system 部分和艺术图
 function exportText(markdown) {
   const conv = state.conv;
-  if (!conv.messages.length && conv.greeting == null) return toast('当前对话还没有内容');
+  if (!conv.messages.length && conv.greeting == null) return toast(t('export.noContent'));
   const out = [];
-  out.push(markdown ? `# ${conv.title}` : conv.title);
-  out.push(markdown ? `*导出时间：${new Date().toLocaleString()}*` : `导出时间：${new Date().toLocaleString()}`);
+  const time = t('export.time', { time: new Date().toLocaleString() });
+  out.push(markdown ? `# ${convTitle(conv)}` : convTitle(conv));
+  out.push(markdown ? `*${time}*` : time);
   out.push('');
-  if (conv.greeting != null) {
-    out.push(markdown ? '### 开场白' : '【开场白】');
-    out.push(conv.greeting);
+  const section = (label, text) => {
+    out.push(markdown ? `### ${label}` : `【${label}】`);
+    out.push(text);
     out.push('');
-  }
-  for (const m of conv.messages) {
-    const who = m.role === 'user' ? '你' : '剧情';
-    out.push(markdown ? `### ${who}` : `【${who}】`);
-    out.push(msgText(m));
-    out.push('');
-  }
-  download(`${safeFilename(conv.title)}.${markdown ? 'md' : 'txt'}`, out.join('\n'));
+  };
+  if (conv.greeting != null) section(t('msg.greeting'), conv.greeting);
+  for (const m of conv.messages) section(m.role === 'user' ? t('msg.you') : t('msg.story'), msgText(m));
+  download(`${safeFilename(convTitle(conv))}.${markdown ? 'md' : 'txt'}`, out.join('\n'));
 }
 
 function blobToDataURL(blob) {
@@ -789,59 +847,64 @@ function blobToDataURL(blob) {
   });
 }
 
+async function dataURLToBlob(url) {
+  return (await fetch(url)).blob();
+}
+
 function dateStamp() {
   const d = new Date();
   return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
 }
 
-// 世界卡：System Prompt、世界观、当前对话的开场白和艺术图（图片以文本形式存进 JSON）。
+// 世界卡：当前对话的 System Prompt、世界观、开场白和艺术图（图片以文本形式存进 JSON）。
 // 不含用户人设和剧情，方便分享或带着同一个世界重新开始。
 async function exportWorldCard() {
-  const s = state.settings;
   const conv = state.conv;
-  const name = prompt('世界卡名称：', conv.title !== '新对话' ? conv.title : '');
+  const name = prompt(t('export.cardName'), conv.title || '');
   if (name === null) return;
-  const art = await DB.get('art');
+  const art = await DB.get(artKey(conv.id));
   const data = {
     app: 'proteus',
     type: 'worldcard',
     version: 1,
     exportedAt: new Date().toISOString(),
-    name: name.trim() || '未命名世界',
-    systemPrompt: s.systemPrompt,
-    worldText: s.worldText,
+    name: name.trim() || t('export.unnamedWorld'),
+    systemPrompt: conv.systemPrompt,
+    worldText: conv.worldText,
     greeting: conv.greeting != null ? conv.greeting : null,
     greetingSend: conv.greetingSend !== false,
     art: art ? await blobToDataURL(art) : null,
   };
-  download(`${safeFilename(data.name)}-世界卡.json`, JSON.stringify(data, null, 2), 'application/json');
+  download(`${safeFilename(data.name)}-${t('export.cardSuffix')}.json`, JSON.stringify(data, null, 2), 'application/json');
 }
 
-// 完整备份：所有设定（不含 API Key）、所有对话和艺术图
+// 完整备份：所有对话（各自的设定、剧情、艺术图）+ 软件设置（不含 API Key）
 async function backup() {
-  const settings = { ...state.settings, apiKeys: {} };
-  const art = await DB.get('art');
+  await flushConvSave();
+  const arts = {};
+  for (const c of state.conversations) {
+    const art = await DB.get(artKey(c.id));
+    if (art) arts[c.id] = await blobToDataURL(art);
+  }
   const data = {
     app: 'proteus',
     type: 'backup',
-    version: 1,
+    version: 2,
     exportedAt: new Date().toISOString(),
-    settings,
+    settings: { ...state.settings, apiKeys: {} },
     conversations: state.conversations,
-    art: art ? await blobToDataURL(art) : null,
+    arts,
   };
-  download(`proteus-完整备份-${dateStamp()}.json`, JSON.stringify(data, null, 2), 'application/json');
+  download(`${t('export.backupPrefix')}-${dateStamp()}.json`, JSON.stringify(data, null, 2), 'application/json');
 }
 
 async function exportMenu() {
-  const choice = await choose('导出 / 备份', '· 导出剧情：当前对话的开场白和全部消息，不含 System Prompt、世界观、人设和艺术图。\n'
-    + '· 世界卡：System Prompt、世界观、当前对话的开场白和艺术图，不含用户人设和剧情。适合分享，或带着同一个世界重新开始。\n'
-    + '· 完整备份：所有设定、所有对话和艺术图（不含 API Key），用于换电脑或防止数据丢失。', [
-    { label: '取消', value: null, ghost: true },
-    { label: '剧情（TXT）', value: 'txt' },
-    { label: '剧情（Markdown）', value: 'md' },
-    { label: '世界卡', value: 'card' },
-    { label: '完整备份', value: 'full', primary: true },
+  const choice = await choose(t('export.menuTitle'), t('export.menuMessage'), [
+    { label: t('btn.cancel'), value: null, ghost: true },
+    { label: t('export.storyTxt'), value: 'txt' },
+    { label: t('export.storyMd'), value: 'md' },
+    { label: t('export.card'), value: 'card' },
+    { label: t('export.full'), value: 'full', primary: true },
   ]);
   if (choice === 'txt') exportText(false);
   else if (choice === 'md') exportText(true);
@@ -849,55 +912,57 @@ async function exportMenu() {
   else if (choice === 'full') await backup();
 }
 
-async function dataURLToBlob(url) {
-  return (await fetch(url)).blob();
-}
-
 // 读取世界卡或完整备份（剧情导出是 TXT/Markdown，不能读回）
 async function restore(file) {
-  if (state.generating) return toast('请先停止当前生成');
+  if (state.generating) return toast(t('conv.stopFirst'));
   let data;
-  try { data = JSON.parse(await file.text()); } catch (_) { return toast('文件不是有效的 JSON'); }
-  if (!data || data.app !== 'proteus') return toast('文件不是 Proteus 的世界卡或备份');
+  try { data = JSON.parse(await file.text()); } catch (_) { return toast(t('restore.notJson')); }
+  if (!data || data.app !== 'proteus') return toast(t('restore.invalid'));
 
   if (data.type === 'worldcard') {
-    if (!confirm(`读取世界卡「${data.name || '未命名世界'}」：\n\n`
-      + '· 替换当前的 System Prompt、世界观和艺术图（所有对话共用这一套设定）\n'
-      + '· 用卡里的开场白新建一个对话\n'
-      + '· 用户人设和已有对话保留不变\n\n确定吗？')) return;
-    const s = state.settings;
-    s.systemPrompt = typeof data.systemPrompt === 'string' ? data.systemPrompt : s.systemPrompt;
-    s.worldText = typeof data.worldText === 'string' ? data.worldText : '';
-    await DB.set('settings', s);
-    if (data.art) await DB.set('art', await dataURLToBlob(data.art));
-    else await DB.del('art');
+    const name = data.name || t('export.unnamedWorld');
+    if (!confirm(t('restore.cardConfirm', { name }))) return;
+    await flushConvSave();
+    // 新对话：用卡里的设定，用户人设为空；已有对话不受影响
     const c = newConversation();
+    if (typeof data.systemPrompt === 'string') c.systemPrompt = data.systemPrompt;
+    c.worldText = typeof data.worldText === 'string' ? data.worldText : '';
+    c.persona = '';
     if (typeof data.greeting === 'string') {
       c.greeting = data.greeting;
       c.greetingSend = data.greetingSend !== false;
     }
-    c.title = data.name || (c.greeting ? titleFrom(c.greeting) : '新对话');
+    c.title = name;
     state.conversations.push(c);
     await DB.putConversation(c);
-    fillSettingsForm();
-    await loadArt();
+    if (data.art) await DB.set(artKey(c.id), await dataURLToBlob(data.art));
     await switchConv(c.id);
     els.messages.scrollTop = 0;
-    toast('世界卡已读取');
+    toast(t('restore.cardDone'));
     return;
   }
 
-  if (!Array.isArray(data.conversations)) return toast('文件不是 Proteus 的世界卡或备份');
-  if (!confirm(`备份里有 ${data.conversations.length} 个对话。恢复会替换当前所有对话和设定（API Key 保留不变），确定吗？`)) return;
+  if (!Array.isArray(data.conversations)) return toast(t('restore.invalid'));
+  if (!confirm(t('restore.fullConfirm', { n: data.conversations.length }))) return;
   const keys = state.settings.apiKeys;
-  state.settings = { ...DEFAULT_SETTINGS, ...data.settings, apiKeys: keys };
-  await DB.set('settings', state.settings);
+  const saved = data.settings || {};
+  // 旧版备份（version 1）：设定和艺术图是所有对话共用的，复制给每个对话
+  const legacy = { systemPrompt: saved.systemPrompt, worldText: saved.worldText, persona: saved.persona };
+  const settings = { ...DEFAULT_SETTINGS, ...saved, apiKeys: keys };
+  delete settings.systemPrompt;
+  delete settings.worldText;
+  delete settings.persona;
+  await DB.set('settings', settings);
+  // 清掉现有的对话和艺术图
+  for (const c of state.conversations) await DB.del(artKey(c.id));
   await DB.clearConversations();
-  for (const c of data.conversations) await DB.putConversation(c);
-  if (data.art) await DB.set('art', await dataURLToBlob(data.art));
-  else await DB.del('art');
+  for (const c of data.conversations) {
+    await DB.putConversation(normalizeConv(c, legacy));
+    const art = (data.arts && data.arts[c.id]) || data.art;
+    if (art) await DB.set(artKey(c.id), await dataURLToBlob(art));
+  }
   await boot();
-  toast('已从备份恢复');
+  toast(t('restore.fullDone'));
 }
 
 // ---------------- 布局：拖动调整左栏宽度和输入框高度 ----------------
@@ -908,9 +973,12 @@ function artBounds() {
   return { min: 160, max: Math.max(160, Math.min(w * 0.45, w - 340 - 480)) };
 }
 
+// 输入框最高时，聊天区仍至少留出 180px
 function inputBounds() {
-  const h = els.chatPane.getBoundingClientRect().height || window.innerHeight;
-  return { min: 48, max: Math.max(48, h - 220) };
+  const pane = els.chatPane.getBoundingClientRect().height || window.innerHeight;
+  const header = els.chatPane.querySelector('.chat-header').getBoundingClientRect().height;
+  const composerOther = els.composer.getBoundingClientRect().height - els.input.getBoundingClientRect().height;
+  return { min: 48, max: Math.max(48, pane - header - composerOther - 180) };
 }
 
 const clamp = (v, { min, max }) => Math.min(max, Math.max(min, v));
@@ -970,29 +1038,43 @@ function bindLayout() {
 
 // ---------------- 右侧设置面板 ----------------
 
+// 当前对话的设定（System Prompt、世界观、人设）
+function fillConvFields() {
+  const c = state.conv;
+  els.systemPrompt.value = c.systemPrompt;
+  els.worldText.value = c.worldText;
+  els.persona.value = c.persona;
+  updateWorldCount();
+  updateStatus();
+}
+
+// 软件设置
 function fillSettingsForm() {
   const s = state.settings;
-  els.systemPrompt.value = s.systemPrompt;
-  els.worldText.value = s.worldText;
-  els.persona.value = s.persona;
   els.rounds.value = s.rounds;
   els.provider.value = s.provider;
   els.effort.value = s.effort;
   els.useTemperature.checked = s.useTemperature;
   els.temperature.value = s.temperature;
+  els.langSelect.value = LANG;
   fillProviderFields();
-  updateWorldCount();
+}
+
+function fillProviderSelect() {
+  els.provider.innerHTML = Object.keys(PROVIDERS)
+    .map((k) => `<option value="${k}">${escapeHtml(t('provider.' + k))}</option>`).join('');
 }
 
 function fillProviderFields() {
   const s = state.settings;
   const p = PROVIDERS[s.provider];
+  els.provider.value = s.provider;
   els.baseUrl.value = s.baseUrls[s.provider] || '';
-  els.baseUrl.placeholder = p.baseUrl || '例如 https://api.deepseek.com/v1';
+  els.baseUrl.placeholder = p.baseUrl || t('set.baseUrlExample');
   els.apiKey.value = s.apiKeys[s.provider] || '';
   els.model.value = s.models[s.provider] || '';
   els.maxTokens.value = s.maxTokens[s.provider] || '';
-  els.maxTokens.placeholder = p.format === 'anthropic' ? '默认 8192' : '留空 = 接口默认';
+  els.maxTokens.placeholder = t(p.format === 'anthropic' ? 'set.maxTokensAnthropic' : 'set.maxTokensOpenai');
   els.modelList.innerHTML = p.models.map((m) => `<option value="${escapeHtml(m)}">`).join('');
   els.anthropicOptions.hidden = p.format !== 'anthropic';
   els.openaiOptions.hidden = p.format !== 'openai';
@@ -1000,17 +1082,53 @@ function fillProviderFields() {
 }
 
 function updateWorldCount() {
-  const t = state.settings.worldText;
-  els.worldCount.textContent = t ? `${t.length.toLocaleString()} 字 · 约 ${estimateTokens(t).toLocaleString()} token` : '';
+  const text = state.conv.worldText;
+  els.worldCount.textContent = text ? t('set.worldCount', { chars: text.length.toLocaleString(), tokens: estimateTokens(text).toLocaleString() }) : '';
+}
+
+// 输入框下方的开源与免责声明（网址做成链接）
+function renderFooter() {
+  const [before, after] = t('footer.license').split('{url}');
+  const a = document.createElement('a');
+  a.href = PROJECT_URL;
+  a.target = '_blank';
+  a.rel = 'noopener';
+  a.textContent = PROJECT_URL;
+  els.footer.replaceChildren(before, a, after || '');
+}
+
+// 切换界面语言。当前对话的 System Prompt 如果还是某种语言的默认内容，也换成新语言的默认内容
+function applyLang(lang) {
+  setLang(lang);
+  fillProviderSelect();
+  fillProviderFields();
+  renderFooter();
+  els.btnToggleKey.textContent = t(els.apiKey.type === 'password' ? 'set.show' : 'set.hide');
+  if (state.conv) {
+    if (isDefaultSystemPrompt(state.conv.systemPrompt) && state.conv.systemPrompt !== t('defaultSystemPrompt')) {
+      state.conv.systemPrompt = t('defaultSystemPrompt');
+      els.systemPrompt.value = state.conv.systemPrompt;
+      saveConvSoon();
+    }
+    updateWorldCount();
+    renderConvSelect();
+    // 消息标签、按钮等需要重画：清掉视图重新生成
+    state.renderedConvId = null;
+    renderMessages();
+  }
 }
 
 function bindSettings() {
   const s = () => state.settings;
-  const onInput = (el, fn) => el.addEventListener('input', () => { fn(el); saveSettingsSoon(); updateStatus(); });
+  const c = () => state.conv;
+  const onSetting = (el, fn) => el.addEventListener('input', () => { fn(el); saveSettingsSoon(); updateStatus(); });
+  const onConv = (el, fn) => el.addEventListener('input', () => { fn(el); saveConvSoon(); updateStatus(); });
 
-  onInput(els.systemPrompt, (el) => { s().systemPrompt = el.value; });
-  onInput(els.worldText, (el) => { s().worldText = el.value; updateWorldCount(); });
-  onInput(els.persona, (el) => { s().persona = el.value; });
+  // 属于当前对话的设定
+  onConv(els.systemPrompt, (el) => { c().systemPrompt = el.value; });
+  onConv(els.worldText, (el) => { c().worldText = el.value; updateWorldCount(); });
+  onConv(els.persona, (el) => { c().persona = el.value; });
+
   // 记忆轮数：可以直接输入，也可以点 − / +，范围 1–40
   const setRounds = (n) => {
     n = Math.round(Number(n));
@@ -1027,11 +1145,12 @@ function bindSettings() {
   els.rounds.addEventListener('keydown', (e) => { if (e.key === 'Enter') setRounds(els.rounds.value); });
   els.btnRoundsMinus.addEventListener('click', () => setRounds(s().rounds - 1));
   els.btnRoundsPlus.addEventListener('click', () => setRounds(s().rounds + 1));
-  onInput(els.baseUrl, (el) => { s().baseUrls[s().provider] = el.value.trim(); });
-  onInput(els.apiKey, (el) => { s().apiKeys[s().provider] = el.value.trim(); });
-  onInput(els.model, (el) => { s().models[s().provider] = el.value.trim(); });
-  onInput(els.maxTokens, (el) => { s().maxTokens[s().provider] = el.value ? Number(el.value) : ''; });
-  onInput(els.temperature, (el) => { s().temperature = Number(el.value); });
+
+  onSetting(els.baseUrl, (el) => { s().baseUrls[s().provider] = el.value.trim(); });
+  onSetting(els.apiKey, (el) => { s().apiKeys[s().provider] = el.value.trim(); });
+  onSetting(els.model, (el) => { s().models[s().provider] = el.value.trim(); });
+  onSetting(els.maxTokens, (el) => { s().maxTokens[s().provider] = el.value ? Number(el.value) : ''; });
+  onSetting(els.temperature, (el) => { s().temperature = Number(el.value); });
   els.effort.addEventListener('change', () => { s().effort = els.effort.value; saveSettingsSoon(); });
   els.useTemperature.addEventListener('change', () => {
     s().useTemperature = els.useTemperature.checked;
@@ -1046,12 +1165,17 @@ function bindSettings() {
     saveSettingsSoon();
     updateStatus();
   });
+  els.langSelect.addEventListener('change', () => {
+    s().lang = els.langSelect.value;
+    saveSettingsSoon();
+    applyLang(s().lang);
+  });
 
   els.btnResetSystem.addEventListener('click', () => {
-    if (!confirm('把 System Prompt 恢复为默认内容？')) return;
-    s().systemPrompt = DEFAULT_SYSTEM_PROMPT;
-    els.systemPrompt.value = DEFAULT_SYSTEM_PROMPT;
-    saveSettingsSoon();
+    if (!confirm(t('set.resetConfirm'))) return;
+    c().systemPrompt = t('defaultSystemPrompt');
+    els.systemPrompt.value = c().systemPrompt;
+    saveConvSoon();
     updateStatus();
   });
 
@@ -1060,29 +1184,29 @@ function bindSettings() {
     const f = els.fileWorld.files[0];
     els.fileWorld.value = '';
     if (!f) return;
-    if (!/\.(txt|md)$/i.test(f.name)) return toast('只支持 .txt 或 .md 纯文本文件');
+    if (!/\.(txt|md)$/i.test(f.name)) return toast(t('set.worldOnlyText'));
     const text = await f.text();
-    if (s().worldText.trim() && !confirm('用这个文件替换当前的世界观内容？')) return;
-    s().worldText = text;
+    if (c().worldText.trim() && !confirm(t('set.worldReplace'))) return;
+    c().worldText = text;
     els.worldText.value = text;
     updateWorldCount();
-    saveSettingsSoon();
+    saveConvSoon();
     updateStatus();
-    toast(`已载入 ${f.name}`);
+    toast(t('set.worldLoaded', { name: f.name }));
   });
   els.btnClearWorld.addEventListener('click', () => {
-    if (!s().worldText || !confirm('清空世界观内容？')) return;
-    s().worldText = '';
+    if (!c().worldText || !confirm(t('set.worldClear'))) return;
+    c().worldText = '';
     els.worldText.value = '';
     updateWorldCount();
-    saveSettingsSoon();
+    saveConvSoon();
     updateStatus();
   });
 
   els.btnToggleKey.addEventListener('click', () => {
     const show = els.apiKey.type === 'password';
     els.apiKey.type = show ? 'text' : 'password';
-    els.btnToggleKey.textContent = show ? '隐藏' : '显示';
+    els.btnToggleKey.textContent = t(show ? 'set.hide' : 'set.show');
   });
 
   els.btnFetchModels.addEventListener('click', async () => {
@@ -1090,9 +1214,9 @@ function bindSettings() {
     try {
       const list = await fetchModels(providerCfg());
       els.modelList.innerHTML = list.map((m) => `<option value="${escapeHtml(m)}">`).join('');
-      toast(`获取到 ${list.length} 个模型，点击模型输入框即可选择`);
+      toast(t('set.fetchedModels', { n: list.length }));
     } catch (e) {
-      showModal('获取模型列表失败', e.message);
+      showModal(t('set.fetchModelsFailed'), e.message);
     } finally {
       els.btnFetchModels.disabled = false;
     }
@@ -1109,7 +1233,7 @@ function bindSettings() {
     if (f) await setArt(f);
   });
   els.btnRemoveArt.addEventListener('click', async () => {
-    await DB.del('art');
+    await DB.del(artKey(state.conv.id));
     await loadArt();
   });
 
@@ -1145,27 +1269,24 @@ function bindChat() {
   els.btnJumpBottom.addEventListener('click', scrollToBottom);
 
   els.convSelect.addEventListener('change', () => switchConv(els.convSelect.value));
-  els.btnNewConv.addEventListener('click', async () => {
-    if (state.generating) return toast('请先停止当前生成');
-    const c = newConversation();
-    state.conversations.push(c);
-    await DB.putConversation(c);
-    await switchConv(c.id);
-    els.input.focus();
-  });
+  els.btnNewConv.addEventListener('click', createConversation);
   els.btnRenameConv.addEventListener('click', async () => {
-    const t = prompt('对话名称：', state.conv.title);
-    if (t === null || !t.trim()) return;
-    state.conv.title = t.trim();
+    const name = prompt(t('conv.renamePrompt'), state.conv.title);
+    if (name === null || !name.trim()) return;
+    state.conv.title = name.trim();
     await saveConv();
   });
   els.btnDeleteConv.addEventListener('click', async () => {
-    if (state.generating) return toast('请先停止当前生成');
-    if (!confirm(`删除对话「${state.conv.title}」？此操作无法撤销。`)) return;
-    await DB.deleteConversation(state.conv.id);
-    state.conversations = state.conversations.filter((c) => c !== state.conv);
+    if (state.generating) return toast(t('conv.stopFirst'));
+    if (!confirm(t('conv.deleteConfirm', { title: convTitle(state.conv) }))) return;
+    const gone = state.conv;
+    if (convSavePending === gone) convSavePending = null;
+    await DB.deleteConversation(gone.id);
+    await DB.del(artKey(gone.id));
+    state.conversations = state.conversations.filter((c) => c !== gone);
     if (!state.conversations.length) {
-      const c = newConversation();
+      // 删掉最后一个对话时，新建一个空对话并沿用被删对话的设定
+      const c = newConversation(gone);
       state.conversations.push(c);
       await DB.putConversation(c);
     }
@@ -1178,6 +1299,7 @@ function bindChat() {
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') els.modal.hidden = true; });
 
   window.addEventListener('beforeunload', (e) => {
+    if (convSavePending) flushConvSave();
     if (state.generating) { e.preventDefault(); e.returnValue = ''; }
   });
 }
@@ -1192,10 +1314,29 @@ async function boot() {
   }
   if (!PROVIDERS[state.settings.provider]) state.settings.provider = 'anthropic';
   state.settings.rounds = Math.min(ROUNDS_MAX, Math.max(ROUNDS_MIN, Number(state.settings.rounds) || 12));
+  setLang(state.settings.lang || detectLang());
 
+  // 旧版本把 System Prompt、世界观、人设和艺术图放在全局，迁移到每个对话里
+  const legacy = { systemPrompt: saved.systemPrompt, worldText: saved.worldText, persona: saved.persona };
+  const legacyArt = await DB.get('art');
   state.conversations = await DB.listConversations();
+  for (const c of state.conversations) {
+    const before = JSON.stringify([c.title, c.systemPrompt, c.worldText, c.persona, c.greeting, c.greetingSend]);
+    normalizeConv(c, legacy);
+    if (JSON.stringify([c.title, c.systemPrompt, c.worldText, c.persona, c.greeting, c.greetingSend]) !== before) await DB.putConversation(c);
+    if (legacyArt && !(await DB.get(artKey(c.id)))) await DB.set(artKey(c.id), legacyArt);
+  }
+  if (legacyArt) await DB.del('art');
+  if ('systemPrompt' in saved || 'worldText' in saved || 'persona' in saved) {
+    delete state.settings.systemPrompt;
+    delete state.settings.worldText;
+    delete state.settings.persona;
+    await DB.set('settings', state.settings);
+  }
+
   if (!state.conversations.length) {
-    const c = newConversation();
+    // 没有任何对话：新建一个，旧版本留下的全局设定（如果有）沿用到它身上
+    const c = normalizeConv({ ...newConversation(), systemPrompt: undefined, worldText: undefined, persona: undefined }, legacy);
     state.conversations.push(c);
     await DB.putConversation(c);
   }
@@ -1207,7 +1348,9 @@ async function boot() {
   state.greetingMode = null;
 
   applyLayout();
+  applyLang(LANG);
   fillSettingsForm();
+  fillConvFields();
   renderConvSelect();
   renderMessages();
   scrollToBottom();
@@ -1216,8 +1359,7 @@ async function boot() {
 
 function init() {
   for (const el of document.querySelectorAll('[id]')) els[el.id] = el;
-  els.provider.innerHTML = Object.entries(PROVIDERS)
-    .map(([k, p]) => `<option value="${k}">${escapeHtml(p.label)}</option>`).join('');
+  els.langSelect.innerHTML = Object.entries(LANGS).map(([k, name]) => `<option value="${k}">${name}</option>`).join('');
   bindSettings();
   bindChat();
   bindLayout();
@@ -1225,7 +1367,7 @@ function init() {
   Render.onResize(() => { if (state.follow) els.messages.scrollTop = els.messages.scrollHeight; });
   boot().catch((e) => {
     console.error(e);
-    showError('读取本地数据失败：' + e.message + '\n如果是在隐私/无痕模式下打开，浏览器可能禁止了本地存储。');
+    showError(t('boot.failed', { msg: e.message }));
   });
 }
 
