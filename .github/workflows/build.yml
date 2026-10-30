@@ -1,6 +1,7 @@
 # 自动打包桌面版。
-# - 推送版本标签（例如 v0.1.0）：在 Windows、Linux、macOS 上打包，并自动创建 Release 上传安装包。
-#   标签必须和 package.json 里的 version 一致（v + 版本号）。
+# - 推送版本标签（例如 v0.1.0），或在 GitHub 网页上发布 Release 时新建标签：
+#   在 Windows、Linux、macOS 上打包，并把安装包上传到这个版本的 Release。
+#   版本号直接取自标签（v0.2.0 → 0.2.0），不需要改 package.json。
 # - 在 Actions 页面手动运行（Run workflow）：只打包不发布，安装包在本次运行页面的 Artifacts 里下载。
 
 name: Build desktop app
@@ -38,17 +39,18 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Check that the tag matches package.json
+      - run: npm ci
+
+      - name: Take the version number from the tag
         if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
         run: |
-          version=$(node -p "require('./package.json').version")
-          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
-            echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $version"
+          version="${GITHUB_REF_NAME#v}"
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Tag $GITHUB_REF_NAME is not a version like v1.2.3"
             exit 1
           fi
-
-      - run: npm ci
+          npm version "$version" --no-git-tag-version --allow-same-version
 
       - name: Build
         run: npx electron-builder ${{ matrix.args }} --publish never
@@ -81,7 +83,8 @@ jobs:
 
       - uses: softprops/action-gh-release@v2
         with:
-          name: Proteus ${{ github.ref_name }}
           body_path: .github/release-notes.md
+          # 在网页上发布 Release 时自己写的说明会保留，下载说明接在后面
+          append_body: true
           files: artifacts/*
           fail_on_unmatched_files: true

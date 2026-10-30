@@ -217,7 +217,7 @@ npm run dist:mac     # 打包 macOS 版（需要在苹果电脑上运行）
 
 仓库里的 `.github/workflows/build.yml` 会在 GitHub 的服务器上同时打包 Windows、Linux 和 macOS 版：
 
-- **发布新版本**：先把 `package.json` 里的 `version` 改成新版本号（例如 `0.2.0`）并提交，再推送同名标签：
+- **发布新版本**：在 GitHub 的 Releases 页面点「Draft a new release」，新建一个标签（例如 `v0.2.0`），填好标题和说明后点「Publish release」。大约 5 分钟后，各系统的安装包会自动上传到这个 Release，下载说明会接在你写的说明后面。版本号直接取自标签，**不需要改 `package.json`**。也可以用命令推送标签，效果相同：
 
   ```bash
   git tag v0.2.0
@@ -227,10 +227,9 @@ npm run dist:mac     # 打包 macOS 版（需要在苹果电脑上运行）
   git push origin v0.2.0
   ```
 
-  大约 5 分钟后，Releases 页面会自动出现这个版本和全部安装包。也可以直接在 GitHub 网页上「Draft a new release」并新建标签，效果相同。
 - **只想试试能不能打包**：在仓库的 Actions 页面选「Build desktop app」→「Run workflow」。只打包不发布，安装包在那次运行页面底部的 Artifacts 里，保留 30 天。
 
-Release 页面的说明文字来自 `.github/release-notes.md`。
+安装包里的下载说明来自 `.github/release-notes.md`。
 
 ## 多语言
 

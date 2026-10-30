@@ -12,7 +12,7 @@ const PROJECT_URL = 'https://github.com/IonComan813/ProjectProteus';
 
 const I18N = {
   'zh-CN': {
-    'app.title': 'Proteus 角色扮演',
+    'app.title': 'Proteus角色扮演',
     'defaultSystemPrompt': `你是一名角色扮演叙事者。根据下方的世界观设定推进剧情，扮演世界中除用户角色以外的所有角色，并描写环境与事件。
 - 始终与世界观设定保持一致。
 - 不要替用户角色说话、行动或做决定。
@@ -255,7 +255,7 @@ const I18N = {
   },
 
   'zh-TW': {
-    'app.title': 'Proteus 角色扮演',
+    'app.title': 'Proteus角色扮演',
     'defaultSystemPrompt': `你是一名角色扮演敘事者。根據下方的世界觀設定推進劇情，扮演世界中除使用者角色以外的所有角色，並描寫環境與事件。
 - 始終與世界觀設定保持一致。
 - 不要替使用者角色說話、行動或做決定。
@@ -705,7 +705,7 @@ const I18N = {
   },
 
   ja: {
-    'app.title': 'Proteus ロールプレイ',
+    'app.title': 'Proteusロールプレイ',
     'defaultSystemPrompt': `あなたはロールプレイの語り手です。以下の世界観設定に従って物語を進め、ユーザーのキャラクター以外の登場人物すべてを演じ、環境や出来事を描写してください。
 - 常に世界観設定と矛盾しないようにしてください。
 - ユーザーのキャラクターの代わりに話したり、行動したり、決定したりしないでください。

@@ -6,6 +6,12 @@ const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
 
+// 数据文件夹固定叫 Proteus，不跟随程序显示名（海神Proteus）变化，以后改名也不会“丢”数据。
+// 启动时用 --user-data-dir 指定了别的文件夹（例如便携使用）时，以指定的为准。
+if (!app.commandLine.hasSwitch('user-data-dir')) {
+  app.setPath('userData', path.join(app.getPath('appData'), 'Proteus'));
+}
+
 // 只允许打开一个窗口：再次启动时把已有窗口调到前面
 if (!app.requestSingleInstanceLock()) app.quit();
 
@@ -21,7 +27,7 @@ function createWindow() {
     height: 900,
     minWidth: 1000,
     minHeight: 600,
-    title: 'Proteus',
+    title: '海神Proteus', // 页面载入后换成当前语言的“Proteus角色扮演”
     backgroundColor: '#15161a',
     icon: path.join(ROOT, 'build', 'icon.png'),
     autoHideMenuBar: true,

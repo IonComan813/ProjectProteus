@@ -1,6 +1,6 @@
 {
   "name": "proteus",
-  "productName": "Proteus",
+  "productName": "海神Proteus",
   "version": "0.1.0",
   "description": "Roleplay chat app for large language models (desktop version with built-in Chromium)",
   "main": "electron/main.js",
@@ -24,7 +24,7 @@
   },
   "build": {
     "appId": "io.github.ioncoman813.proteus",
-    "productName": "Proteus",
+    "productName": "海神Proteus",
     "copyright": "Copyright © 2026 IonComan813 · GPL-3.0",
     "directories": {
       "output": "dist",
@@ -62,7 +62,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Proteus",
+      "shortcutName": "海神Proteus",
       "license": "LICENSE",
       "artifactName": "Proteus-Setup-${version}-win-x64.${ext}"
     },
@@ -92,6 +92,7 @@
           ]
         }
       ]
-    }
+    },
+    "executableName": "Proteus"
   }
 }
