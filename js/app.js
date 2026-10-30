@@ -6,11 +6,16 @@ const DEFAULT_SYSTEM_PROMPT = `你是一名角色扮演叙事者。根据下方�
 - 每次回复描写场景、其他角色的言行与事件发展，篇幅适中，结尾给用户留出行动的空间。
 - 使用中文写作。`;
 
+const ROUNDS_MIN = 1;
+const ROUNDS_MAX = 40;
+
 const DEFAULT_SETTINGS = {
   systemPrompt: DEFAULT_SYSTEM_PROMPT,
   worldText: '',
   persona: '',
   rounds: 12,
+  artWidth: null,      // 左栏宽度（像素），null = 自动
+  inputHeight: 88,     // 输入框高度（像素）
   provider: 'anthropic',
   apiKeys: {},
   baseUrls: {},
@@ -33,6 +38,7 @@ const state = {
   artUrl: null,
   views: new Map(),    // 消息 id → 界面元素
   renderedConvId: null,
+  greetingMode: null,  // 正在用输入框编辑开场白时为 { preview }
 };
 
 const $ = (id) => document.getElementById(id);
@@ -138,9 +144,14 @@ function withGreeting(greeting, text) {
   return `【开场白】\n${greeting}\n\n【用户】\n${text}`;
 }
 
+// 要发给模型的开场白：没有开场白或设为“不发送”时为 null
+function sentGreeting(conv) {
+  return conv.greeting != null && conv.greetingSend !== false ? conv.greeting : null;
+}
+
 // messages 是从对话开头算起的一串消息，最后一条是用户这次的回复。
 // 取出最后一条 + 之前的 N 轮（2N 条）。如果对话的第一条消息还在范围内，就把开场白拼进去。
-function windowOf(messages, greeting = state.conv.greeting) {
+function windowOf(messages, greeting = sentGreeting(state.conv)) {
   const keep = state.settings.rounds * 2 + 1;
   const start = Math.max(0, messages.length - keep);
   return messages.slice(start).map((m, i) => {
@@ -162,7 +173,7 @@ function memoryCutoff() {
 
 function newConversation() {
   const now = Date.now();
-  return { id: uid(), title: '新对话', greeting: null, createdAt: now, updatedAt: now, messages: [] };
+  return { id: uid(), title: '新对话', greeting: null, greetingSend: true, createdAt: now, updatedAt: now, messages: [] };
 }
 
 async function saveConv(conv = state.conv) {
@@ -177,6 +188,7 @@ async function switchConv(id) {
   if (!conv) return;
   state.conv = conv;
   state.editingId = null;
+  exitGreetingMode();
   state.settings.activeConvId = id;
   saveSettingsSoon();
   showError('');
@@ -213,6 +225,7 @@ function titleFrom(text) {
 // 这样切换版本、调记忆长度等操作时页面不会闪动或跳动。
 
 const GREETING_ID = '__greeting';
+const PREVIEW_ID = '__greeting_preview';
 
 function renderMessages() {
   const box = els.messages;
@@ -224,7 +237,9 @@ function renderMessages() {
   }
 
   const items = [];
+  const gm = state.greetingMode;
   if (conv.greeting != null) items.push({ id: GREETING_ID, greeting: true });
+  else if (gm && gm.preview != null) items.push({ id: PREVIEW_ID, preview: true });
   conv.messages.forEach((m, i) => items.push({ id: m.id, m, i }));
 
   box.querySelectorAll('.empty-hint, .memory-divider').forEach((el) => el.remove());
@@ -236,8 +251,10 @@ function renderMessages() {
   if (!items.length) {
     const hint = document.createElement('div');
     hint.className = 'empty-hint';
-    hint.innerHTML = `在下方写下第一条消息，开始故事。<br>
-      <span class="small">第一条消息可以保存为本对话的开场白。支持 Markdown 和 HTML。<br>
+    hint.innerHTML = gm
+      ? '正在编辑开场白。写好后点右下角的“重载”可以在这里预览效果。'
+      : `在下方写下第一条消息，开始故事；也可以先点“添加开场白”。<br>
+      <span class="small">消息支持 Markdown 和 HTML/CSS 美化，开场白还可以使用 JS。<br>
       右侧可以设置 System Prompt、世界观、你的角色和模型。</span>`;
     box.appendChild(hint);
     updateComposer();
@@ -249,7 +266,7 @@ function renderMessages() {
   for (const it of items) {
     let v = state.views.get(it.id);
     if (!v) { v = createView(it); state.views.set(it.id, v); }
-    updateView(v, it, cutoff);
+    updateView(v, it);
     // 只有新建的视图才需要插入；已有的保持原位（移动 iframe 会让它重新加载）
     if (!v.el.parentNode) box.insertBefore(v.el, prev ? prev.nextSibling : box.firstChild);
     prev = v.el;
@@ -258,7 +275,7 @@ function renderMessages() {
   if (cutoff > 0) {
     const d = document.createElement('div');
     d.className = 'memory-divider';
-    d.textContent = `↑ 以上${conv.greeting != null ? '开场白和' : ''} ${cutoff} 条消息超出记忆长度，模型看不到`;
+    d.textContent = `↑ 以上${sentGreeting(conv) != null ? '开场白和' : ''} ${cutoff} 条消息超出记忆长度，模型看不到`;
     box.insertBefore(d, state.views.get(conv.messages[cutoff].id).el);
   }
   updateComposer();
@@ -272,51 +289,68 @@ function createView(it) {
   holder.className = 'msg-body';
   const actions = document.createElement('div');
   actions.className = 'msg-actions';
-  el.append(label, holder, actions);
-  return { el, label, holder, actions, frame: null, editor: null, shownText: null };
+  el.append(label, holder);
+  let sendBox = null;
+  if (it.greeting) {
+    // 开场白下方常驻的勾选框：是否发给模型
+    const row = document.createElement('label');
+    row.className = 'greeting-send';
+    sendBox = document.createElement('input');
+    sendBox.type = 'checkbox';
+    sendBox.addEventListener('change', async () => {
+      state.conv.greetingSend = sendBox.checked;
+      renderMessages();
+      await saveConv();
+    });
+    row.append(sendBox, ' 发送给模型（和你发送的第一条消息合并，作为第一条消息）');
+    el.appendChild(row);
+  }
+  el.appendChild(actions);
+  return { el, label, holder, actions, sendBox, frame: null, editor: null, shownText: null };
 }
 
-function updateView(v, it, cutoff) {
+function updateView(v, it) {
   const conv = state.conv;
   const m = it.m;
-  const role = it.greeting ? 'greeting' : m.role;
+  const role = it.greeting || it.preview ? 'greeting' : m.role;
   const busy = !!state.generating;
   const isGen = busy && m && state.generating.msgId === m.id;
-  const text = it.greeting ? conv.greeting : msgText(m);
+  const text = it.greeting ? conv.greeting : it.preview ? state.greetingMode.preview : msgText(m);
 
-  v.el.className = 'msg ' + role;
+  v.el.className = 'msg ' + role + (it.preview ? ' preview' : '');
   v.el.dataset.id = it.id;
-  v.el.classList.toggle('forgotten', it.greeting ? cutoff > 0 : it.i < cutoff);
   v.el.classList.toggle('generating', isGen);
-  v.label.textContent = it.greeting ? '开场白' : m.role === 'user' ? '你' : '剧情';
+  v.label.textContent = it.greeting ? '开场白' : it.preview ? '开场白（预览，尚未保存）' : m.role === 'user' ? '你' : '剧情';
   if (isGen) v.label.textContent += ' · 生成中……';
+  if (v.sendBox) v.sendBox.checked = conv.greetingSend !== false;
 
   // 编辑状态：隐藏显示区域，换成文本框
   const editing = state.editingId === it.id;
   v.el.classList.toggle('editing', editing);
   if (editing && !v.editor) {
     v.editor = buildEditor(it.id);
-    v.el.insertBefore(v.editor, v.actions);
+    v.el.insertBefore(v.editor, v.holder);
   } else if (!editing && v.editor) {
     v.editor.remove();
     v.editor = null;
   }
   v.holder.hidden = editing;
 
-  // 内容
+  // 内容。只有开场白（和它的预览）允许运行 JS
+  const scripts = !!(it.greeting || it.preview);
   if (isGen) {
-    if (!v.frame) { v.frame = Render.create(''); v.holder.appendChild(v.frame); }
-    v.shownText = null; // 生成结束后会用完整内容重新显示一次
+    if (!v.frame) { v.frame = Render.create('', { scripts }); v.holder.appendChild(v.frame); }
+    v.shownText = null; // 生成结束后用完整内容再显示一次
     if (!text) Render.stream(v.frame, '', Render.thinkingHtml('等待模型回复……'));
   } else if (v.shownText !== text) {
-    if (!v.frame) { v.frame = Render.create(text); v.holder.appendChild(v.frame); }
+    if (!v.frame) { v.frame = Render.create(text, { scripts }); v.holder.appendChild(v.frame); }
     else Render.set(v.frame, text);
     v.shownText = text;
   }
 
   // 操作按钮
   v.actions.innerHTML = '';
-  if (editing) return;
+  if (editing || it.preview) return;
   if (it.greeting) {
     v.actions.append(
       button('复制', () => copyText(conv.greeting)),
@@ -383,16 +417,28 @@ function disabled(b, isDisabled, title) {
 
 function updateComposer() {
   const busy = !!state.generating;
-  els.btnSend.hidden = busy;
-  els.btnStop.hidden = !busy;
-  const msgs = state.conv.messages;
+  const gm = !!state.greetingMode;
+  const conv = state.conv;
+  const msgs = conv.messages;
   const last = msgs[msgs.length - 1];
-  els.btnReply.hidden = busy || !(last && last.role === 'user');
+  els.btnSend.hidden = busy || gm;
+  els.btnStop.hidden = !busy;
+  els.btnReply.hidden = busy || gm || !(last && last.role === 'user');
+  // “添加开场白”只在对话完全为空时出现
+  els.btnAddGreeting.hidden = busy || gm || conv.greeting != null || msgs.length > 0;
+  els.btnGreetingReload.hidden = !gm;
+  els.btnGreetingConfirm.hidden = !gm;
+  els.btnGreetingCancel.hidden = !gm;
+  els.composer.classList.toggle('greeting-mode', gm);
+  els.input.placeholder = gm
+    ? '在这里编辑开场白，支持 Markdown、HTML、CSS 和 JS。点“重载”在上方预览，点“确认”保存。（Ctrl + Enter = 重载）'
+    : '写下你的行动或对话……支持 Markdown 和 HTML（Ctrl + Enter 发送）';
   updateStatus();
 }
 
 function updateStatus() {
   if (state.generating) { els.status.textContent = '生成中……可以随时向上滚动阅读，点“停止”可中断。'; return; }
+  if (state.greetingMode) { els.status.textContent = '正在编辑开场白：确认之前不会保存，也不会发给模型。'; return; }
   const s = state.settings;
   const sys = estimateTokens(buildSystem());
   els.status.textContent = `记忆：最近 ${s.rounds} 轮　·　每次固定发送设定约 ${sys.toLocaleString()} token（粗略估计）　·　模型：${s.models[s.provider] || '未设置'}`;
@@ -508,34 +554,64 @@ function choose(title, message, options) {
   });
 }
 
-async function send() {
+// ---- 开场白编辑模式（借用下方的输入框） ----
+
+function enterGreetingMode() {
   if (state.generating) return;
+  state.greetingMode = { preview: null };
+  renderMessages();
+  els.input.focus();
+}
+
+function exitGreetingMode() {
+  if (!state.greetingMode) return;
+  state.greetingMode = null;
+  if (state.conv) renderMessages();
+}
+
+// 重载：在聊天区显示渲染后的开场白，输入框内容不动
+function reloadGreetingPreview() {
+  if (!state.greetingMode) return;
+  const text = els.input.value;
+  if (!text.trim()) return toast('输入框还是空的');
+  state.greetingMode.preview = text;
+  const v = state.views.get(PREVIEW_ID);
+  if (v) v.shownText = null; // 内容相同也重新加载，让里面的脚本重新运行
+  renderMessages();
+  els.messages.scrollTop = 0;
+}
+
+// 确认：保存开场白、清空输入框，再询问是否发送给模型
+async function confirmGreeting() {
+  const conv = state.conv;
+  const text = els.input.value.trim();
+  if (!state.greetingMode) return;
+  if (!text) return toast('输入框还是空的');
+  const send = await choose('开场白', '开场白是否发送给模型？\n\n'
+    + '· 发送：你之后发送的第一条消息会和开场白合并，作为第一条消息发给模型。\n'
+    + '· 不发送：开场白只显示在聊天区，模型看不到它；你之后发送的第一条消息就是第一条消息。\n\n'
+    + '之后也可以随时用开场白下方的勾选框更改。', [
+    { label: '取消', value: null, ghost: true },
+    { label: '不发送', value: 'no' },
+    { label: '发送给模型', value: 'yes', primary: true },
+  ]);
+  if (!send || conv !== state.conv || !state.greetingMode) return;
+  conv.greeting = text;
+  conv.greetingSend = send === 'yes';
+  if (conv.title === '新对话') conv.title = titleFrom(text);
+  state.greetingMode = null;
+  els.input.value = '';
+  renderMessages();
+  els.messages.scrollTop = 0;
+  await saveConv();
+  toast('开场白已保存');
+}
+
+async function send() {
+  if (state.generating || state.greetingMode) return;
   const text = els.input.value.trim();
   if (!text) return;
   const conv = state.conv;
-
-  // 对话完全为空时，询问是否把这条消息作为开场白
-  if (conv.greeting == null && !conv.messages.length) {
-    const choice = await choose('第一条消息', '是否作为开场白发送并保存？\n\n'
-      + '· 作为开场白：固定显示在本对话最上方，现在不发给模型。你下一次发送消息时，开场白会和那条消息合在一起，作为第一条消息发给模型。\n'
-      + '· 直接发送：作为普通消息马上发给模型。', [
-      { label: '取消', value: null, ghost: true },
-      { label: '直接发送给模型', value: 'send' },
-      { label: '作为开场白保存', value: 'greeting', primary: true },
-    ]);
-    if (!choice) return;
-    if (state.generating || conv !== state.conv) return;
-    if (choice === 'greeting') {
-      conv.greeting = text;
-      if (conv.title === '新对话') conv.title = titleFrom(text);
-      els.input.value = '';
-      renderMessages();
-      scrollToBottom();
-      await saveConv();
-      toast('已保存为开场白');
-      return;
-    }
-  }
 
   conv.messages.push({ id: uid(), role: 'user', versions: [text], cur: 0 });
   if (conv.title === '新对话') conv.title = titleFrom(text);
@@ -584,7 +660,7 @@ async function runGeneration(m, context) {
   };
 
   try {
-    result = await streamChat(providerCfg(), buildSystem(), windowOf(context, conv.greeting), {
+    result = await streamChat(providerCfg(), buildSystem(), windowOf(context, sentGreeting(conv)), {
       signal: controller.signal,
       onText: (t) => {
         m.versions[ver] += t;
@@ -648,7 +724,7 @@ function preview() {
   const system = buildSystem();
   const lines = [];
   lines.push(`说明 ${note}`);
-  lines.push(`记忆长度 ${state.settings.rounds} 轮：发送最近 ${win.length} 条消息，${dropped > 0 ? `更早的 ${dropped} 条${state.conv.greeting != null ? '和开场白' : ''}不发送。` : '目前全部消息都在范围内。'}`);
+  lines.push(`记忆长度 ${state.settings.rounds} 轮：发送最近 ${win.length} 条消息，${dropped > 0 ? `更早的 ${dropped} 条${sentGreeting(state.conv) != null ? '和开场白' : ''}不发送。` : '目前全部消息都在范围内。'}`);
   lines.push(`粗略估计共约 ${(estimateTokens(system) + win.reduce((a, m) => a + estimateTokens(m.content), 0)).toLocaleString()} token。`);
   lines.push('');
   lines.push('════════ system ════════');
@@ -682,6 +758,7 @@ async function setArt(file) {
 
 // ---------------- 导出与备份 ----------------
 
+// 导出剧情：开场白 + 全部消息，不含 system 部分和艺术图
 function exportText(markdown) {
   const conv = state.conv;
   if (!conv.messages.length && conv.greeting == null) return toast('当前对话还没有内容');
@@ -712,41 +789,183 @@ function blobToDataURL(blob) {
   });
 }
 
-async function backup() {
-  const settings = { ...state.settings, apiKeys: {} }; // 不导出 API Key
+function dateStamp() {
+  const d = new Date();
+  return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// 世界卡：System Prompt、世界观、当前对话的开场白和艺术图（图片以文本形式存进 JSON）。
+// 不含用户人设和剧情，方便分享或带着同一个世界重新开始。
+async function exportWorldCard() {
+  const s = state.settings;
+  const conv = state.conv;
+  const name = prompt('世界卡名称：', conv.title !== '新对话' ? conv.title : '');
+  if (name === null) return;
   const art = await DB.get('art');
   const data = {
     app: 'proteus',
+    type: 'worldcard',
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    name: name.trim() || '未命名世界',
+    systemPrompt: s.systemPrompt,
+    worldText: s.worldText,
+    greeting: conv.greeting != null ? conv.greeting : null,
+    greetingSend: conv.greetingSend !== false,
+    art: art ? await blobToDataURL(art) : null,
+  };
+  download(`${safeFilename(data.name)}-世界卡.json`, JSON.stringify(data, null, 2), 'application/json');
+}
+
+// 完整备份：所有设定（不含 API Key）、所有对话和艺术图
+async function backup() {
+  const settings = { ...state.settings, apiKeys: {} };
+  const art = await DB.get('art');
+  const data = {
+    app: 'proteus',
+    type: 'backup',
     version: 1,
     exportedAt: new Date().toISOString(),
     settings,
     conversations: state.conversations,
     art: art ? await blobToDataURL(art) : null,
   };
-  const d = new Date();
-  download(`proteus-备份-${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}.json`,
-    JSON.stringify(data, null, 2), 'application/json');
+  download(`proteus-完整备份-${dateStamp()}.json`, JSON.stringify(data, null, 2), 'application/json');
 }
 
+async function exportMenu() {
+  const choice = await choose('导出 / 备份', '· 导出剧情：当前对话的开场白和全部消息，不含 System Prompt、世界观、人设和艺术图。\n'
+    + '· 世界卡：System Prompt、世界观、当前对话的开场白和艺术图，不含用户人设和剧情。适合分享，或带着同一个世界重新开始。\n'
+    + '· 完整备份：所有设定、所有对话和艺术图（不含 API Key），用于换电脑或防止数据丢失。', [
+    { label: '取消', value: null, ghost: true },
+    { label: '剧情（TXT）', value: 'txt' },
+    { label: '剧情（Markdown）', value: 'md' },
+    { label: '世界卡', value: 'card' },
+    { label: '完整备份', value: 'full', primary: true },
+  ]);
+  if (choice === 'txt') exportText(false);
+  else if (choice === 'md') exportText(true);
+  else if (choice === 'card') await exportWorldCard();
+  else if (choice === 'full') await backup();
+}
+
+async function dataURLToBlob(url) {
+  return (await fetch(url)).blob();
+}
+
+// 读取世界卡或完整备份（剧情导出是 TXT/Markdown，不能读回）
 async function restore(file) {
   if (state.generating) return toast('请先停止当前生成');
   let data;
-  try { data = JSON.parse(await file.text()); } catch (_) { return toast('文件不是有效的备份'); }
-  if (!data || data.app !== 'proteus' || !Array.isArray(data.conversations)) return toast('文件不是有效的 Proteus 备份');
+  try { data = JSON.parse(await file.text()); } catch (_) { return toast('文件不是有效的 JSON'); }
+  if (!data || data.app !== 'proteus') return toast('文件不是 Proteus 的世界卡或备份');
+
+  if (data.type === 'worldcard') {
+    if (!confirm(`读取世界卡「${data.name || '未命名世界'}」：\n\n`
+      + '· 替换当前的 System Prompt、世界观和艺术图（所有对话共用这一套设定）\n'
+      + '· 用卡里的开场白新建一个对话\n'
+      + '· 用户人设和已有对话保留不变\n\n确定吗？')) return;
+    const s = state.settings;
+    s.systemPrompt = typeof data.systemPrompt === 'string' ? data.systemPrompt : s.systemPrompt;
+    s.worldText = typeof data.worldText === 'string' ? data.worldText : '';
+    await DB.set('settings', s);
+    if (data.art) await DB.set('art', await dataURLToBlob(data.art));
+    else await DB.del('art');
+    const c = newConversation();
+    if (typeof data.greeting === 'string') {
+      c.greeting = data.greeting;
+      c.greetingSend = data.greetingSend !== false;
+    }
+    c.title = data.name || (c.greeting ? titleFrom(c.greeting) : '新对话');
+    state.conversations.push(c);
+    await DB.putConversation(c);
+    fillSettingsForm();
+    await loadArt();
+    await switchConv(c.id);
+    els.messages.scrollTop = 0;
+    toast('世界卡已读取');
+    return;
+  }
+
+  if (!Array.isArray(data.conversations)) return toast('文件不是 Proteus 的世界卡或备份');
   if (!confirm(`备份里有 ${data.conversations.length} 个对话。恢复会替换当前所有对话和设定（API Key 保留不变），确定吗？`)) return;
   const keys = state.settings.apiKeys;
   state.settings = { ...DEFAULT_SETTINGS, ...data.settings, apiKeys: keys };
   await DB.set('settings', state.settings);
   await DB.clearConversations();
   for (const c of data.conversations) await DB.putConversation(c);
-  if (data.art) {
-    const blob = await (await fetch(data.art)).blob();
-    await DB.set('art', blob);
-  } else {
-    await DB.del('art');
-  }
+  if (data.art) await DB.set('art', await dataURLToBlob(data.art));
+  else await DB.del('art');
   await boot();
   toast('已从备份恢复');
+}
+
+// ---------------- 布局：拖动调整左栏宽度和输入框高度 ----------------
+
+function artBounds() {
+  const w = window.innerWidth;
+  // 最宽不超过窗口的 45%，并且给聊天区留出至少 480px
+  return { min: 160, max: Math.max(160, Math.min(w * 0.45, w - 340 - 480)) };
+}
+
+function inputBounds() {
+  const h = els.chatPane.getBoundingClientRect().height || window.innerHeight;
+  return { min: 48, max: Math.max(48, h - 220) };
+}
+
+const clamp = (v, { min, max }) => Math.min(max, Math.max(min, v));
+
+function applyLayout() {
+  const s = state.settings;
+  if (s.artWidth) document.documentElement.style.setProperty('--art-w', clamp(s.artWidth, artBounds()) + 'px');
+  else document.documentElement.style.removeProperty('--art-w');
+  els.input.style.height = clamp(s.inputHeight || 88, inputBounds()) + 'px';
+}
+
+// 通用拖动：按住把手移动鼠标，onMove 收到相对起点的位移
+function makeDraggable(handle, onStart, onMove) {
+  handle.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const start = onStart();
+    const x0 = e.clientX;
+    const y0 = e.clientY;
+    handle.setPointerCapture(e.pointerId);
+    document.body.classList.add('resizing'); // 拖动经过消息窗口时不被它们“吃掉”鼠标
+    const move = (ev) => onMove(start, ev.clientX - x0, ev.clientY - y0);
+    const up = () => {
+      handle.removeEventListener('pointermove', move);
+      handle.removeEventListener('pointerup', up);
+      handle.removeEventListener('pointercancel', up);
+      document.body.classList.remove('resizing');
+      saveSettingsSoon();
+    };
+    handle.addEventListener('pointermove', move);
+    handle.addEventListener('pointerup', up);
+    handle.addEventListener('pointercancel', up);
+  });
+}
+
+function bindLayout() {
+  makeDraggable(els.artResizer, () => els.artPane.getBoundingClientRect().width, (w0, dx) => {
+    state.settings.artWidth = Math.round(clamp(w0 + dx, artBounds()));
+    applyLayout();
+  });
+  // 把手在左栏里面，阻止点击冒泡，否则松开鼠标时会触发“上传艺术图”
+  els.artResizer.addEventListener('click', (e) => e.stopPropagation());
+  els.artResizer.addEventListener('dblclick', (e) => {
+    e.stopPropagation();
+    state.settings.artWidth = null; // 双击恢复默认宽度
+    applyLayout();
+    saveSettingsSoon();
+  });
+  makeDraggable(els.composerResizer, () => els.input.getBoundingClientRect().height, (h0, dx, dy) => {
+    const atBottom = nearBottom();
+    state.settings.inputHeight = Math.round(clamp(h0 - dy, inputBounds()));
+    applyLayout();
+    if (atBottom) els.messages.scrollTop = els.messages.scrollHeight;
+  });
+  window.addEventListener('resize', () => { if (state.settings) applyLayout(); });
 }
 
 // ---------------- 右侧设置面板 ----------------
@@ -757,7 +976,6 @@ function fillSettingsForm() {
   els.worldText.value = s.worldText;
   els.persona.value = s.persona;
   els.rounds.value = s.rounds;
-  els.roundsValue.textContent = s.rounds;
   els.provider.value = s.provider;
   els.effort.value = s.effort;
   els.useTemperature.checked = s.useTemperature;
@@ -793,11 +1011,22 @@ function bindSettings() {
   onInput(els.systemPrompt, (el) => { s().systemPrompt = el.value; });
   onInput(els.worldText, (el) => { s().worldText = el.value; updateWorldCount(); });
   onInput(els.persona, (el) => { s().persona = el.value; });
-  onInput(els.rounds, (el) => {
-    s().rounds = Number(el.value);
-    els.roundsValue.textContent = el.value;
-    if (!state.editingId) renderMessages();
-  });
+  // 记忆轮数：可以直接输入，也可以点 − / +，范围 1–40
+  const setRounds = (n) => {
+    n = Math.round(Number(n));
+    if (!Number.isFinite(n)) n = s().rounds;
+    n = Math.min(ROUNDS_MAX, Math.max(ROUNDS_MIN, n));
+    els.rounds.value = n;
+    if (n === s().rounds) return;
+    s().rounds = n;
+    saveSettingsSoon();
+    updateStatus();
+    renderMessages();
+  };
+  els.rounds.addEventListener('change', () => setRounds(els.rounds.value));
+  els.rounds.addEventListener('keydown', (e) => { if (e.key === 'Enter') setRounds(els.rounds.value); });
+  els.btnRoundsMinus.addEventListener('click', () => setRounds(s().rounds - 1));
+  els.btnRoundsPlus.addEventListener('click', () => setRounds(s().rounds + 1));
   onInput(els.baseUrl, (el) => { s().baseUrls[s().provider] = el.value.trim(); });
   onInput(els.apiKey, (el) => { s().apiKeys[s().provider] = el.value.trim(); });
   onInput(els.model, (el) => { s().models[s().provider] = el.value.trim(); });
@@ -884,9 +1113,7 @@ function bindSettings() {
     await loadArt();
   });
 
-  els.btnExportTxt.addEventListener('click', () => exportText(false));
-  els.btnExportMd.addEventListener('click', () => exportText(true));
-  els.btnBackup.addEventListener('click', backup);
+  els.btnExport.addEventListener('click', exportMenu);
   els.btnRestore.addEventListener('click', () => els.fileRestore.click());
   els.fileRestore.addEventListener('change', async () => {
     const f = els.fileRestore.files[0];
@@ -899,8 +1126,16 @@ function bindChat() {
   els.btnSend.addEventListener('click', send);
   els.btnStop.addEventListener('click', stop);
   els.btnReply.addEventListener('click', () => { if (!state.generating) generateReply(); });
+  els.btnAddGreeting.addEventListener('click', enterGreetingMode);
+  els.btnGreetingReload.addEventListener('click', reloadGreetingPreview);
+  els.btnGreetingConfirm.addEventListener('click', confirmGreeting);
+  els.btnGreetingCancel.addEventListener('click', exitGreetingMode);
   els.input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.isComposing) { e.preventDefault(); send(); }
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.isComposing) {
+      e.preventDefault();
+      if (state.greetingMode) reloadGreetingPreview();
+      else send();
+    }
   });
 
   els.messages.addEventListener('scroll', () => {
@@ -956,6 +1191,7 @@ async function boot() {
     state.settings[k] = { ...DEFAULT_SETTINGS[k], ...(saved[k] || {}) };
   }
   if (!PROVIDERS[state.settings.provider]) state.settings.provider = 'anthropic';
+  state.settings.rounds = Math.min(ROUNDS_MAX, Math.max(ROUNDS_MIN, Number(state.settings.rounds) || 12));
 
   state.conversations = await DB.listConversations();
   if (!state.conversations.length) {
@@ -968,7 +1204,9 @@ async function boot() {
   state.settings.activeConvId = state.conv.id;
   state.renderedConvId = null;
   state.editingId = null;
+  state.greetingMode = null;
 
+  applyLayout();
   fillSettingsForm();
   renderConvSelect();
   renderMessages();
@@ -982,6 +1220,7 @@ function init() {
     .map(([k, p]) => `<option value="${k}">${escapeHtml(p.label)}</option>`).join('');
   bindSettings();
   bindChat();
+  bindLayout();
   // 消息高度变化时（内容载入、图片加载、展开 <details> 等），如果停留在底部就继续贴底
   Render.onResize(() => { if (state.follow) els.messages.scrollTop = els.messages.scrollHeight; });
   boot().catch((e) => {

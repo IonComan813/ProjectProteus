@@ -31,7 +31,8 @@ html, body {
 .app {
   display: grid;
   /* 左栏宽度按 2:3 竖图比例随窗口高度变化，但不超过窗口宽度的 28% */
-  grid-template-columns: clamp(220px, calc(100vh * 2 / 3), 28vw) minmax(420px, 1fr) 340px;
+  /* --art-w 是用户拖动后的宽度，没拖过就按 2:3 竖图比例随窗口高度变化 */
+  grid-template-columns: var(--art-w, clamp(220px, calc(100vh * 2 / 3), 28vw)) minmax(420px, 1fr) 340px;
   height: 100vh;
   min-width: 1000px;
 }
@@ -39,17 +40,40 @@ html, body {
 /* ---------- 左栏 ---------- */
 .art-pane {
   position: relative;
-  background: #0d0e11;
+  background: #000;
   border-right: 1px solid var(--border);
   overflow: hidden;
   cursor: pointer;
 }
+/* 图片宽度撑满左栏、不拉伸：比左栏高就上下裁掉，比左栏矮就上下留黑边 */
 .art-pane img {
+  position: absolute;
+  left: 0;
+  top: 50%;
   width: 100%;
-  height: 100%;
-  object-fit: cover;
+  height: auto;
+  transform: translateY(-50%);
   display: block;
 }
+
+/* 拖动把手 */
+.col-resizer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 7px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 2;
+}
+.row-resizer {
+  height: 7px;
+  margin: -12px -16px 5px;
+  cursor: row-resize;
+}
+.col-resizer:hover, .row-resizer:hover { background: rgba(201, 169, 110, .35); }
+body.resizing { user-select: none; }
+body.resizing iframe { pointer-events: none; }
 .art-placeholder {
   position: absolute;
   inset: 0;
@@ -206,14 +230,26 @@ html, body {
 .composer-row { display: flex; gap: 10px; max-width: 900px; margin: 0 auto; }
 .composer textarea {
   flex: 1;
-  resize: vertical;
-  min-height: 64px;
-  max-height: 40vh;
+  resize: none;
   font-family: var(--font);
   font-size: 15px;
   line-height: 1.6;
 }
 .composer-buttons { display: flex; flex-direction: column; gap: 6px; }
+.composer.greeting-mode textarea { border-color: var(--accent); }
+
+.greeting-send {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.msg.preview .msg-body { border-style: dashed; }
+
+.row.stepper input[type=number] { width: 64px; text-align: center; flex: none; }
 .composer-status { max-width: 900px; margin: 6px auto 0; min-height: 16px; }
 .error-bar {
   max-width: 900px;
@@ -343,6 +379,7 @@ textarea:focus, input:focus, select:focus { outline: 1px solid var(--accent); bo
 }
 .dialog-buttons {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
   padding: 0 16px 16px;
