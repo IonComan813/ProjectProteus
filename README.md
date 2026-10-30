@@ -1,6 +1,6 @@
 # Proteus
 
-一个接入大语言模型（LLM）的角色扮演聊天工具，玩法类似 SillyTavern。有桌面版（自带浏览器内核）和网页版两种用法。
+一个接入大语言模型（LLM）的角色扮演聊天工具，玩法类似 SillyTavern。有桌面版（Windows / macOS / Linux，自带浏览器内核）、安卓版和网页版。
 
 界面支持简体中文、繁體中文、English、日本語（右侧设置最下方切换）。基于 GPL v3 开源；使用者需自备 API Key。
 
@@ -19,6 +19,7 @@
 | `Proteus-版本号-mac-arm64.dmg` | macOS，Apple 芯片（M1 及更新） |
 | `Proteus-版本号-mac-x64.dmg` | macOS，Intel 芯片 |
 | `Proteus-版本号-linux-x86_64.AppImage` | Linux 版，加上可执行权限后直接运行 |
+| `Proteus-版本号-android.apk` | 安卓版（安卓 7.0 及以上），见下方说明 |
 
 桌面版自带 Chromium 浏览器内核，不需要另外安装浏览器，和网页版相比还有这些好处：
 
@@ -30,12 +31,23 @@
 > - **Windows** 第一次运行可能弹出「Windows 已保护你的电脑」，点「**更多信息**」→「**仍要运行**」即可
 > - **macOS** 第一次打开可能提示「无法验证开发者」，在「系统设置」→「隐私与安全性」底部点「**仍要打开**」即可
 
+### 安卓版
+
+在手机上下载 `Proteus-版本号-android.apk`，点击安装。第一次安装时，系统会要求允许浏览器（或文件管理器）"安装未知来源应用"，按提示打开即可。
+
+- 界面是手机布局：艺术图作为调暗的背景，聊天区叠在上面；点右上角的 ⚙ 打开设置
+- 导出剧情、世界卡和备份时会弹出系统的分享菜单，可以存到"文件"、网盘或发给别人
+- 安卓版和网页版一样受浏览器的跨域限制：Claude、OpenAI、Gemini、OpenRouter 官方接口都能用，少数不允许浏览器访问的中转站用不了（这类中转站请用桌面版）
+- 手机上的数据和电脑上的数据互不相通，可以用「完整备份」转移
+
 ### 网页版
 
 不需要安装任何东西：
 
 1. 下载整个文件夹（GitHub 页面上的 **Code → Download ZIP**，然后解压）
 2. 双击 `index.html`，用 Chrome 或 Edge 打开即可
+
+窗口宽度小于 1000 像素时（包括用手机浏览器打开）会自动切换为手机布局。
 
 ### 数据保存在哪里
 
@@ -193,11 +205,14 @@ js/render.js      消息显示（Markdown/HTML，沙箱隔离）
 js/app.js         界面逻辑、对话管理、上下文拼装
 js/vendor/        第三方库（marked：Markdown 解析，MIT 许可）
 electron/main.js  桌面版入口（窗口、安全设置、解除跨域限制）
+android/          安卓版工程（Capacitor），capacitor.config.json 是它的配置
+assets/           安卓版图标和启动画面的原图
+scripts/          打包用的小脚本
 build/icon.png    应用图标
 package.json      桌面版的依赖和打包配置
 ```
 
-网页部分全部是普通的 HTML/CSS/JavaScript，不需要编译。桌面版用 [Electron](https://www.electronjs.org/) 把同一套网页和 Chromium 内核打包在一起。
+网页部分全部是普通的 HTML/CSS/JavaScript，不需要编译。桌面版用 [Electron](https://www.electronjs.org/) 把同一套网页和 Chromium 内核打包在一起；安卓版用 [Capacitor](https://capacitorjs.com/) 把同一套网页放进系统自带的 WebView。
 
 ### 自己打包桌面版
 
@@ -209,6 +224,7 @@ npm start            # 直接运行桌面版
 npm run dist:win     # 打包 Windows 版（在 Linux 上打包需要安装 wine）
 npm run dist:linux   # 打包 Linux 版
 npm run dist:mac     # 打包 macOS 版（需要在苹果电脑上运行）
+npm run android:apk  # 打包安卓版（需要安装 Android SDK 和 JDK 21）
 ```
 
 打包结果在 `dist/` 文件夹里。
@@ -230,6 +246,21 @@ npm run dist:mac     # 打包 macOS 版（需要在苹果电脑上运行）
 - **只想试试能不能打包**：在仓库的 Actions 页面选「Build desktop app」→「Run workflow」。只打包不发布，安装包在那次运行页面底部的 Artifacts 里，保留 30 天。
 
 安装包里的下载说明来自 `.github/release-notes.md`。
+
+#### 安卓版的签名密钥
+
+安卓安装包必须签名，**而且以后每个版本都要用同一把密钥签名**，用户才能直接覆盖更新（否则只能先卸载，手机上的对话也会一起删掉）。签名密钥保存在仓库的 GitHub Secrets 里（Settings → Secrets and variables → Actions），需要两项：
+
+| 名称 | 内容 |
+|---|---|
+| `ANDROID_KEYSTORE_BASE64` | 签名密钥文件（.jks）的 base64 文本 |
+| `ANDROID_KEYSTORE_PASSWORD` | 密钥密码 |
+
+没有设置时，自动构建会改用临时的调试密钥签名（能安装，但以后无法覆盖更新），并在运行结果里给出警告。密钥文件和密码请另外妥善备份，**不要提交到仓库**。
+
+#### 安卓冒烟测试
+
+在 Actions 页面运行「Android smoke test」，会在 GitHub 的安卓模拟器里安装并打开应用，截图和日志在那次运行的 Artifacts 里。
 
 ## 多语言
 
