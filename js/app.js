@@ -853,6 +853,7 @@ async function runGeneration(m, context) {
   const ver = m.cur;
   let result = null;
   let error = null;
+  let aborted = false; // 你点了“停止”
   let pendingPaint = false;
 
   const frame = () => {
@@ -865,6 +866,7 @@ async function runGeneration(m, context) {
     if (f) Render.stream(f, m.versions[ver]);
   };
 
+  logConv = conv;
   try {
     result = await streamChat(providerCfg(), buildSystem(conv), windowOf(context, sentGreeting(conv)), {
       signal: controller.signal,
@@ -878,7 +880,8 @@ async function runGeneration(m, context) {
       },
     });
   } catch (e) {
-    if (e.name !== 'AbortError') error = e;
+    if (e.name === 'AbortError') aborted = true;
+    else error = e;
   }
 
   state.generating = null;
@@ -909,7 +912,9 @@ async function runGeneration(m, context) {
   else if (blocked) showError(t('gen.' + blocked));
   else if (failed) showError(t('gen.errorEnded'));
   else if (truncated) showError(t('gen.truncatedEmpty'));
-  else toast(t('gen.stopped'));
+  else if (aborted) toast(t('gen.stopped'));
+  // 正常结束却一个字都没有：例如接口把正文放进了思考字段，没法判断哪些是正文
+  else showError(t('gen.empty'));
 }
 
 function stop() {
@@ -1228,6 +1233,42 @@ async function backup() {
   download(`${t('export.backupPrefix')}-${dateStamp()}.json`, JSON.stringify(data, null, 2), 'application/json');
 }
 
+// 日志：最近一次请求模型时实际发送的请求和收到的原始回复，用于排查问题（只记在内存里，不保存）。
+// API Key 隐藏；请求来自还没解锁的加密世界卡时，受保护的设定也隐藏
+let logConv = null;
+
+function exportLog() {
+  const x = lastExchange;
+  if (!x) return toast(t('export.noLog'));
+  const headers = { ...x.request.headers };
+  if (headers['x-api-key']) headers['x-api-key'] = '***';
+  if (headers.authorization) headers.authorization = 'Bearer ***';
+  let body = x.request.body;
+  if (logConv && logConv.lock) {
+    const secrets = [...new Set([logConv.systemPrompt, logConv.worldText, logConv.greeting]
+      .filter((v) => v && v.trim()).flatMap((v) => [v, v.trim()]))].sort((a, b) => b.length - a.length);
+    const hide = (v) => secrets.reduce((out, sec) => out.split(sec).join(t('lock.protected')), v);
+    body = JSON.parse(JSON.stringify(body, (k, v) => (typeof v === 'string' ? hide(v) : v)));
+  }
+  const out = [
+    `Proteus log · ${x.time.toLocaleString()}`,
+    '',
+    '===== REQUEST =====',
+    `${x.request.method} ${x.request.url}`,
+    JSON.stringify(headers, null, 2),
+    '',
+    JSON.stringify(body, null, 2),
+    '',
+    '===== RESPONSE =====',
+  ];
+  if (x.response) out.push(`HTTP ${x.response.status}`, `content-type: ${x.response.contentType}`, '', x.response.body);
+  else out.push('(no response)');
+  if (x.error) out.push('', '===== ERROR =====', x.error);
+  const p = (n) => String(n).padStart(2, '0');
+  const tm = `${p(x.time.getHours())}${p(x.time.getMinutes())}${p(x.time.getSeconds())}`;
+  download(`proteus-log-${dateStamp()}-${tm}.txt`, out.join('\n'));
+}
+
 async function exportMenu() {
   const choice = await choose(t('export.menuTitle'), t('export.menuMessage'), [
     { label: t('btn.cancel'), value: null, ghost: true },
@@ -1236,12 +1277,14 @@ async function exportMenu() {
     { label: t('export.card'), value: 'card' },
     { label: t('export.conv'), value: 'conv', primary: true },
     { label: t('export.full'), value: 'full' },
+    { label: t('export.log'), value: 'log' },
   ]);
   if (choice === 'txt') exportText(false);
   else if (choice === 'md') exportText(true);
   else if (choice === 'card') await exportWorldCard();
   else if (choice === 'conv') await backupConv();
   else if (choice === 'full') await backup();
+  else if (choice === 'log') exportLog();
 }
 
 // 读取世界卡或完整备份（当前对话 / 全部对话）。剧情导出是 TXT/Markdown，不能读回

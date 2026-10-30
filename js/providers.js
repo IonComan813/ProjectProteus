@@ -112,28 +112,35 @@ function buildRequest(cfg, system, messages) {
 }
 
 async function readError(res) {
-  const text = await res.text().catch(() => '');
+  return errorFrom(res.status, await res.text().catch(() => ''));
+}
+
+// 由状态码和接口返回的原文组成错误信息
+function errorFrom(status, text) {
   let msg = text;
   try {
     let j = JSON.parse(text);
     if (Array.isArray(j)) j = j[0] || {}; // Gemini 的错误信息包在数组里
     msg = (j.error && (j.error.message || j.error.type)) || j.message || text;
   } catch (_) { /* 不是 JSON，直接用原文 */ }
-  const hint = [400, 401, 402, 403, 404, 413, 429, 500, 502, 503, 504, 529].includes(res.status) ? t('api.' + res.status) : '';
-  return new Error(`HTTP ${res.status}${hint ? ' — ' + hint : ''}\n${String(msg).slice(0, 600)}`);
+  const hint = [400, 401, 402, 403, 404, 413, 429, 500, 502, 503, 504, 529].includes(status) ? t('api.' + status) : '';
+  return new Error(`HTTP ${status}${hint ? ' — ' + hint : ''}\n${String(msg).slice(0, 600)}`);
 }
 
-// 逐行读取服务器推送的流（SSE），每拿到一个 data 就回调一次
-async function readSSE(res, onData) {
+// 逐行读取服务器推送的流（SSE），每拿到一个 data 就回调一次；onRaw 收到原始文字（记日志用）。
+// 返回是否读到过 data 行（没有的话可能是非流式回复）
+async function readSSE(res, onData, onRaw) {
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buf = '';
+  let seen = false;
   // 处理一行，返回 true 表示流已结束
   const handle = (raw) => {
     const line = raw.replace(/\r$/, '');
     if (!line.startsWith('data:')) return false; // 忽略 event: 行、注释行、空行
     const data = line.slice(5).trim();
     if (!data) return false;
+    seen = true;
     if (data === '[DONE]') return true;
     let json;
     try { json = JSON.parse(data); } catch (_) { return false; }
@@ -144,21 +151,47 @@ async function readSSE(res, onData) {
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
-      buf += decoder.decode(value, { stream: true });
+      const chunk = decoder.decode(value, { stream: true });
+      if (onRaw) onRaw(chunk);
+      buf += chunk;
       let idx;
       while ((idx = buf.indexOf('\n')) >= 0) {
         const line = buf.slice(0, idx);
         buf = buf.slice(idx + 1);
-        if (handle(line)) return;
+        if (handle(line)) return seen;
       }
     }
     // 最后一行后面可能没有换行
-    buf += decoder.decode();
+    const tail = decoder.decode();
+    if (onRaw && tail) onRaw(tail);
+    buf += tail;
     if (buf) handle(buf);
+    return seen;
   } finally {
     // 提前结束（[DONE] 或接口返回错误）时断开连接，不在后台继续接收
     reader.cancel().catch(() => {});
   }
+}
+
+// 最近一次对话请求的记录：实际发送的请求和收到的原始回复，供导出日志用。只在内存里，不保存
+let lastExchange = null;
+const LOG_MAX = 4 * 1024 * 1024; // 原始回复最多记 4 MB
+
+// 非流式回复：从完整的 JSON 里取出正文，返回结束原因
+function readWhole(j, onText) {
+  if (j.error) throw new Error(t('api.errorEvent') + (j.error.message || JSON.stringify(j.error)));
+  const join = (parts) => parts.filter((b) => b && b.type === 'text').map((b) => b.text).join('');
+  if (Array.isArray(j.content)) { // Anthropic 格式
+    const text = join(j.content);
+    if (text) onText(text);
+    return j.stop_reason || null;
+  }
+  const choice = j.choices && j.choices[0]; // OpenAI 格式
+  if (!choice) return null;
+  const content = choice.message && choice.message.content;
+  const text = Array.isArray(content) ? join(content) : content;
+  if (typeof text === 'string' && text) onText(text);
+  return choice.finish_reason || null;
 }
 
 // 发送一次对话请求。onText(增量文字) 会被多次调用。
@@ -166,35 +199,55 @@ async function readSSE(res, onData) {
 async function streamChat(cfg, system, messages, { signal, onText, onThinking }) {
   const req = buildRequest(cfg, system, messages);
   if (!cfg.apiKey) throw new Error(t('api.needKey'));
-  let res;
+  const log = lastExchange = { time: new Date(), request: { method: 'POST', url: req.url, headers: req.headers, body: req.body }, response: null, error: null };
+  const record = (s) => { if (log.response.body.length < LOG_MAX) log.response.body += s; };
   try {
-    res = await fetch(req.url, { method: 'POST', headers: req.headers, body: JSON.stringify(req.body), signal });
-  } catch (e) {
-    if (e.name === 'AbortError') throw e;
-    throw new Error(t('api.connectFailed') + '\n' + e.message);
-  }
-  if (!res.ok) throw await readError(res);
+    let res;
+    try {
+      res = await fetch(req.url, { method: 'POST', headers: req.headers, body: JSON.stringify(req.body), signal });
+    } catch (e) {
+      if (e.name === 'AbortError') throw e;
+      throw new Error(t('api.connectFailed') + '\n' + e.message);
+    }
+    const type = res.headers.get('content-type') || '';
+    log.response = { status: res.status, contentType: type, body: '' };
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      record(text);
+      throw errorFrom(res.status, text);
+    }
 
-  let stopReason = null;
-  if (req.format === 'anthropic') {
-    await readSSE(res, (ev) => {
-      if (ev.type === 'content_block_start' && ev.content_block && ev.content_block.type === 'thinking') onThinking && onThinking();
-      else if (ev.type === 'content_block_delta' && ev.delta && ev.delta.type === 'text_delta') onText(ev.delta.text);
-      else if (ev.type === 'message_delta' && ev.delta && ev.delta.stop_reason) stopReason = ev.delta.stop_reason;
-      else if (ev.type === 'error') throw new Error(t('api.errorEvent') + ((ev.error && ev.error.message) || JSON.stringify(ev)));
-    });
-  } else {
-    await readSSE(res, (ev) => {
-      if (ev.error) throw new Error(t('api.errorEvent') + (ev.error.message || JSON.stringify(ev.error)));
-      const choice = ev.choices && ev.choices[0];
-      if (!choice) return;
-      const d = choice.delta || {};
-      if (d.content) onText(d.content);
-      else if (d.reasoning_content || d.reasoning) onThinking && onThinking();
-      if (choice.finish_reason) stopReason = choice.finish_reason;
-    });
+    let stopReason = null;
+    const onEvent = req.format === 'anthropic'
+      ? (ev) => {
+        if (ev.type === 'content_block_start' && ev.content_block && ev.content_block.type === 'thinking') onThinking && onThinking();
+        else if (ev.type === 'content_block_delta' && ev.delta && ev.delta.type === 'text_delta') onText(ev.delta.text);
+        else if (ev.type === 'message_delta' && ev.delta && ev.delta.stop_reason) stopReason = ev.delta.stop_reason;
+        else if (ev.type === 'error') throw new Error(t('api.errorEvent') + ((ev.error && ev.error.message) || JSON.stringify(ev)));
+      }
+      : (ev) => {
+        if (ev.error) throw new Error(t('api.errorEvent') + (ev.error.message || JSON.stringify(ev.error)));
+        const choice = ev.choices && ev.choices[0];
+        if (!choice) return;
+        const d = choice.delta || {};
+        if (d.content) onText(d.content);
+        else if (d.reasoning_content || d.reasoning) onThinking && onThinking();
+        if (choice.finish_reason) stopReason = choice.finish_reason;
+      };
+    // 请求的是流式回复；有的中转站不支持流式，直接回一整段 JSON（非流式回复），这时整段解析
+    let streamed = false;
+    if (/application\/json/i.test(type)) record(await res.text());
+    else streamed = await readSSE(res, onEvent, record);
+    if (!streamed) {
+      let j = null;
+      try { j = JSON.parse(log.response.body); } catch (_) { /* 不是 JSON：当作没有内容 */ }
+      if (j && typeof j === 'object') stopReason = readWhole(j, onText);
+    }
+    return { stopReason };
+  } catch (e) {
+    log.error = e.name === 'AbortError' ? 'AbortError' : e.message;
+    throw e;
   }
-  return { stopReason };
 }
 
 // 获取模型列表
