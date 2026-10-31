@@ -162,6 +162,16 @@ body.resizing iframe { pointer-events: none; }
   background: rgba(201, 169, 110, .04);
 }
 .msg.greeting .msg-label { color: var(--accent); }
+/* 编辑时收起显示区域。左右的内边距和边框保留，里面窗口的宽度不变，内容不会重新排版 */
+.msg.editing .msg-body.stashed {
+  height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  border-top-width: 0;
+  border-bottom-width: 0;
+  overflow: hidden;
+  visibility: hidden;
+}
 .msg.generating .msg-label { color: var(--accent); }
 
 /* 记忆范围的分界线（之前的消息照常显示，只是模型看不到） */
@@ -367,6 +377,10 @@ body.resizing iframe { pointer-events: none; }
   color: var(--accent);
 }
 .hint { margin: 0 0 8px; font-size: 12px; color: var(--muted); line-height: 1.5; }
+/* 卡片最后一行（说明文字等）不再留下边距，和以按钮结尾的卡片一样，只留卡片自己的内边距 */
+.card > :last-child { margin-bottom: 0; }
+/* “下一次请求约 … token”和上面的轮数选择稍微隔开一点 */
+#tokenEstimate { margin-top: 8px; }
 .scroll-box {
   width: 100%;
   resize: vertical;

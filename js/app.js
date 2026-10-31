@@ -446,7 +446,9 @@ function updateView(v, it) {
     v.editor.remove();
     v.editor = null;
   }
-  v.holder.hidden = editing;
+  // 不能用 hidden（display: none）：开场白窗口隐藏期间如果重新载入，Electron 里新文档会一直处在
+  // “窗口不显示”的状态，量出来高度是 0，保存后显示空白。所以只是把显示区域收起来，窗口照常布局
+  v.holder.classList.toggle('stashed', editing);
 
   // 内容。只有开场白（和它的预览）允许运行 JS；锁定的开场白不能选中复制
   const scripts = !!(it.greeting || it.preview);
