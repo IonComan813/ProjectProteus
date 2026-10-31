@@ -1078,7 +1078,7 @@ const PREVIOUS_DEFAULT_SYSTEM_PROMPTS = [
   "あなたはロールプレイの語り手です。以下の世界観設定に従って物語を進め、ユーザーのキャラクター以外の登場人物すべてを演じ、環境や出来事を描写してください。\n- 常に世界観設定と矛盾しないようにしてください。\n- ユーザーのキャラクターの代わりに話したり、行動したり、決定したりしないでください。\n- 毎回の返信では、場面、他の登場人物の言動、出来事の展開を描写し、適度な長さにして、最後にユーザーが行動できる余地を残してください。\n- 日本語で書いてください。",
 ];
 
-let LANG = 'zh-CN';
+let LANG = detectLang(); // 读取设置之前（例如本机数据读取失败时的提示）先按系统语言
 
 function t(key, vars) {
   let s = (I18N[LANG] && I18N[LANG][key]);
@@ -1088,17 +1088,28 @@ function t(key, vars) {
   return s;
 }
 
-// 根据浏览器语言猜一个默认界面语言
+// 还没在设置里选过界面语言时，按系统语言自动选择：
+//   - Windows / macOS / Linux 原生应用：主进程通过网址参数 syslang 传入操作系统的首选语言
+//   - 安卓版、网页版：系统 WebView / 浏览器的首选语言
+// 不是支持的四种语言之一时用英语
 function detectLang() {
-  const nav = (navigator.language || '').toLowerCase();
-  if (nav.startsWith('zh')) return /tw|hk|mo|hant/.test(nav) ? 'zh-TW' : 'zh-CN';
-  if (nav.startsWith('ja')) return 'ja';
-  if (nav.startsWith('en')) return 'en';
-  return 'zh-CN';
+  const sys = new URLSearchParams(location.search).get('syslang');
+  return matchLang(sys || (navigator.languages && navigator.languages[0]) || navigator.language || '');
+}
+
+// 语言标签（例如 zh-Hans-CN、zh-TW、ja-JP、de-DE）对应到界面语言
+function matchLang(tag) {
+  const l = String(tag).toLowerCase().replace(/_/g, '-');
+  if (l === 'zh' || l.startsWith('zh-')) {
+    if (/(^|-)hans(-|$)/.test(l)) return 'zh-CN';
+    return /(^|-)(hant|tw|hk|mo)(-|$)/.test(l) ? 'zh-TW' : 'zh-CN';
+  }
+  if (l === 'ja' || l.startsWith('ja-')) return 'ja';
+  return 'en';
 }
 
 function setLang(lang) {
-  LANG = LANGS[lang] ? lang : 'zh-CN';
+  LANG = LANGS[lang] ? lang : detectLang();
   document.documentElement.lang = LANG;
   document.title = t('app.title');
   for (const el of document.querySelectorAll('[data-i18n]')) el.textContent = t(el.dataset.i18n);

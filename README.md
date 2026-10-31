@@ -1,8 +1,10 @@
 # Proteus
 
+简体中文 | [English](README.en.md)
+
 一个接入大语言模型（LLM）的角色扮演聊天工具，玩法类似 SillyTavern。有原生应用（Windows / macOS / Linux 和安卓）和网页版。
 
-界面支持简体中文、繁體中文、English、日本語（右侧设置最下方切换）。基于 AGPL v3 开源；使用者需自备 API Key。
+界面支持简体中文、繁體中文、English、日本語：第一次打开时按系统语言自动选择（不是这四种语言时显示英语），也可以随时在右侧设置的最下方切换（安卓版点右上角的 ⚙，滑到最下方）。基于 AGPL v3 开源；使用者需自备 API Key。
 
 ![界面截图](docs/screenshot.png)
 
@@ -282,6 +284,8 @@ keytool -genkeypair -v -keystore proteus.jks -alias proteus -keyalg RSA -keysize
 在 Actions 页面运行「Android smoke test」，会在 GitHub 的安卓模拟器里安装并打开应用，截图和日志在那次运行的 Artifacts 里。
 
 ## 多语言
+
+没有手动选过界面语言时，软件按系统语言自动选择：Windows / macOS / Linux 原生应用看操作系统的语言，安卓版看手机的系统语言，网页版看浏览器的语言。不是简体中文、繁體中文、English、日本語之一时显示英语。在设置里手动选过之后，以后都用你选的语言。
 
 切换界面语言时，除了界面文字，以下内容也会跟着变：
 

@@ -28,6 +28,12 @@ const LEAVE_TEXT = {
   ja: { message: 'モデルが返信を生成中です。閉じるとこの返信は失われます。', buttons: ['閉じる', 'キャンセル'] },
 };
 
+// 操作系统的首选语言（例如 zh-Hans-CN、en-US、ja-JP）。比 Chromium 内核自己的语言设置更准确
+function systemLanguage() {
+  const langs = app.getPreferredSystemLanguages ? app.getPreferredSystemLanguages() : [];
+  return langs[0] || app.getLocale() || '';
+}
+
 function isWebUrl(url) {
   return /^https?:\/\//i.test(url);
 }
@@ -51,8 +57,9 @@ function createWindow() {
     },
   });
 
-  // 版本号通过网址参数传给页面，显示在输入框下方的开源声明里
-  win.loadFile(path.join(ROOT, 'index.html'), { query: { version: app.getVersion() } });
+  // 版本号通过网址参数传给页面，显示在输入框下方的开源声明里。
+  // 系统语言也一起传过去：还没在设置里选过界面语言时，页面按它自动选择
+  win.loadFile(path.join(ROOT, 'index.html'), { query: { version: app.getVersion(), syslang: systemLanguage() } });
 
   // 消息里的链接、底部的项目网址：用系统默认浏览器打开，不在软件窗口里打开
   win.webContents.setWindowOpenHandler(({ url }) => {

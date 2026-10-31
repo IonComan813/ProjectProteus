@@ -11,7 +11,7 @@ const ROUNDS_MIN = 1;
 const ROUNDS_MAX = 40;
 
 const DEFAULT_SETTINGS = {
-  lang: null,          // null = 按浏览器语言
+  lang: null,          // null = 按系统语言自动选择（不支持的语言用英语）
   rememberKeys: true,  // false = API Key 只在本次打开期间有效，不写入本机存储（公用电脑）
   rounds: 12,
   artWidth: null,      // 左栏宽度（像素），null = 自动
