@@ -51,7 +51,8 @@ function createWindow() {
     },
   });
 
-  win.loadFile(path.join(ROOT, 'index.html'));
+  // 版本号通过网址参数传给页面，显示在输入框下方的开源声明里
+  win.loadFile(path.join(ROOT, 'index.html'), { query: { version: app.getVersion() } });
 
   // 消息里的链接、底部的项目网址：用系统默认浏览器打开，不在软件窗口里打开
   win.webContents.setWindowOpenHandler(({ url }) => {

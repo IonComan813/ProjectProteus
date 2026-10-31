@@ -40,6 +40,7 @@ const state = {
   views: new Map(),    // 消息 id → 界面元素
   renderedConvId: null,
   greetingMode: null,  // 正在用输入框编辑开场白时为 { preview }
+  version: null,       // 当前运行的版本号（网页版为 null）
 };
 
 const els = {};
@@ -572,18 +573,14 @@ function updateComposer() {
   // 手机上没有 Ctrl + Enter，提示里不提它
   const mobile = isMobileLayout() ? 'Mobile' : '';
   els.input.placeholder = t((gm ? 'input.greetingPlaceholder' : 'input.placeholder') + mobile);
-  updateStatus();
+  updateEstimate();
 }
 
-function updateStatus() {
-  if (state.generating) { els.status.textContent = t('status.generating'); return; }
-  if (state.greetingMode) { els.status.textContent = t('status.greetingMode'); return; }
-  const s = state.settings;
-  els.status.textContent = t(isMobileLayout() ? 'status.idleShort' : 'status.idle', {
-    rounds: s.rounds,
+// 记忆长度下方：下一次请求大约多少 token
+function updateEstimate() {
+  els.tokenEstimate.textContent = t('set.tokenEstimate', {
     tokens: estimateNextRequest().toLocaleString(),
     sys: estimateTokens(buildSystem()).toLocaleString(),
-    model: s.models[s.provider] || t('status.noModel'),
   });
 }
 
@@ -1500,7 +1497,7 @@ function fillConvFields() {
   els.btnRemoveArt.disabled = locked;
   els.artPane.classList.toggle('locked', locked);
   updateWorldCount();
-  updateStatus();
+  updateEstimate();
 }
 
 // 软件设置
@@ -1590,7 +1587,7 @@ function pickModel(m) {
   els.model.value = m;
   state.settings.models[state.settings.provider] = m;
   saveSettingsSoon();
-  updateStatus();
+  updateEstimate();
   closeModelMenu();
 }
 
@@ -1624,9 +1621,21 @@ function updateWorldCount() {
   els.worldCount.textContent = text ? t('set.worldCount', { chars: text.length.toLocaleString(), tokens: estimateTokens(text).toLocaleString() }) : '';
 }
 
-// 输入框下方的开源与免责声明（网址做成链接）
+// 当前运行的版本号：Windows / macOS / Linux 原生应用由 electron/main.js 通过网址参数传进来，
+// 安卓原生应用读应用信息；直接运行源代码的网页版没有版本号
+async function detectVersion() {
+  const v = new URLSearchParams(location.search).get('version');
+  if (v) return v;
+  if (NATIVE) {
+    try { return (await nativePlugin('App').getInfo()).version || null; } catch (_) { return null; }
+  }
+  return null;
+}
+
+// 输入框下方的开源与免责声明（网址做成链接，后面跟着当前版本）
 function renderFooter() {
-  const [before, after] = t('footer.license').split('{url}');
+  const version = state.version ? t('footer.version', { version: state.version }) : t('footer.versionWeb');
+  const [before, after] = t('footer.license', { version }).split('{url}');
   const a = document.createElement('a');
   a.href = PROJECT_URL;
   a.target = '_blank';
@@ -1659,8 +1668,8 @@ function applyLang(lang) {
 function bindSettings() {
   const s = () => state.settings;
   const c = () => state.conv;
-  const onSetting = (el, fn) => el.addEventListener('input', () => { fn(el); saveSettingsSoon(); updateStatus(); });
-  const onConv = (el, fn) => el.addEventListener('input', () => { fn(el); saveConvSoon(); updateStatus(); });
+  const onSetting = (el, fn) => el.addEventListener('input', () => { fn(el); saveSettingsSoon(); updateEstimate(); });
+  const onConv = (el, fn) => el.addEventListener('input', () => { fn(el); saveConvSoon(); updateEstimate(); });
 
   // 属于当前对话的设定
   onConv(els.systemPrompt, (el) => { if (!c().lock) c().systemPrompt = el.value; });
@@ -1676,7 +1685,7 @@ function bindSettings() {
     if (n === s().rounds) return;
     s().rounds = n;
     saveSettingsSoon();
-    updateStatus();
+    updateEstimate();
     renderMessages();
   };
   els.rounds.addEventListener('change', () => setRounds(els.rounds.value));
@@ -1701,7 +1710,7 @@ function bindSettings() {
     if (!s().models[s().provider] && p.defaultModel) s().models[s().provider] = p.defaultModel;
     fillProviderFields();
     saveSettingsSoon();
-    updateStatus();
+    updateEstimate();
   });
   els.langSelect.addEventListener('change', () => {
     s().lang = els.langSelect.value;
@@ -1714,7 +1723,7 @@ function bindSettings() {
     c().systemPrompt = t('defaultSystemPrompt');
     els.systemPrompt.value = c().systemPrompt;
     saveConvSoon();
-    updateStatus();
+    updateEstimate();
   });
 
   els.btnUploadWorld.addEventListener('click', () => els.fileWorld.click());
@@ -1730,7 +1739,7 @@ function bindSettings() {
     els.worldText.value = text;
     updateWorldCount();
     saveConvSoon();
-    updateStatus();
+    updateEstimate();
     toast(t('set.worldLoaded', { name: f.name }));
   });
   els.btnClearWorld.addEventListener('click', () => {
@@ -1739,7 +1748,7 @@ function bindSettings() {
     els.worldText.value = '';
     updateWorldCount();
     saveConvSoon();
-    updateStatus();
+    updateEstimate();
   });
 
   els.btnToggleKey.addEventListener('click', () => {
@@ -1950,6 +1959,7 @@ function init() {
   bindBackButton();
   // 消息高度变化时（内容载入、图片加载、展开 <details> 等），如果停留在底部就继续贴底
   Render.onResize(() => { if (state.follow) els.messages.scrollTop = els.messages.scrollHeight; });
+  detectVersion().then((v) => { state.version = v; renderFooter(); });
   boot().catch((e) => {
     console.error(e);
     showError(t('boot.failed', { msg: e.message }));
