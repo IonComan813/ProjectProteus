@@ -255,6 +255,8 @@ function newConversation(from) {
 function normalizeConv(c, legacy) {
   if (c.title === '新对话') c.title = '';
   if (typeof c.systemPrompt !== 'string') c.systemPrompt = legacy && typeof legacy.systemPrompt === 'string' ? legacy.systemPrompt : t('defaultSystemPrompt');
+  // 还是旧版本的默认 System Prompt（没改过）就换成新的默认值；锁定的对话不能改
+  if (!c.lock && isPreviousDefaultSystemPrompt(c.systemPrompt)) c.systemPrompt = t('defaultSystemPrompt');
   if (typeof c.worldText !== 'string') c.worldText = (legacy && legacy.worldText) || '';
   if (typeof c.persona !== 'string') c.persona = (legacy && legacy.persona) || '';
   if (c.greeting === undefined) c.greeting = null;
