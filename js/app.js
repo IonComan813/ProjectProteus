@@ -1835,6 +1835,7 @@ function bindSettings() {
     clearTimeout(convSaveTimer);
     convSavePending = null;
     await DB.destroy();
+    forgetNativeOrigins();
     location.reload();
   });
 

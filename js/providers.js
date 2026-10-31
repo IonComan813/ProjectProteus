@@ -210,6 +210,12 @@ function rememberNativeOrigin(origin) {
   try { localStorage.setItem(NATIVE_ORIGINS_KEY, JSON.stringify([...nativeOrigins])); } catch (_) { /* 只在这次打开期间记住 */ }
 }
 
+// 忘掉记住的接口地址（“清除本机所有数据”时调用）
+function forgetNativeOrigins() {
+  nativeOrigins.clear();
+  try { localStorage.removeItem(NATIVE_ORIGINS_KEY); } catch (_) { /* 本来就没存 */ }
+}
+
 // 原生请求不理会 signal：点“停止”时不再等它，直接按中止处理（原生请求在后台结束，结果丢弃）
 function abortable(promise, signal) {
   if (!signal) return promise;
