@@ -40,7 +40,7 @@ Download `Proteus-<version>-android.apk` on your phone and tap it to install. Th
 
 - The interface uses a mobile layout: the artwork becomes a dimmed background behind the chat; tap ⚙ at the top right to open the settings
 - Exporting a story, world card or backup opens the system share menu, so you can save it to Files, a cloud drive, or send it to someone
-- Like the web version, the Android app is subject to the browser's CORS restrictions: the official Claude, OpenAI and Gemini APIs and OpenRouter all work, but a few relay endpoints that block browser access don't (use the Windows / macOS / Linux app for those)
+- Relay endpoints that block direct browser access (CORS) work too: when a request can't get through, the app resends it through Android's own network connection and remembers that endpoint. For those endpoints the reply appears all at once when it is finished instead of as it is written. The official Claude, OpenAI and Gemini APIs and OpenRouter are not affected and still show replies as they are written
 - Data on your phone and on your computer are separate; use "Full backup (all conversations)" to move it
 
 ### Web version
@@ -203,7 +203,7 @@ If you see "The model returned no content", export the log from "Export / Backup
 
 ### If you see "Could not connect to the API"
 
-For security, browsers block some direct requests to external APIs ("CORS restrictions"). The official Claude and OpenAI APIs, Gemini and OpenRouter all allow direct browser access; a few relays don't. **The Windows / macOS / Linux apps don't have this restriction**, so use one of them in that case (the Android app has the same restriction as the web version).
+For security, browsers block some direct requests to external APIs ("CORS restrictions"). The official Claude and OpenAI APIs, Gemini and OpenRouter all allow direct browser access; a few relays don't. **The native apps don't have this restriction**, so use one of them in that case (on Android, replies from such endpoints appear all at once when finished).
 
 ## Project structure
 
