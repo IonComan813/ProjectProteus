@@ -1,6 +1,6 @@
 # Proteus
 
-一个接入大语言模型（LLM）的角色扮演聊天工具，玩法类似 SillyTavern。有桌面版（Windows / macOS / Linux，自带浏览器内核）、安卓版和网页版。
+一个接入大语言模型（LLM）的角色扮演聊天工具，玩法类似 SillyTavern。有原生应用（Windows / macOS / Linux 和安卓）和网页版。
 
 界面支持简体中文、繁體中文、English、日本語（右侧设置最下方切换）。基于 AGPL v3 开源；使用者需自备 API Key。
 
@@ -8,7 +8,7 @@
 
 ## 下载与安装
 
-### 桌面版（推荐）
+### 原生应用：Windows / macOS / Linux（推荐）
 
 到 [Releases 页面](https://github.com/IonComan813/ProjectProteus/releases) 下载最新版本：
 
@@ -21,23 +21,24 @@
 | `Proteus-版本号-linux-x86_64.AppImage` | Linux 版，加上可执行权限后直接运行 |
 | `Proteus-版本号-android.apk` | 安卓版（安卓 7.0 及以上），见下方说明 |
 
-桌面版自带 Chromium 浏览器内核，不需要另外安装浏览器，和网页版相比还有这些好处：
+Windows / macOS / Linux 的原生应用自带 Chromium 浏览器内核，不需要另外安装浏览器，和网页版相比还有这些好处：
 
 - **没有跨域限制**：不允许浏览器直接访问的中转站也能正常使用
 - **数据和浏览器分开保存**：不会被清理浏览器数据误删，其他网页也读不到 Proteus 的数据
 
-> 安装程序没有经过付费的代码签名：
+> 原生应用没有经过付费的代码签名，安卓版也不是从应用商店下载的，第一次安装或打开时可能会看到提示：
 >
 > - **Windows** 第一次运行可能弹出「Windows 已保护你的电脑」，点「**更多信息**」→「**仍要运行**」即可
 > - **macOS** 第一次打开可能提示「无法验证开发者」，在「系统设置」→「隐私与安全性」底部点「**仍要打开**」即可
+> - **安卓** 安装时可能提示「出于安全考虑，已禁止安装未知来源的应用」（各品牌手机的说法略有不同），按提示允许浏览器（或文件管理器）「安装未知应用」，再回来点安装即可
 
-### 安卓版
+### 原生应用：安卓
 
 在手机上下载 `Proteus-版本号-android.apk`，点击安装。第一次安装时，系统会要求允许浏览器（或文件管理器）"安装未知来源应用"，按提示打开即可。
 
 - 界面是手机布局：艺术图作为调暗的背景，聊天区叠在上面；点右上角的 ⚙ 打开设置
 - 导出剧情、世界卡和备份时会弹出系统的分享菜单，可以存到"文件"、网盘或发给别人
-- 安卓版和网页版一样受浏览器的跨域限制：Claude、OpenAI、Gemini 官方接口和 OpenRouter 都能用，少数不允许浏览器访问的中转站用不了（这类中转站请用桌面版）
+- 安卓版和网页版一样受浏览器的跨域限制：Claude、OpenAI、Gemini 官方接口和 OpenRouter 都能用，少数不允许浏览器访问的中转站用不了（这类中转站请用 Windows / macOS / Linux 的原生应用）
 - 手机上的数据和电脑上的数据互不相通，可以用「完整备份（全部对话）」转移
 
 ### 网页版
@@ -51,7 +52,7 @@
 
 ### 数据保存在哪里
 
-所有数据（设定、对话、图片、API Key）都只保存在**这台电脑上**：桌面版保存在软件自己的数据文件夹里，网页版保存在打开它的浏览器里。桌面版和网页版的数据互不相通，可以用「完整备份（全部对话）」在两者之间转移。
+所有数据（设定、对话、图片、API Key）都只保存在**这台设备上**：原生应用保存在应用自己的数据文件夹里，网页版保存在打开它的浏览器里。不同设备之间、原生应用和网页版之间的数据都互不相通，可以用「完整备份（全部对话）」转移。
 
 换电脑、重装系统，或者（网页版）清除浏览器数据都会看不到原来的内容，所以请定期用右侧「导出 / 备份…」里的「完整备份（全部对话）」导出一份。
 
@@ -100,7 +101,7 @@
 - **开场白**还可以使用 JS（`<script>`）
 - **之后的消息**（你的回复和模型的回复）禁用 JS，只用 Markdown、HTML、CSS 美化
 
-每条消息都显示在一个独立的"沙箱"小窗口里，里面的样式和脚本只在这条消息内生效，不会影响聊天区以外的界面，也不会影响其他消息。开场白里的脚本也读不到本页面的任何数据（包括 API Key），不能让本页面跳转；但可以打开新窗口（桌面版会用系统浏览器打开网页）。
+每条消息都显示在一个独立的"沙箱"小窗口里，里面的样式和脚本只在这条消息内生效，不会影响聊天区以外的界面，也不会影响其他消息。开场白里的脚本也读不到本页面的任何数据（包括 API Key），不能让本页面跳转；但可以打开新窗口（Windows / macOS / Linux 的原生应用会用系统浏览器打开网页）。
 
 ### 消息操作（鼠标移到消息上就会出现）
 
@@ -170,7 +171,7 @@
 
 Proteus 在使用者自己的电脑上运行，API Key 只保存在本机浏览器里，不会经过任何第三方服务器，导出的世界卡和备份里也不包含 Key。需要注意：
 
-- （网页版）Chrome 里所有用双击方式打开的本地网页共用同一块存储空间，理论上一个恶意的本地 HTML 文件可以读到 Proteus 保存的数据。不要用同一个浏览器打开来路不明的 HTML 文件，或者改用桌面版——桌面版的数据和浏览器完全分开
+- （网页版）Chrome 里所有用双击方式打开的本地网页共用同一块存储空间，理论上一个恶意的本地 HTML 文件可以读到 Proteus 保存的数据。不要用同一个浏览器打开来路不明的 HTML 文件，或者改用原生应用——原生应用的数据和浏览器完全分开
 - 别人分享的世界卡里，开场白可以带 JS。它运行在隔离的沙箱里，读不到 API Key 和你的数据，但可以加载外部图片等资源（也就能知道有人打开了这张卡）
 - 网页版目前只在 Chrome / Edge 中测试过；Firefox、Safari 对本地网页的存储支持不稳定
 
@@ -200,7 +201,7 @@ Proteus 在使用者自己的电脑上运行，API Key 只保存在本机浏览�
 
 ### 如果提示「无法连接到接口」
 
-浏览器出于安全考虑，会拦截一部分直接访问外部接口的请求（"跨域限制"）。Claude 官方、OpenAI 官方、Gemini 和 OpenRouter 都允许浏览器直接访问；少数中转站不允许。**桌面版没有这个限制**，遇到这种情况请改用桌面版。
+浏览器出于安全考虑，会拦截一部分直接访问外部接口的请求（"跨域限制"）。Claude 官方、OpenAI 官方、Gemini 和 OpenRouter 都允许浏览器直接访问；少数中转站不允许。**Windows / macOS / Linux 的原生应用没有这个限制**，遇到这种情况请改用它（安卓版和网页版一样有这个限制）。
 
 ## 文件结构
 
@@ -214,23 +215,23 @@ js/providers.js   和各家模型接口通信
 js/render.js      消息显示（Markdown/HTML，沙箱隔离）
 js/app.js         界面逻辑、对话管理、上下文拼装
 js/vendor/        第三方库（marked：Markdown 解析，MIT 许可，许可证全文在 marked.LICENSE.md）
-electron/main.js  桌面版入口（窗口、安全设置、解除跨域限制）
+electron/main.js  Windows / macOS / Linux 原生应用的入口（窗口、安全设置、解除跨域限制）
 android/          安卓版工程（Capacitor），capacitor.config.json 是它的配置
 assets/           安卓版图标和启动画面的原图
 scripts/          打包用的小脚本（包括检查第三方许可证、生成第三方声明的 third-party-notices.js）
 build/icon.png    应用图标
-package.json      桌面版的依赖和打包配置
+package.json      依赖，以及 Windows / macOS / Linux 原生应用的打包配置
 ```
 
-网页部分全部是普通的 HTML/CSS/JavaScript，不需要编译。桌面版用 [Electron](https://www.electronjs.org/) 把同一套网页和 Chromium 内核打包在一起；安卓版用 [Capacitor](https://capacitorjs.com/) 把同一套网页放进系统自带的 WebView。
+网页部分全部是普通的 HTML/CSS/JavaScript，不需要编译。Windows / macOS / Linux 的原生应用用 [Electron](https://www.electronjs.org/) 把同一套网页和 Chromium 内核打包在一起；安卓版用 [Capacitor](https://capacitorjs.com/) 把同一套网页放进系统自带的 WebView。
 
-### 自己打包桌面版
+### 自己打包原生应用
 
 需要先安装 [Node.js](https://nodejs.org/)：
 
 ```bash
 npm install
-npm start            # 直接运行桌面版
+npm start            # 直接运行（Windows / macOS / Linux 原生应用）
 npm run dist:win     # 打包 Windows 版（在 Linux 上打包需要安装 wine）
 npm run dist:linux   # 打包 Linux 版
 npm run dist:mac     # 打包 macOS 版（需要在苹果电脑上运行）
@@ -300,7 +301,7 @@ AGPL v3 在 GPL v3 的基础上多了一条：修改了本软件并通过网络�
 第三方组件和它们的许可证：
 
 - 网页部分（所有版本）：[marked](https://github.com/markedjs/marked)（MIT）
-- 桌面版：[Electron](https://www.electronjs.org/)（MIT）及其包含的 Chromium 组件
-- 安卓版：[Capacitor](https://capacitorjs.com/)（MIT）、Apache Cordova、AndroidX、Kotlin 等（Apache-2.0）
+- Windows / macOS / Linux 原生应用：[Electron](https://www.electronjs.org/)（MIT）及其包含的 Chromium 组件
+- 安卓原生应用：[Capacitor](https://capacitorjs.com/)（MIT）、Apache Cordova、AndroidX、Kotlin 等（Apache-2.0）
 
-完整清单和许可证全文在安装包里的 `THIRD_PARTY_NOTICES.txt`：桌面版在程序旁边（和 `LICENSE.txt`、Electron 的 `LICENSE.electron.txt`、`LICENSES.chromium.html` 放在一起；macOS 在 `Proteus.app/Contents/Resources` 里），安卓版在 APK 里。
+完整清单和许可证全文在安装包里的 `THIRD_PARTY_NOTICES.txt`：Windows / macOS / Linux 的原生应用在程序旁边（和 `LICENSE.txt`、Electron 的 `LICENSE.electron.txt`、`LICENSES.chromium.html` 放在一起；macOS 在 `Proteus.app/Contents/Resources` 里），安卓版在 APK 里。

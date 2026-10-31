@@ -2,7 +2,7 @@
   "name": "proteus",
   "productName": "海神Proteus",
   "version": "0.1.0",
-  "description": "Roleplay chat app for large language models (desktop version with built-in Chromium)",
+  "description": "Roleplay chat app for large language models (native app with built-in Chromium)",
   "main": "electron/main.js",
   "author": "IonComan813",
   "license": "AGPL-3.0-only",

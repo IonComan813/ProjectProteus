@@ -4,7 +4,7 @@
 //   node scripts/third-party-notices.js android <输出文件> [依赖清单]
 //
 // 两个版本都有：网页里内置的 marked（js/vendor），以及 package.json 里的运行时依赖（目前没有）。
-// 桌面版：Electron 和 Chromium 自己的声明（LICENSE.electron.txt、LICENSES.chromium.html）由打包工具放在程序旁边，这里只指明。
+// Windows / macOS / Linux 原生应用（desktop）：Electron 和 Chromium 自己的声明（LICENSE.electron.txt、LICENSES.chromium.html）由打包工具放在程序旁边，这里只指明。
 // 安卓版：再加上 Capacitor 模块（许可证读自 node_modules）和 Gradle 打进 APK 的依赖。依赖清单由
 //   android 里的 listReleaseDependencies 任务生成，默认 android/app/build/release-dependencies.txt；
 //   许可证读自 Gradle 缓存里的 POM（Gradle 解析依赖时已经下载好了）。
@@ -83,7 +83,7 @@ function npmPackage(dir) {
   return { name: pkg.name, version: pkg.version, license, url: String(url).replace(/^git\+/, ''), text };
 }
 
-// package.json 的运行时依赖（dependencies，不含开发依赖）会被打进桌面版，逐个检查
+// package.json 的运行时依赖（dependencies，不含开发依赖）会被打进 Windows / macOS / Linux 原生应用，逐个检查
 function npmRuntime() {
   const lock = JSON.parse(read(path.join(ROOT, 'package-lock.json')));
   return Object.entries(lock.packages)
@@ -208,7 +208,8 @@ function render(target, components) {
   const app = JSON.parse(read(path.join(ROOT, 'package.json')));
   const version = process.env.APP_VERSION || app.version; // 安卓的自动构建从标签取版本号，不改 package.json
   const out = [];
-  out.push(`Third-party notices for ${app.productName} ${version} (${target})`);
+  const label = target === 'desktop' ? 'native app for Windows / macOS / Linux' : 'native app for Android';
+  out.push(`Third-party notices for ${app.productName} ${version} (${label})`);
   out.push('');
   out.push(`${app.productName} is licensed under the GNU Affero General Public License v3 (see LICENSE).`);
   out.push(`Source code: ${app.homepage}`);
