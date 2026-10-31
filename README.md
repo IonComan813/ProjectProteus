@@ -1,252 +1,252 @@
 # Proteus
 
-简体中文 | [English](README.en.md)
+[简体中文](README.zh-CN.md) | English
 
-一个接入大语言模型（LLM）的角色扮演聊天工具，玩法类似 SillyTavern。有原生应用（Windows / macOS / Linux 和安卓）和网页版。
+A roleplay chat app for large language models (LLMs), similar in spirit to SillyTavern. Available as native apps (Windows / macOS / Linux and Android) and as a web version.
 
-界面支持简体中文、繁體中文、English、日本語：第一次打开时按系统语言自动选择（不是这四种语言时显示英语），也可以随时在右侧设置的最下方切换（安卓版点右上角的 ⚙，滑到最下方）。基于 AGPL v3 开源；使用者需自备 API Key。
+The interface is available in Simplified Chinese, Traditional Chinese, English and Japanese. On first launch it follows your system language (English if your system language is none of these four); you can switch at any time at the bottom of the settings panel on the right (on Android, tap ⚙ at the top right and scroll to the bottom). Open source under AGPL v3; you need your own API key.
 
-![界面截图](docs/screenshot.png)
+![Screenshot](docs/screenshot.png)
 
-## 下载与安装
+## Download and install
 
-### 原生应用：Windows / macOS / Linux（推荐）
+### Native apps: Windows / macOS / Linux (recommended)
 
-到 [Releases 页面](https://github.com/IonComan813/ProjectProteus/releases) 下载最新版本：
+Download the latest version from the [Releases page](https://github.com/IonComan813/ProjectProteus/releases):
 
-| 文件 | 说明 |
+| File | Description |
 |---|---|
-| `Proteus-Setup-版本号-win-x64.exe` | Windows 安装程序，装好后桌面和开始菜单会有快捷方式 |
-| `Proteus-版本号-win-x64.zip` | Windows 免安装版，解压后双击 `Proteus.exe` |
-| `Proteus-版本号-mac-arm64.dmg` | macOS，Apple 芯片（M1 及更新） |
-| `Proteus-版本号-mac-x64.dmg` | macOS，Intel 芯片 |
-| `Proteus-版本号-linux-x86_64.AppImage` | Linux 版，加上可执行权限后直接运行 |
-| `Proteus-版本号-android.apk` | 安卓版（安卓 7.0 及以上），见下方说明 |
+| `Proteus-Setup-<version>-win-x64.exe` | Windows installer; adds shortcuts to the desktop and Start menu |
+| `Proteus-<version>-win-x64.zip` | Windows portable version: unzip and double-click `Proteus.exe` |
+| `Proteus-<version>-mac-arm64.dmg` | macOS, Apple silicon (M1 and later) |
+| `Proteus-<version>-mac-x64.dmg` | macOS, Intel |
+| `Proteus-<version>-linux-x86_64.AppImage` | Linux: make it executable and run it |
+| `Proteus-<version>-android.apk` | Android (7.0 and later), see below |
 
-Windows / macOS / Linux 的原生应用自带 Chromium 浏览器内核，不需要另外安装浏览器，和网页版相比还有这些好处：
+The Windows / macOS / Linux apps come with a built-in Chromium engine, so no separate browser is needed. Compared with the web version they also offer:
 
-- **没有跨域限制**：不允许浏览器直接访问的中转站也能正常使用
-- **数据和浏览器分开保存**：不会被清理浏览器数据误删，其他网页也读不到 Proteus 的数据
+- **No CORS restrictions**: relay endpoints that don't allow direct browser access work too
+- **Data kept separate from your browser**: clearing browser data won't delete it, and other web pages can't read Proteus's data
 
-> 原生应用没有经过付费的代码签名，安卓版也不是从应用商店下载的，第一次安装或打开时可能会看到提示：
+> The native apps are not code-signed (paid certificates), and the Android app is not installed from an app store, so you may see a warning on first install or launch:
 >
-> - **Windows** 第一次运行可能弹出「Windows 已保护你的电脑」，点「**更多信息**」→「**仍要运行**」即可
-> - **macOS** 第一次打开可能提示「无法验证开发者」，在「系统设置」→「隐私与安全性」底部点「**仍要打开**」即可
-> - **安卓** 安装时可能提示「出于安全考虑，已禁止安装未知来源的应用」（各品牌手机的说法略有不同），按提示允许浏览器（或文件管理器）「安装未知应用」，再回来点安装即可
+> - **Windows** may show "Windows protected your PC" on first run: click "**More info**" → "**Run anyway**"
+> - **macOS** may say the developer cannot be verified: go to System Settings → Privacy & Security and click "**Open Anyway**" at the bottom
+> - **Android** may block installing apps from unknown sources (the wording varies by phone brand): follow the prompt to allow your browser (or file manager) to "install unknown apps", then go back and tap Install
 
-### 原生应用：安卓
+### Native app: Android
 
-在手机上下载 `Proteus-版本号-android.apk`，点击安装。第一次安装时，系统会要求允许浏览器（或文件管理器）"安装未知来源应用"，按提示打开即可。
+Download `Proteus-<version>-android.apk` on your phone and tap it to install. The first time, Android will ask you to allow your browser (or file manager) to install unknown apps; just follow the prompt.
 
-- 界面是手机布局：艺术图作为调暗的背景，聊天区叠在上面；点右上角的 ⚙ 打开设置
-- 导出剧情、世界卡和备份时会弹出系统的分享菜单，可以存到"文件"、网盘或发给别人
-- 安卓版和网页版一样受浏览器的跨域限制：Claude、OpenAI、Gemini 官方接口和 OpenRouter 都能用，少数不允许浏览器访问的中转站用不了（这类中转站请用 Windows / macOS / Linux 的原生应用）
-- 手机上的数据和电脑上的数据互不相通，可以用「完整备份（全部对话）」转移
+- The interface uses a mobile layout: the artwork becomes a dimmed background behind the chat; tap ⚙ at the top right to open the settings
+- Exporting a story, world card or backup opens the system share menu, so you can save it to Files, a cloud drive, or send it to someone
+- Like the web version, the Android app is subject to the browser's CORS restrictions: the official Claude, OpenAI and Gemini APIs and OpenRouter all work, but a few relay endpoints that block browser access don't (use the Windows / macOS / Linux app for those)
+- Data on your phone and on your computer are separate; use "Full backup (all conversations)" to move it
 
-### 网页版
+### Web version
 
-不需要安装任何东西：
+Nothing to install:
 
-1. 下载整个文件夹（GitHub 页面上的 **Code → Download ZIP**，然后解压）
-2. 双击 `index.html`，用 Chrome 或 Edge 打开即可
+1. Download the whole folder (**Code → Download ZIP** on the GitHub page, then unzip it)
+2. Double-click `index.html` and open it in Chrome or Edge
 
-窗口宽度小于 1000 像素时（包括用手机浏览器打开）会自动切换为手机布局。
+When the window is narrower than 1000 pixels (including on a phone browser), the mobile layout is used automatically.
 
-### 数据保存在哪里
+### Where is my data stored?
 
-所有数据（设定、对话、图片、API Key）都只保存在**这台设备上**：原生应用保存在应用自己的数据文件夹里，网页版保存在打开它的浏览器里。不同设备之间、原生应用和网页版之间的数据都互不相通，可以用「完整备份（全部对话）」转移。
+All data (settings, conversations, images, API keys) is stored **only on this device**: the native apps keep it in their own data folder, and the web version keeps it in the browser you opened it with. Data is not shared between devices, or between the native apps and the web version; use "Full backup (all conversations)" to move it.
 
-换电脑、重装系统，或者（网页版）清除浏览器数据都会看不到原来的内容，所以请定期用右侧「导出 / 备份…」里的「完整备份（全部对话）」导出一份。
+Switching computers, reinstalling your system or (for the web version) clearing browser data will make your existing content disappear, so export a "Full backup (all conversations)" regularly from "Export / Backup…" on the right.
 
-## 界面
+## Interface
 
-| 区域 | 作用 |
+| Area | What it does |
 |---|---|
-| 左栏 | 艺术图。点击即可上传，推荐用竖版图片。图片按左栏宽度显示、不会被拉伸：比左栏高就裁掉上下两端，比左栏矮就上下留黑边。拖动左栏右边缘可以调整宽度（最宽约为窗口的 45%，并保证聊天区不被挤得太窄），双击边缘恢复默认 |
-| 中栏 | 剧情区。顶部可以切换、新建、重命名、删除对话；底部是输入框，按 **Ctrl + Enter** 发送。拖动输入框上方的边缘可以调整输入框高度 |
-| 右栏 | 设置，从上到下依次是：System Prompt → 世界观 → 用户角色人设 → 记忆长度 → 模型与接口 → 艺术图 → 导出与备份 → 本机数据 → 语言 |
+| Left | Artwork. Click to upload; portrait images work best. The image is shown at the width of the left column without stretching: if it is taller than the column, the top and bottom are cropped; if it is shorter, black bars are added above and below. Drag the right edge of the column to resize it (up to about 45% of the window, always leaving enough room for the chat); double-click the edge to reset |
+| Middle | The story. At the top you can switch, create, rename and delete conversations; at the bottom is the input box, press **Ctrl + Enter** to send. Drag the edge above the input box to change its height |
+| Right | Settings, from top to bottom: System Prompt → World → User's character → Memory length → Model & API → Artwork → Export & backup → Local data → Language |
 
-### 每个对话的设定是独立的
+### Each conversation has its own settings
 
-**System Prompt、世界观、用户角色人设、开场白和艺术图属于各自的对话。** 点「新对话」时会复制当前对话的这几项（剧情清空），之后两边各改各的，互不影响；切回旧对话，看到的还是旧对话自己的设定。
+**The System Prompt, world, user's character, opening and artwork belong to each conversation.** "＋ New chat" copies these from the current conversation (with an empty story); after that the two are independent. Switching back to an older conversation shows that conversation's own settings.
 
-记忆长度、模型与接口、API Key、界面语言和布局属于软件本身的设置，所有对话共用。
+Memory length, Model & API, API keys, interface language and layout are app settings shared by all conversations.
 
-### 开场白
+### Opening
 
-对话完全为空时，「发送」按钮下方会出现「添加开场白」按钮。点击后输入框变为编辑开场白，右侧按钮变成：
+When a conversation is completely empty, an "Add opening" button appears below "Send". Click it and the input box switches to editing the opening, with these buttons on the right:
 
-- **重载**：在聊天区显示渲染后的开场白预览，输入框内容不变（也可以按 Ctrl + Enter）。改了内容再点一次就会刷新预览
-- **确认**：保存开场白并清空输入框，随后会询问开场白是否发送给模型
-- **取消**：退出开场白编辑
+- **Reload**: preview the rendered opening in the chat; the input box keeps its content (Ctrl + Enter does the same). Click again after editing to refresh the preview
+- **Confirm**: save the opening and clear the input box; you will then be asked whether to send the opening to the model
+- **Cancel**: stop editing the opening
 
-开场白保存后显示在对话最上方。在发送第一条消息之前，可以直接在聊天区编辑或删除它；**对话开始后开场白就锁定了**，不能再编辑、删除，也不能更改是否发给模型（想换开场白请新建对话）。它下方有一个「发送给模型」勾选框（只有开场白有）：
+The saved opening is shown at the top of the conversation. Before you send your first message, you can edit or delete it right in the chat; **once the conversation has started, the opening is locked**: it can no longer be edited or deleted, and whether it is sent to the model can no longer be changed (start a new chat for a different opening). Below it is a "Send to the model" checkbox (only the opening has one):
 
-- **勾选**：你之后发送的第一条消息会和开场白合在一起，作为第一条消息发给模型：
+- **Checked**: your first message is merged with the opening and sent to the model as the first message:
   ```
-  【开场白】
-  ……开场白内容……
-  【开场白结束】
+  [Opening]
+  …the opening…
+  [End of Opening]
 
-  【用户】
-  ……你的第一条消息……
+  [User]
+  …your first message…
   ```
-  剧情推进到第一条消息超出记忆长度后，开场白也会随之超出，不再发送。
-- **不勾选**：开场白只显示在聊天区，模型看不到它；你之后发送的第一条消息就是第一条消息。
+  Once the story has moved on far enough that the first message falls outside the memory length, the opening is no longer sent either.
+- **Unchecked**: the opening is only shown in the chat and the model never sees it; your first message is the first message.
 
-开场白在导出剧情、世界卡和完整备份中都会保留。
+The opening is kept in story exports, world cards and full backups.
 
-### Markdown / HTML 美化
+### Markdown / HTML styling
 
-所有消息都会按 Markdown 和 HTML 显示，可以使用 `<details><summary>` 折叠块、自定义样式（`<style>`、`style="..."`）等。
+All messages are rendered as Markdown and HTML, so you can use `<details><summary>` collapsible blocks, custom styles (`<style>`, `style="..."`) and more.
 
-- **开场白**还可以使用 JS（`<script>`）
-- **之后的消息**（你的回复和模型的回复）禁用 JS，只用 Markdown、HTML、CSS 美化
+- **The opening** can also use JS (`<script>`)
+- **Later messages** (your replies and the model's) have JS disabled and can only use Markdown, HTML and CSS
 
-每条消息都显示在一个独立的"沙箱"小窗口里，里面的样式和脚本只在这条消息内生效，不会影响聊天区以外的界面，也不会影响其他消息。开场白里的脚本也读不到本页面的任何数据（包括 API Key），不能让本页面跳转；但可以打开新窗口（Windows / macOS / Linux 的原生应用会用系统浏览器打开网页）。
+Each message is shown in its own isolated "sandbox" frame. Its styles and scripts only apply inside that message and don't affect the rest of the interface or other messages. Scripts in the opening cannot read any data from the page (including API keys) and cannot navigate the page away, but they can open new windows (the Windows / macOS / Linux apps open web pages in your system browser).
 
-### 消息操作（鼠标移到消息上就会出现）
+### Message actions (shown when you hover over a message)
 
-- **重新生成**：只出现在最后一条模型回复上。旧版本会保留，可以用 `‹ 2/3 ›` 来回切换
-- **编辑**：只能编辑**最近一次**的模型回复和**最近一次**的用户消息
-  - 编辑模型回复：直接改当前这个版本，不会重新生成，相当于你直接改写了剧情
-  - 编辑用户消息：存为这条消息的**新版本**，并按新内容生成回复；旧版本保留，可以用 `‹ 2/3 ›` 切换
-  - 更早的消息要修改，请先「回退」再改
-- **版本是分组的**：用户消息的每个版本各有自己的一组模型回复。比如消息 A 下有回复 B、C，改写成 A′ 后生成了 D、E：切换到 A 时回复只能在 B、C 之间切换，切换到 A′ 时只能在 D、E 之间切换
-- **切换和删除版本**只在最后一组（最新的用户消息和最后一条模型回复）上可用，免得前后剧情接不上。更早消息的其他版本仍然保存着，「回退」到那里后又可以切换
-- **删除此版本**：模型回复有多个版本时，删掉当前显示的这个
-- **回退到当前**：只出现在模型回复上。保留这条回复，删掉它之后的所有消息（最后一条回复上不可用）。想回到开场白，直接新建对话即可
-- **复制**
+- **Regenerate**: only on the last model reply. Old versions are kept and can be browsed with `‹ 2/3 ›`
+- **Edit**: only the **most recent** model reply and the **most recent** user message can be edited
+  - Editing a model reply changes the current version directly without regenerating, as if you rewrote that part of the story
+  - Editing a user message saves it as a **new version** of that message and generates a reply to it; the old version is kept and can be browsed with `‹ 2/3 ›`
+  - To change an earlier message, "Roll back to here" first
+- **Versions are grouped**: each version of a user message has its own set of model replies. For example, if message A has replies B and C, and you rewrite it as A′ and get replies D and E, then with A selected you can only switch between B and C, and with A′ selected only between D and E
+- **Switching and deleting versions** is only available on the last group (the latest user message and the last model reply), so the story stays consistent. Other versions of earlier messages are still saved, and you can switch between them again after rolling back to them
+- **Delete this version**: when a model reply has several versions, deletes the one currently shown
+- **Roll back to here**: only on model replies. Keeps this reply and deletes every message after it (not available on the last reply). To go back to the opening, just start a new chat
+- **Copy**
 
-模型生成期间可以随时往上滚动阅读，页面不会被强行拉回底部；想回到最新内容时，点「↓ 回到底部」。
+While the model is writing you can scroll up and read; the page won't be pulled back to the bottom. To jump to the latest text, click "↓ Back to bottom".
 
-## 每次发给模型的内容
+## What is sent to the model each time
 
 ```
-[system]  System Prompt + 世界观全文 + 用户角色人设
-[历史]    最近 N 轮剧情（N = 记忆长度，1–40 轮；1 轮 = 模型一次输出 + 你一次回复）
-          如果开场白设为发送，且对话的第一条消息还在范围内，开场白会拼在它前面
-[user]    你这一次的回复
+[system]   System Prompt + full world setting + user's character
+[history]  The most recent N rounds of the story (N = memory length, 1–40 rounds; 1 round = one model reply + one user reply)
+           If the opening is set to be sent and the conversation's first message is still within range, the opening is merged into it
+[user]     Your current reply
 ```
 
-更早的消息不会发送，模型也就"看不到"它们。剧情区里会用一条虚线标出记忆范围的分界，分界线以上的消息照常显示，只是模型看不到。
-记忆长度可以直接输入数字，也可以点 − / ＋ 调整。它下方会显示下一次请求大约多少 token（粗略估计）。
+Older messages are not sent, so the model can't "see" them. A dashed line in the story marks the edge of the memory range; messages above it are still shown, the model just can't see them.
+You can type the memory length directly or adjust it with − / ＋. Below it is a rough estimate of how many tokens the next request will use.
 
-## 导出与备份
+## Export and backup
 
-右侧「导出与备份」里的「导出 / 备份…」可以选择：
+"Export / Backup…" under "Export & backup" on the right offers:
 
-| 选项 | 包含 | 不包含 |
+| Option | Includes | Does not include |
 |---|---|---|
-| 剧情（TXT / Markdown） | 当前对话的开场白和全部消息 | System Prompt、世界观、人设、艺术图 |
-| 世界卡（JSON，可加密） | 当前对话的 System Prompt、世界观、开场白（及是否发给模型）、艺术图 | 用户人设、剧情 |
-| 完整备份（当前对话）（JSON，可加密） | 当前对话的全部内容：System Prompt、世界观、用户人设、开场白（及是否发给模型）、剧情（包括每条回复的所有版本）、艺术图 | 软件设置 |
-| 完整备份（全部对话）（JSON，可加密） | 所有对话（各自的全部内容）和软件设置（记忆长度、模型与接口、界面语言、布局等） | API Key |
-| 日志（TXT） | 最近一次请求模型时实际发送的请求（接口地址、请求头、JSON 请求体）和收到的原始回复，用于排查问题。只记这次打开软件以来的最后一次，不保存 | API Key；加密世界卡里还没解锁的设定（显示为「受保护的内容」） |
+| Story (TXT / Markdown) | The current conversation's opening and all messages | System Prompt, world, character, artwork |
+| World card (JSON, can be encrypted) | The current conversation's System Prompt, world, opening (and whether it is sent to the model), artwork | User's character, story |
+| Full backup (this conversation) (JSON, can be encrypted) | Everything in the current conversation: System Prompt, world, user's character, opening (and whether it is sent to the model), story (including every version of every reply), artwork | App settings |
+| Full backup (all conversations) (JSON, can be encrypted) | Every conversation (with all its content) and the app settings (memory length, Model & API, interface language, layout, etc.) | API keys |
+| Log (last request) (TXT) | The request actually sent to the model the last time (API address, headers, JSON body) and the raw response received, for troubleshooting. Only the last request since the app was opened; not saved | API keys; locked settings from encrypted world cards (shown as "(protected content)") |
 
-「读取世界卡 / 备份」支持世界卡和两种完整备份：
+"Load world card / backup" accepts world cards and both kinds of full backup:
 
-- **读取世界卡**：新建一个对话，使用卡里的 System Prompt、世界观、开场白和艺术图，用户人设为空；已有的对话完全不受影响
-- **读取完整备份（当前对话）**：新建一个对话，内容和备份时一样；已有的对话完全不受影响（同一份备份读两次就是两个对话）
-- **读取完整备份（全部对话）**：替换当前所有对话和设置（API Key 保留本机的不变），相当于把整个软件恢复到备份时的状态
+- **Loading a world card** creates a new conversation with the card's System Prompt, world, opening and artwork, and an empty user's character; existing conversations are not affected
+- **Loading a full backup (this conversation)** creates a new conversation exactly as it was backed up; existing conversations are not affected (loading the same backup twice gives two conversations)
+- **Loading a full backup (all conversations)** replaces all current conversations and settings (your API keys on this device are kept), restoring the whole app to the state of the backup
 
-图片在 JSON 里以文本形式（base64）保存，所以带图的世界卡和备份文件会比图片本身大约三分之一。艺术图也可以在右侧「艺术图」里单独下载。
+Images are stored in the JSON as text (base64), so world cards and backups with images are about a third larger than the images themselves. The artwork can also be downloaded on its own under "Artwork" on the right.
 
-### 加密世界卡（保护创作者的设定）
+### Encrypted world cards (protecting a creator's settings)
 
-导出世界卡或完整备份时可以选择**加密**，并设置一个 4–16 位的密码（加密的完整备份里，剧情和用户人设是明文，只有下面那几项是密文）：
+When exporting a world card or full backup you can choose to **encrypt** it with a 4–16 character password (in an encrypted full backup, the story and user's character stay in plain text; only the items below are encrypted):
 
-- 直接打开加密的文件，只能看到乱码
-- 在 Proteus 中读取后，System Prompt、世界观、开场白和艺术图会被**锁定**：可以正常使用，但不能查看、修改、复制或下载；开场白照常显示，但不能编辑，也不能更改是否发给模型。用户人设和剧情不受影响
-- 输入密码可以解锁，解锁后变回普通对话
-- 从锁定的对话新建对话、再次导出世界卡或完整备份时，仍然保持加密，沿用原来的密码。导出前会提醒：再次读取时仍需要最初的密码才能解锁（这时不再询问是否加密；完整备份（全部对话）里的普通对话仍可以选择加密）
-- **忘记密码将无法解锁**
+- Opening the file directly shows only gibberish
+- After loading it in Proteus, the System Prompt, world, opening and artwork are **locked**: they can be used normally but not viewed, edited, copied or downloaded; the opening is displayed as usual but cannot be edited, and whether it is sent to the model cannot be changed. The user's character and story are not affected
+- Entering the password unlocks it, turning it back into a normal conversation
+- A new conversation created from a locked one, and world cards or full backups exported from it, stay encrypted with the original password. You are reminded before exporting that the original password is still needed to unlock it (you are not asked whether to encrypt in this case; normal conversations in a "Full backup (all conversations)" can still be encrypted)
+- **A forgotten password cannot be recovered**
 
-> **加密的局限**：模型要使用这些设定，Proteus 就必须在本机解密并以明文发给模型接口；本项目又是开源的。所以加密只能防止直接查看文件和在软件中复制，**无法阻止有技术能力的人刻意获取内容**（例如查看发给模型的请求，或让模型复述设定）。
+> **Limits of encryption**: for the model to use these settings, Proteus has to decrypt them on your device and send them to the model API in plain text, and this project is open source. So encryption only prevents viewing the file directly and copying inside the app; **it cannot stop a technically capable person who is determined to get the content** (for example by inspecting the requests sent to the model, or asking the model to repeat the settings).
 
-## 公用电脑
+## Shared computers
 
-- 「模型与接口」里的「在这台电脑上记住 API Key」：取消勾选后，API Key 只在本次打开期间有效，关闭页面就会消失，不会写入本机
-- 右侧「本机数据」里的「清除本机所有数据」：删除这个浏览器里 Proteus 保存的所有对话、设定、艺术图和 API Key
+- "Remember API keys on this computer" under "Model & API": when unchecked, API keys only last until you close the page and are never written to this device
+- "Clear all local data" under "Local data" on the right: deletes every conversation, setting, artwork and API key Proteus has stored in this browser
 
-## 关于 API Key 的安全
+## API key security
 
-Proteus 在使用者自己的电脑上运行，API Key 只保存在本机浏览器里，不会经过任何第三方服务器，导出的世界卡和备份里也不包含 Key。需要注意：
+Proteus runs on your own computer. API keys are stored only locally and never pass through any third-party server, and exported world cards and backups never include them. Please note:
 
-- （网页版）Chrome 里所有用双击方式打开的本地网页共用同一块存储空间，理论上一个恶意的本地 HTML 文件可以读到 Proteus 保存的数据。不要用同一个浏览器打开来路不明的 HTML 文件，或者改用原生应用——原生应用的数据和浏览器完全分开
-- 别人分享的世界卡里，开场白可以带 JS。它运行在隔离的沙箱里，读不到 API Key 和你的数据，但可以加载外部图片等资源（也就能知道有人打开了这张卡）
-- 网页版目前只在 Chrome / Edge 中测试过；Firefox、Safari 对本地网页的存储支持不稳定
+- (Web version) In Chrome, all local web pages opened by double-clicking share the same storage, so in theory a malicious local HTML file could read the data Proteus has saved. Don't open HTML files of unknown origin in the same browser, or use a native app instead; the native apps keep their data completely separate from your browser
+- In world cards shared by others, the opening may contain JS. It runs in an isolated sandbox and cannot read your API keys or data, but it can load external resources such as images (and so can tell that someone opened the card)
+- The web version has only been tested in Chrome / Edge; Firefox and Safari have unreliable storage support for local web pages
 
-## 支持的模型服务商
+## Supported providers
 
-| 选项 | 说明 |
+| Option | Notes |
 |---|---|
-| Anthropic（Claude 官方） | 直接调用 Claude |
-| OpenAI 官方 | |
-| Google Gemini | 使用 Gemini 的 OpenAI 兼容接口，在 [Google AI Studio](https://aistudio.google.com/) 申请 API Key 即可。免费额度下较大的模型经常繁忙（HTTP 503）或长时间无响应，所以默认用 `gemini-3.5-flash-lite`；遇到 503 时稍等再点「生成回复」或「重新生成」即可 |
-| 其他 OpenAI 兼容格式（大多数中转站） | OpenRouter、DeepSeek、各种中转站等。需要自己填写接口地址，通常以 `/v1` 结尾（OpenRouter 是 `https://openrouter.ai/api/v1`） |
-| 其他 Anthropic 兼容格式（部分中转站） | 提供 Claude 原生格式的中转站 |
+| Anthropic (Claude) | Calls Claude directly |
+| OpenAI | |
+| Google Gemini | Uses Gemini's OpenAI-compatible API; get an API key from [Google AI Studio](https://aistudio.google.com/). On the free tier, larger models are often busy (HTTP 503) or slow to respond, so the default is `gemini-3.5-flash-lite`; if you get a 503, wait a moment and click "Get reply" or "Regenerate" |
+| Other OpenAI-compatible (most relays) | OpenRouter, DeepSeek, various relays, etc. Enter the API address yourself; it usually ends with `/v1` (for OpenRouter: `https://openrouter.ai/api/v1`) |
+| Other Anthropic-compatible (some relays) | Relays that offer Claude's native format |
 
-点击「获取列表」可以从接口拉取可用的模型名称，之后点模型输入框右侧的 ▾ 就能从列表里选择（也可以直接输入，输入时列表会按文字筛选）。获取到的列表会被记住。
+Click "Fetch list" to get the available model names from the API; then click ▾ at the right of the model box to choose from the list (you can also type a name; the list filters as you type). The fetched list is remembered.
 
-### 关于 Claude 官方接口
+### About the official Claude API
 
-- 使用最新的 API 版本。这个版本不接受 `temperature` 参数，所以 Anthropic 格式下没有这个选项，改为提供「思考深度（effort）」
-- 新的 Claude 模型会先思考再输出，所以开头可能要等几秒，界面上会显示「模型思考中……」
-- 对 `claude-opus-5-5`、`claude-sonnet-5-5` 等模型启用了官方的自动备用：如果请求被安全机制拦截，接口会自动换一个模型重试。如果最终仍被拒绝，界面上会显示提示
+- The latest API version is used. It does not accept the `temperature` parameter, so the Anthropic format has no temperature option and offers "Thinking effort" instead
+- Newer Claude models think before writing, so there may be a few seconds' wait at the start, shown as "The model is thinking…"
+- For `claude-opus-5-5`, `claude-sonnet-5-5` and similar models, the official automatic fallback is enabled: if a request is blocked by a safety system, the API retries with another model. If it is still refused, a message is shown
 
-### 流式和非流式回复
+### Streamed and non-streamed replies
 
-请求时总是要求流式回复（文字边生成边显示）。个别中转站不支持流式、直接返回一整段完整回复时，也能正常读取，只是要等全部生成完才一次性显示。
+Replies are always requested as a stream (text appears as it is written). If a relay doesn't support streaming and returns the whole reply at once, it is still read correctly; it just appears all at once when finished.
 
-如果提示「模型没有返回任何内容」，可以在「导出 / 备份…」里导出日志，看看接口实际返回了什么（例如有的中转站把正文放进了思考内容里，软件无法区分）。
+If you see "The model returned no content", export the log from "Export / Backup…" to see what the API actually returned (for example, some relays put the reply text in the thinking content, which the app can't tell apart).
 
-### 如果提示「无法连接到接口」
+### If you see "Could not connect to the API"
 
-浏览器出于安全考虑，会拦截一部分直接访问外部接口的请求（"跨域限制"）。Claude 官方、OpenAI 官方、Gemini 和 OpenRouter 都允许浏览器直接访问；少数中转站不允许。**Windows / macOS / Linux 的原生应用没有这个限制**，遇到这种情况请改用它（安卓版和网页版一样有这个限制）。
+For security, browsers block some direct requests to external APIs ("CORS restrictions"). The official Claude and OpenAI APIs, Gemini and OpenRouter all allow direct browser access; a few relays don't. **The Windows / macOS / Linux apps don't have this restriction**, so use one of them in that case (the Android app has the same restriction as the web version).
 
-## 文件结构
+## Project structure
 
 ```
-index.html        页面结构
-css/style.css     样式
-js/i18n.js        界面多语言（简体中文、繁體中文、English、日本語）和默认 System Prompt
-js/db.js          本地存储（浏览器的 IndexedDB）
-js/crypto.js      世界卡加密
-js/providers.js   和各家模型接口通信
-js/render.js      消息显示（Markdown/HTML，沙箱隔离）
-js/app.js         界面逻辑、对话管理、上下文拼装
-js/vendor/        第三方库（marked：Markdown 解析，MIT 许可，许可证全文在 marked.LICENSE.md）
-electron/main.js  Windows / macOS / Linux 原生应用的入口（窗口、安全设置、解除跨域限制）
-android/          安卓版工程（Capacitor），capacitor.config.json 是它的配置
-assets/           安卓版图标和启动画面的原图
-scripts/          打包用的小脚本（包括检查第三方许可证、生成第三方声明的 third-party-notices.js）
-build/icon.png    应用图标
-package.json      依赖，以及 Windows / macOS / Linux 原生应用的打包配置
+index.html        Page structure
+css/style.css     Styles
+js/i18n.js        Interface languages (Simplified Chinese, Traditional Chinese, English, Japanese) and the default System Prompt
+js/db.js          Local storage (the browser's IndexedDB)
+js/crypto.js      World card encryption
+js/providers.js   Communication with the model APIs
+js/render.js      Message display (Markdown/HTML, sandboxed)
+js/app.js         Interface logic, conversation management, context assembly
+js/vendor/        Third-party libraries (marked: Markdown parser, MIT license, full text in marked.LICENSE.md)
+electron/main.js  Entry point of the Windows / macOS / Linux apps (window, security settings, removing CORS restrictions)
+android/          Android project (Capacitor); capacitor.config.json is its configuration
+assets/           Source images for the Android icon and splash screen
+scripts/          Small build scripts (including third-party-notices.js, which checks third-party licenses and generates the notices)
+build/icon.png    App icon
+package.json      Dependencies, and the packaging configuration for the Windows / macOS / Linux apps
 ```
 
-网页部分全部是普通的 HTML/CSS/JavaScript，不需要编译。Windows / macOS / Linux 的原生应用用 [Electron](https://www.electronjs.org/) 把同一套网页和 Chromium 内核打包在一起；安卓版用 [Capacitor](https://capacitorjs.com/) 把同一套网页放进系统自带的 WebView。
+The web part is plain HTML/CSS/JavaScript with no build step. The Windows / macOS / Linux apps use [Electron](https://www.electronjs.org/) to package the same pages with the Chromium engine; the Android app uses [Capacitor](https://capacitorjs.com/) to put the same pages into the system WebView.
 
-### 自己打包原生应用
+### Building the native apps yourself
 
-需要先安装 [Node.js](https://nodejs.org/)：
+Install [Node.js](https://nodejs.org/) first:
 
 ```bash
 npm install
-npm start            # 直接运行（Windows / macOS / Linux 原生应用）
-npm run dist:win     # 打包 Windows 版（在 Linux 上打包需要安装 wine）
-npm run dist:linux   # 打包 Linux 版
-npm run dist:mac     # 打包 macOS 版（需要在苹果电脑上运行）
-npm run android:apk  # 打包安卓版（需要安装 Android SDK 和 JDK 21）
+npm start            # Run directly (Windows / macOS / Linux app)
+npm run dist:win     # Build the Windows version (building on Linux requires wine)
+npm run dist:linux   # Build the Linux version
+npm run dist:mac     # Build the macOS version (must be run on a Mac)
+npm run android:apk  # Build the Android version (requires the Android SDK and JDK 21)
 ```
 
-打包结果在 `dist/` 文件夹里。
+The output is in the `dist/` folder.
 
-### 自动打包与发布（GitHub Actions）
+### Automated builds and releases (GitHub Actions)
 
-仓库里的 `.github/workflows/build.yml` 会在 GitHub 的服务器上同时打包 Windows、Linux 和 macOS 版：
+`.github/workflows/build.yml` builds the Windows, Linux and macOS versions on GitHub's servers:
 
-- **发布新版本**：在 GitHub 的 Releases 页面点「Draft a new release」，新建一个标签（例如 `v0.2.0`），填好标题和说明后点「Publish release」。大约 5 分钟后，各系统的安装包会自动上传到这个 Release，下载说明会接在你写的说明后面。版本号直接取自标签，**不需要改 `package.json`**。也可以用命令推送标签，效果相同：
+- **Publishing a new version**: on the GitHub Releases page click "Draft a new release", create a new tag (e.g. `v0.2.0`), fill in the title and notes and click "Publish release". After about 5 minutes the installers for each system are uploaded to that release automatically, and the download instructions are appended to your notes. The version number comes from the tag, so **there is no need to edit `package.json`**. Pushing a tag from the command line works the same way:
 
   ```bash
   git tag v0.2.0
@@ -256,56 +256,56 @@ npm run android:apk  # 打包安卓版（需要安装 Android SDK 和 JDK 21）
   git push origin v0.2.0
   ```
 
-- **只想试试能不能打包**：在仓库的 Actions 页面选「Build desktop app」→「Run workflow」。只打包不发布，安装包在那次运行页面底部的 Artifacts 里，保留 30 天。
+- **Just checking that it builds**: on the repository's Actions page choose "Build desktop app" → "Run workflow". This builds without publishing; the installers are in the Artifacts at the bottom of that run's page and are kept for 30 days.
 
-安装包里的下载说明来自 `.github/release-notes.md`。Release 说明的最后会自动写上「本页安装包构建自提交 xxx」，用所选分支重新打包、替换已有 Release 的安装包时也会更新这一行，源代码以这次提交为准。
+The download instructions in a release come from `.github/release-notes.md`. A line saying which commit the installers were built from is added to the end of the release notes automatically; it is also updated when the installers of an existing release are rebuilt from a chosen branch and replaced. That commit is the source code of those installers.
 
-每次打包前会先检查打进安装包的第三方组件的许可证（`scripts/third-party-notices.js`）：遇到不认识或和 AGPL v3 不兼容的许可证时打包失败，需要人工确认后在脚本里登记；通过后生成 `THIRD_PARTY_NOTICES.txt` 放进安装包。
+Before each build, the licenses of the third-party components that go into the installers are checked (`scripts/third-party-notices.js`): an unknown license, or one incompatible with AGPL v3, fails the build until it has been reviewed and registered in the script; otherwise `THIRD_PARTY_NOTICES.txt` is generated and included in the installers.
 
-#### 安卓版的签名密钥
+#### Android signing key
 
-安卓安装包必须签名，**而且以后每个版本都要用同一把密钥签名**，用户才能直接覆盖更新（否则只能先卸载，手机上的对话也会一起删掉）。签名密钥保存在仓库的 GitHub Secrets 里（Settings → Secrets and variables → Actions），需要两项：
+Android packages must be signed, **and every future version must be signed with the same key** so users can update in place (otherwise they would have to uninstall first, which also deletes the conversations on their phone). The signing key is kept in the repository's GitHub Secrets (Settings → Secrets and variables → Actions), as two entries:
 
-| 名称 | 内容 |
+| Name | Content |
 |---|---|
-| `ANDROID_KEYSTORE_BASE64` | 签名密钥文件（.jks）的 base64 文本 |
-| `ANDROID_KEYSTORE_PASSWORD` | 密钥密码 |
+| `ANDROID_KEYSTORE_BASE64` | The signing key file (.jks) as base64 text |
+| `ANDROID_KEYSTORE_PASSWORD` | The key password |
 
-密钥文件里的**别名（alias）必须是 `proteus`**，并且密钥密码和密钥库密码相同。没有密钥时可以这样生成一把（JDK 自带 `keytool`）：
+The key's **alias must be `proteus`**, and the key password must be the same as the keystore password. If you don't have a key yet, you can create one like this (`keytool` comes with the JDK):
 
 ```bash
 keytool -genkeypair -v -keystore proteus.jks -alias proteus -keyalg RSA -keysize 2048 -validity 36500
 ```
 
-没有设置时，「只打包不发布」的运行会改用临时的调试密钥签名（能安装，但以后无法覆盖更新），并在运行结果里给出警告；要发布到 Release 的运行会直接失败，避免把调试版发给用户。密钥文件和密码请另外妥善备份，**不要提交到仓库**。
+If they are not set, build-only runs sign with a temporary debug key instead (installable, but future versions can't update it in place) and show a warning in the run results; runs that publish to a release fail, so a debug build is never shipped to users. Keep a separate safe backup of the key file and password, and **never commit them to the repository**.
 
-#### 安卓冒烟测试
+#### Android smoke test
 
-在 Actions 页面运行「Android smoke test」，会在 GitHub 的安卓模拟器里安装并打开应用，截图和日志在那次运行的 Artifacts 里。
+Run "Android smoke test" on the Actions page to install and open the app in an Android emulator on GitHub; screenshots and logs are in that run's Artifacts.
 
-## 多语言
+## Languages
 
-没有手动选过界面语言时，软件按系统语言自动选择：Windows / macOS / Linux 原生应用看操作系统的语言，安卓版看手机的系统语言，网页版看浏览器的语言。不是简体中文、繁體中文、English、日本語之一时显示英语。在设置里手动选过之后，以后都用你选的语言。
+Until you pick an interface language yourself, the app follows your system language: the Windows / macOS / Linux apps use the operating system's language, the Android app uses the phone's system language, and the web version uses the browser's language. If it is none of Simplified Chinese, Traditional Chinese, English and Japanese, English is used. Once you pick a language in the settings, that choice is kept.
 
-切换界面语言时，除了界面文字，以下内容也会跟着变：
+When you switch the interface language, the following change too, not just the interface text:
 
-- 发给模型的标签：【世界观设定】【用户角色人设】【开场白】【开场白结束】【用户】（英文为 `[World Setting]` `[User's Character]` `[Opening]` `[End of Opening]` `[User]`，以此类推）
-- 默认 System Prompt：如果当前对话的 System Prompt 没有改过（还是某种语言的默认内容），会换成新语言的默认内容；改过的不会动
+- The labels sent to the model: `[World Setting]` `[User's Character]` `[Opening]` `[End of Opening]` `[User]` in English (【世界观设定】【用户角色人设】【开场白】【开场白结束】【用户】 in Simplified Chinese, and so on)
+- The default System Prompt: if the current conversation's System Prompt hasn't been edited (it is still the default for some language), it is replaced with the new language's default; edited prompts are left alone
 
-世界观、人设、开场白等内容是使用者自己写的，不会被翻译。
+The world, character, opening and other content you write yourself are never translated.
 
-## 许可
+## License
 
-本项目基于 [AGPL v3](LICENSE)（GNU Affero 通用公共许可证第 3 版）开源。使用者需自备 API Key，开发者不为使用者在本软件中的输入和输出承担法律责任。
+This project is open source under [AGPL v3](LICENSE) (GNU Affero General Public License, version 3). Users must provide their own API keys; the developers bear no legal responsibility for what users enter into or receive from this software.
 
-AGPL v3 在 GPL v3 的基础上多了一条：修改了本软件并通过网络向他人提供使用（例如部署成网站或在线服务）时，也必须向这些用户提供修改后的完整源代码。界面底部的项目网址就是向用户提供源代码的入口；对外提供修改版时，请把它（`js/i18n.js` 里的 `PROJECT_URL`）改成你的修改版源代码所在的地址。
+AGPL v3 adds one condition to GPL v3: if you modify this software and let others use it over a network (for example as a website or online service), you must also offer those users the complete source code of your modified version. The project URL at the bottom of the interface is how users get the source code; when offering a modified version, change it (`PROJECT_URL` in `js/i18n.js`) to the address of your modified source code.
 
-此前已经发布的版本（v0.2.1 及更早）以 GPL v3 授权，仍然按 GPL v3 使用。
+Versions released earlier (v0.2.1 and before) were licensed under GPL v3 and remain usable under GPL v3.
 
-第三方组件和它们的许可证：
+Third-party components and their licenses:
 
-- 网页部分（所有版本）：[marked](https://github.com/markedjs/marked)（MIT）
-- Windows / macOS / Linux 原生应用：[Electron](https://www.electronjs.org/)（MIT）及其包含的 Chromium 组件
-- 安卓原生应用：[Capacitor](https://capacitorjs.com/)（MIT）、Apache Cordova、AndroidX、Kotlin 等（Apache-2.0）
+- Web part (all versions): [marked](https://github.com/markedjs/marked) (MIT)
+- Windows / macOS / Linux apps: [Electron](https://www.electronjs.org/) (MIT) and the Chromium components it includes
+- Android app: [Capacitor](https://capacitorjs.com/) (MIT), Apache Cordova, AndroidX, Kotlin, etc. (Apache-2.0)
 
-完整清单和许可证全文在安装包里的 `THIRD_PARTY_NOTICES.txt`：Windows / macOS / Linux 的原生应用在程序旁边（和 `LICENSE.txt`、Electron 的 `LICENSE.electron.txt`、`LICENSES.chromium.html` 放在一起；macOS 在 `Proteus.app/Contents/Resources` 里），安卓版在 APK 里。
+The full list and license texts are in `THIRD_PARTY_NOTICES.txt` inside the installers: next to the program for the Windows / macOS / Linux apps (together with `LICENSE.txt`, Electron's `LICENSE.electron.txt` and `LICENSES.chromium.html`; on macOS in `Proteus.app/Contents/Resources`), and inside the APK for Android.
