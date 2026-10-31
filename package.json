@@ -5,7 +5,7 @@
   "description": "Roleplay chat app for large language models (desktop version with built-in Chromium)",
   "main": "electron/main.js",
   "author": "IonComan813",
-  "license": "GPL-3.0-only",
+  "license": "AGPL-3.0-only",
   "homepage": "https://github.com/IonComan813/ProjectProteus",
   "repository": {
     "type": "git",
@@ -35,7 +35,7 @@
   "build": {
     "appId": "io.github.ioncoman813.proteus",
     "productName": "海神Proteus",
-    "copyright": "Copyright © 2026 IonComan813 · GPL-3.0",
+    "copyright": "Copyright © 2026 IonComan813 · AGPL-3.0",
     "directories": {
       "output": "dist",
       "buildResources": "build"

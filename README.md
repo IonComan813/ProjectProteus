@@ -2,7 +2,7 @@
 
 一个接入大语言模型（LLM）的角色扮演聊天工具，玩法类似 SillyTavern。有桌面版（Windows / macOS / Linux，自带浏览器内核）、安卓版和网页版。
 
-界面支持简体中文、繁體中文、English、日本語（右侧设置最下方切换）。基于 GPL v3 开源；使用者需自备 API Key。
+界面支持简体中文、繁體中文、English、日本語（右侧设置最下方切换）。基于 AGPL v3 开源；使用者需自备 API Key。
 
 ![界面截图](docs/screenshot.png)
 
@@ -257,7 +257,7 @@ npm run android:apk  # 打包安卓版（需要安装 Android SDK 和 JDK 21）
 
 安装包里的下载说明来自 `.github/release-notes.md`。Release 说明的最后会自动写上「本页安装包构建自提交 xxx」，用所选分支重新打包、替换已有 Release 的安装包时也会更新这一行，源代码以这次提交为准。
 
-每次打包前会先检查打进安装包的第三方组件的许可证（`scripts/third-party-notices.js`）：遇到不认识或和 GPL v3 不兼容的许可证时打包失败，需要人工确认后在脚本里登记；通过后生成 `THIRD_PARTY_NOTICES.txt` 放进安装包。
+每次打包前会先检查打进安装包的第三方组件的许可证（`scripts/third-party-notices.js`）：遇到不认识或和 AGPL v3 不兼容的许可证时打包失败，需要人工确认后在脚本里登记；通过后生成 `THIRD_PARTY_NOTICES.txt` 放进安装包。
 
 #### 安卓版的签名密钥
 
@@ -291,7 +291,11 @@ keytool -genkeypair -v -keystore proteus.jks -alias proteus -keyalg RSA -keysize
 
 ## 许可
 
-本项目基于 [GPL v3](LICENSE) 开源。使用者需自备 API Key，开发者不为使用者在本软件中的输入和输出承担法律责任。
+本项目基于 [AGPL v3](LICENSE)（GNU Affero 通用公共许可证第 3 版）开源。使用者需自备 API Key，开发者不为使用者在本软件中的输入和输出承担法律责任。
+
+AGPL v3 在 GPL v3 的基础上多了一条：修改了本软件并通过网络向他人提供使用（例如部署成网站或在线服务）时，也必须向这些用户提供修改后的完整源代码。界面底部的项目网址就是向用户提供源代码的入口；对外提供修改版时，请把它（`js/i18n.js` 里的 `PROJECT_URL`）改成你的修改版源代码所在的地址。
+
+此前已经发布的版本（v0.2.1 及更早）以 GPL v3 授权，仍然按 GPL v3 使用。
 
 第三方组件和它们的许可证：
 

@@ -1,4 +1,4 @@
-// 生成第三方声明（THIRD_PARTY_NOTICES.txt），同时检查打包进去的第三方组件的许可证都能和 GPL v3 一起分发。
+// 生成第三方声明（THIRD_PARTY_NOTICES.txt），同时检查打包进去的第三方组件的许可证都能和 AGPL v3 一起分发。
 //
 //   node scripts/third-party-notices.js desktop <输出文件>
 //   node scripts/third-party-notices.js android <输出文件> [依赖清单]
@@ -16,7 +16,7 @@ const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
 
-// 可以和 GPL v3 一起分发、且不附加额外义务（除保留声明外）的许可证
+// 可以和 AGPL v3 一起分发、且不附加额外义务（除保留声明外）的许可证
 const ALLOWED = new Set(['MIT', 'Apache-2.0', 'BSD-2-Clause', 'BSD-3-Clause', 'ISC', '0BSD', 'Zlib', 'Unlicense', 'CC0-1.0', 'BlueOak-1.0.0']);
 
 // POM 里许可证写得不规范（例如只有链接）的 Maven 依赖：按项目仓库里的 LICENSE 文件人工登记。
@@ -210,7 +210,7 @@ function render(target, components) {
   const out = [];
   out.push(`Third-party notices for ${app.productName} ${version} (${target})`);
   out.push('');
-  out.push(`${app.productName} is licensed under the GNU General Public License v3 (see LICENSE).`);
+  out.push(`${app.productName} is licensed under the GNU Affero General Public License v3 (see LICENSE).`);
   out.push(`Source code: ${app.homepage}`);
   out.push('It includes the following third-party components, each under its own license.');
   out.push('');
