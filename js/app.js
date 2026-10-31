@@ -643,7 +643,9 @@ async function saveEdit() {
   const draft = state.editDraft;
   if (id === GREETING_ID) {
     if (!draft.trim()) {
-      if (!confirm(t('msg.emptyGreetingConfirm'))) return;
+      const conv = state.conv;
+      if (!(await ask(t('msg.emptyGreetingConfirm'), { ok: t('conv.delete'), danger: true }))) return;
+      if (conv !== state.conv || state.editingId !== id || state.generating) return;
       state.conv.greeting = null;
     } else {
       state.conv.greeting = draft;
@@ -678,7 +680,9 @@ async function saveEdit() {
 }
 
 async function deleteGreeting() {
-  if (!confirm(t('msg.deleteGreetingConfirm'))) return;
+  const conv = state.conv;
+  if (!(await ask(t('msg.deleteGreetingConfirm'), { ok: t('conv.delete'), danger: true }))) return;
+  if (conv !== state.conv || state.generating || conv.messages.length) return;
   state.conv.greeting = null;
   if (state.editingId === GREETING_ID) state.editingId = null;
   renderMessages();
@@ -721,7 +725,8 @@ function switchUserVersion(m, to) {
 }
 
 async function deleteVersion(m) {
-  if (!confirm(t('msg.deleteVersionConfirm'))) return;
+  if (!(await ask(t('msg.deleteVersionConfirm'), { ok: t('conv.delete'), danger: true }))) return;
+  if (state.generating || !state.conv.messages.includes(m) || m.versions.length < 2) return;
   m.versions.splice(m.cur, 1);
   m.cur = Math.min(m.cur, m.versions.length - 1);
   renderMessages();
@@ -733,7 +738,8 @@ async function rollback(i) {
   const msgs = state.conv.messages;
   const n = msgs.length - i - 1;
   if (n <= 0) return;
-  if (!confirm(t('msg.rollbackConfirm', { n }))) return;
+  if (!(await ask(t('msg.rollbackConfirm', { n }), { ok: t('msg.rollback'), danger: true }))) return;
+  if (state.generating || msgs !== state.conv.messages || msgs.length - i - 1 !== n) return;
   msgs.splice(i + 1);
   state.editingId = null;
   showError('');
@@ -756,12 +762,23 @@ function choose(title, message, options) {
     };
     const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(null); } };
     for (const o of options) {
-      els.dialogButtons.appendChild(button(o.label, () => close(o.value), 'btn' + (o.primary ? ' btn-primary' : o.ghost ? ' btn-ghost' : '')));
+      els.dialogButtons.appendChild(button(o.label, () => close(o.value),
+        'btn' + (o.danger ? ' btn-danger' : o.primary ? ' btn-primary' : o.ghost ? ' btn-ghost' : '')));
     }
     document.addEventListener('keydown', onKey, true);
     els.dialog.hidden = false;
-    els.dialogButtons.querySelector('.btn-primary')?.focus();
+    els.dialogButtons.querySelector('.btn-primary, .btn-danger')?.focus();
   });
+}
+
+// 确认框（代替浏览器的 confirm()：系统对话框的“确定 / 取消”跟随系统语言，不跟随软件的界面语言）。
+// ok 是确认按钮的文字；danger 表示删除、清空这类无法撤销的操作，确认按钮显示为红色。确认返回 true
+async function ask(message, { ok = t('btn.ok'), danger = false } = {}) {
+  const r = await choose(t('dialog.confirmTitle'), message, [
+    { label: t('btn.cancel'), value: false, ghost: true },
+    { label: ok, value: true, primary: !danger, danger },
+  ]);
+  return r === true;
 }
 
 // ---- 开场白编辑模式（借用下方的输入框） ----
@@ -1297,7 +1314,8 @@ async function restore(file) {
 
   if (data.type === 'worldcard') {
     const name = data.name || t('export.unnamedWorld');
-    if (!confirm(t(data.locked ? 'restore.cardConfirmLocked' : 'restore.cardConfirm', { name }))) return;
+    if (!(await ask(t(data.locked ? 'restore.cardConfirmLocked' : 'restore.cardConfirm', { name })))) return;
+    if (state.generating) return toast(t('conv.stopFirst'));
     await flushConvSave();
     // 新对话：用卡里的设定和开场白，用户人设为空；已有对话不受影响
     const c = newConversation();
@@ -1326,7 +1344,8 @@ async function restore(file) {
   if (data.type === 'conversation') {
     const src = data.conversation;
     if (!validBackupConv(src)) return toast(t('restore.invalid'));
-    if (!confirm(t(src.lock ? 'restore.convConfirmLocked' : 'restore.convConfirm', { name: convTitle(src) }))) return;
+    if (!(await ask(t(src.lock ? 'restore.convConfirmLocked' : 'restore.convConfirm', { name: convTitle(src) })))) return;
+    if (state.generating) return toast(t('conv.stopFirst'));
     await flushConvSave();
     // 新对话：内容和备份时一样，换一个新的 id，已有对话（包括备份它的那个）不受影响
     const c = { createdAt: Date.now(), ...src, id: uid() };
@@ -1341,7 +1360,8 @@ async function restore(file) {
   }
 
   if (data.type !== 'backup' || !Array.isArray(data.conversations) || !data.conversations.every(validBackupConv)) return toast(t('restore.invalid'));
-  if (!confirm(t('restore.fullConfirm', { n: data.conversations.length }))) return;
+  if (!(await ask(t('restore.fullConfirm', { n: data.conversations.length }), { danger: true }))) return;
+  if (state.generating) return toast(t('conv.stopFirst'));
   // 还没写入的改动作废：现有对话马上要被替换，晚到的保存会把旧对话写回去
   clearTimeout(convSaveTimer);
   convSavePending = null;
@@ -1720,8 +1740,10 @@ function bindSettings() {
     applyLang(s().lang);
   });
 
-  els.btnResetSystem.addEventListener('click', () => {
-    if (c().lock || !confirm(t('set.resetConfirm'))) return;
+  els.btnResetSystem.addEventListener('click', async () => {
+    const conv = c();
+    if (conv.lock || !(await ask(t('set.resetConfirm'), { ok: t('set.resetDefault') }))) return;
+    if (conv !== c()) return;
     c().systemPrompt = t('defaultSystemPrompt');
     els.systemPrompt.value = c().systemPrompt;
     saveConvSoon();
@@ -1736,7 +1758,9 @@ function bindSettings() {
     if (c().lock) return;
     if (!/\.(txt|md)$/i.test(f.name)) return toast(t('set.worldOnlyText'));
     const text = await f.text();
-    if (c().worldText.trim() && !confirm(t('set.worldReplace'))) return;
+    const conv = c();
+    if (conv.worldText.trim() && !(await ask(t('set.worldReplace')))) return;
+    if (conv !== c() || conv.lock) return;
     c().worldText = text;
     els.worldText.value = text;
     updateWorldCount();
@@ -1744,8 +1768,10 @@ function bindSettings() {
     updateEstimate();
     toast(t('set.worldLoaded', { name: f.name }));
   });
-  els.btnClearWorld.addEventListener('click', () => {
-    if (c().lock || !c().worldText || !confirm(t('set.worldClear'))) return;
+  els.btnClearWorld.addEventListener('click', async () => {
+    const conv = c();
+    if (conv.lock || !conv.worldText || !(await ask(t('set.worldClear'), { ok: t('set.clear'), danger: true }))) return;
+    if (conv !== c()) return;
     c().worldText = '';
     els.worldText.value = '';
     updateWorldCount();
@@ -1801,7 +1827,8 @@ function bindSettings() {
   });
   els.btnClearAll.addEventListener('click', async () => {
     if (state.generating) return toast(t('conv.stopFirst'));
-    if (!confirm(t('set.clearAllConfirm'))) return;
+    if (!(await ask(t('set.clearAllConfirm'), { ok: t('set.clearAll'), danger: true }))) return;
+    if (state.generating) return toast(t('conv.stopFirst'));
     clearTimeout(saveTimer);
     clearTimeout(convSaveTimer);
     convSavePending = null;
@@ -1827,8 +1854,9 @@ async function renameConv() {
 
 async function deleteConv() {
   if (state.generating) return toast(t('conv.stopFirst'));
-  if (!confirm(t('conv.deleteConfirm', { title: convTitle(state.conv) }))) return;
   const gone = state.conv;
+  if (!(await ask(t('conv.deleteConfirm', { title: convTitle(gone) }), { ok: t('conv.delete'), danger: true }))) return;
+  if (gone !== state.conv || state.generating) return;
   if (convSavePending === gone) convSavePending = null;
   state.conversations = state.conversations.filter((c) => c !== gone);
   if (!state.conversations.length) {
