@@ -425,6 +425,9 @@ textarea:focus, input:focus, select:focus { outline: 1px solid var(--accent); bo
 .btn:disabled { opacity: .45; cursor: default; }
 .btn-primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
 .btn-ghost { background: transparent; }
+/* 确认框里删除、清空这类无法撤销的操作 */
+.btn-danger { background: var(--danger); color: var(--accent-ink); border-color: var(--danger); font-weight: 600; }
+.btn-danger:hover { border-color: var(--text); }
 .btn-small { padding: 4px 9px; font-size: 12px; }
 .danger { color: var(--danger); }
 .btn.danger:hover { border-color: var(--danger); }
