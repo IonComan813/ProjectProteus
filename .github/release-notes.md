@@ -22,7 +22,7 @@ Proteus 原生应用，下载后即可使用，不需要另外安装浏览器：
 - Windows / macOS / Linux 的原生应用**没有跨域限制**，不允许浏览器直接访问的中转站也能使用（安卓版和网页版一样有这个限制）
 - 原生应用的数据和浏览器分开保存。网页版的数据不会自动出现在原生应用里，可以在网页版中做「完整备份（全部对话）」，再在原生应用中读取
 
-更新内容见 [提交记录](https://github.com/IonComan813/ProjectProteus/commits/main)，使用说明见 [README](https://github.com/IonComan813/ProjectProteus#readme)。
+更新内容见 [提交记录](https://github.com/IonComan813/ProjectProteus/commits/main)，使用说明见 [README](https://github.com/IonComan813/ProjectProteus/blob/main/README.zh-CN.md)。
 
 ---
 
