@@ -213,11 +213,11 @@ js/crypto.js      世界卡加密
 js/providers.js   和各家模型接口通信
 js/render.js      消息显示（Markdown/HTML，沙箱隔离）
 js/app.js         界面逻辑、对话管理、上下文拼装
-js/vendor/        第三方库（marked：Markdown 解析，MIT 许可）
+js/vendor/        第三方库（marked：Markdown 解析，MIT 许可，许可证全文在 marked.LICENSE.md）
 electron/main.js  桌面版入口（窗口、安全设置、解除跨域限制）
 android/          安卓版工程（Capacitor），capacitor.config.json 是它的配置
 assets/           安卓版图标和启动画面的原图
-scripts/          打包用的小脚本
+scripts/          打包用的小脚本（包括检查第三方许可证、生成第三方声明的 third-party-notices.js）
 build/icon.png    应用图标
 package.json      桌面版的依赖和打包配置
 ```
@@ -255,7 +255,9 @@ npm run android:apk  # 打包安卓版（需要安装 Android SDK 和 JDK 21）
 
 - **只想试试能不能打包**：在仓库的 Actions 页面选「Build desktop app」→「Run workflow」。只打包不发布，安装包在那次运行页面底部的 Artifacts 里，保留 30 天。
 
-安装包里的下载说明来自 `.github/release-notes.md`。
+安装包里的下载说明来自 `.github/release-notes.md`。Release 说明的最后会自动写上「本页安装包构建自提交 xxx」，用所选分支重新打包、替换已有 Release 的安装包时也会更新这一行，源代码以这次提交为准。
+
+每次打包前会先检查打进安装包的第三方组件的许可证（`scripts/third-party-notices.js`）：遇到不认识或和 GPL v3 不兼容的许可证时打包失败，需要人工确认后在脚本里登记；通过后生成 `THIRD_PARTY_NOTICES.txt` 放进安装包。
 
 #### 安卓版的签名密钥
 
@@ -291,4 +293,10 @@ keytool -genkeypair -v -keystore proteus.jks -alias proteus -keyalg RSA -keysize
 
 本项目基于 [GPL v3](LICENSE) 开源。使用者需自备 API Key，开发者不为使用者在本软件中的输入和输出承担法律责任。
 
-第三方库：[marked](https://github.com/markedjs/marked)（MIT 许可）。
+第三方组件和它们的许可证：
+
+- 网页部分（所有版本）：[marked](https://github.com/markedjs/marked)（MIT）
+- 桌面版：[Electron](https://www.electronjs.org/)（MIT）及其包含的 Chromium 组件
+- 安卓版：[Capacitor](https://capacitorjs.com/)（MIT）、Apache Cordova、AndroidX、Kotlin 等（Apache-2.0）
+
+完整清单和许可证全文在安装包里的 `THIRD_PARTY_NOTICES.txt`：桌面版在程序旁边（和 `LICENSE.txt`、Electron 的 `LICENSE.electron.txt`、`LICENSES.chromium.html` 放在一起），安卓版在 APK 里。

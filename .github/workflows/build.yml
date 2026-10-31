@@ -5,7 +5,9 @@
 # - 在 Actions 页面手动运行（Run workflow）：
 #   · “上传到哪个 Release”留空：只打包不发布，安装包在本次运行页面的 Artifacts 里下载；
 #   · 填一个已有的版本标签（例如 v0.1.0）：用所选分支的最新代码重新打包，
-#     上传到这个已有的 Release，替换同名文件；Release 的标题和说明不变。
+#     上传到这个已有的 Release，替换同名文件；Release 的标题和说明不变，只更新“构建自哪次提交”那一行。
+# 每次打包前都会检查打进安装包的第三方组件的许可证（scripts/third-party-notices.js），
+# 遇到不认识或不兼容的许可证时打包失败；通过后生成 THIRD_PARTY_NOTICES.txt 放进安装包。
 #
 # 安卓版签名：在仓库 Settings → Secrets and variables → Actions 里添加
 #   ANDROID_KEYSTORE_BASE64（签名密钥文件的 base64 文本）和 ANDROID_KEYSTORE_PASSWORD（密钥密码）。
@@ -70,6 +72,9 @@ jobs:
           fi
           npm version "$version" --no-git-tag-version --allow-same-version
 
+      - name: Check licenses and write third-party notices
+        run: npm run notices
+
       - name: Build
         run: npx electron-builder ${{ matrix.args }} --publish never
 
@@ -119,6 +124,16 @@ jobs:
 
       - name: Copy the web app into the Android project
         run: npm run android:sync
+
+      # 列出打进 APK 的依赖，检查许可证，把第三方声明放进 APK
+      - name: Check licenses and write third-party notices
+        shell: bash
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew --no-daemon -q listReleaseDependencies
+          cd ..
+          node scripts/third-party-notices.js android android/app/src/main/assets/public/THIRD_PARTY_NOTICES.txt
 
       - name: Prepare the signing key
         env:
@@ -184,22 +199,25 @@ jobs:
         run: |
           set -euo pipefail
           marker='<!-- proteus-download-notes -->'
+          # 写明安装包构建自哪次提交：重新打包时用的可能不是标签那次提交，源代码以这一行为准
+          build_marker='<!-- proteus-build -->'
+          build_line="$build_marker 本页安装包构建自提交 [\`${GITHUB_SHA:0:7}\`](https://github.com/$GH_REPO/commit/$GITHUB_SHA)，对应的源代码就是这次提交。"
           if gh release view "$RELEASE_TAG" > /dev/null 2>&1; then
             # 已有的 Release（例如在网页上发布的）：推送标签触发时，把下载说明接在原说明后面（只加一次）；
-            # 手动运行上传到已有 Release 时，不动标题和说明
-            if [ "$GITHUB_EVENT_NAME" = push ]; then
-              body=$(gh release view "$RELEASE_TAG" --json body -q .body)
-              if ! grep -qF "$marker" <<< "$body"; then
-                { printf '%s\n\n%s\n' "$body" "$marker"; cat .github/release-notes.md; } > notes.md
-                gh release edit "$RELEASE_TAG" --notes-file notes.md
-              fi
+            # 手动运行上传到已有 Release 时，不动标题和说明。两种情况都更新“构建自哪次提交”那一行
+            body=$(gh release view "$RELEASE_TAG" --json body -q .body)
+            if [ "$GITHUB_EVENT_NAME" = push ] && ! grep -qF "$marker" <<< "$body"; then
+              body=$(printf '%s\n\n%s\n' "$body" "$marker"; cat .github/release-notes.md)
             fi
+            body=$(grep -vF "$build_marker" <<< "$body" || true)
+            printf '%s\n\n%s\n' "$body" "$build_line" > notes.md
+            gh release edit "$RELEASE_TAG" --notes-file notes.md
           else
             if [ "$GITHUB_EVENT_NAME" != push ]; then
               echo "::error::Release $RELEASE_TAG does not exist. Create it on the Releases page first, or leave the field empty to only build."
               exit 1
             fi
-            { echo "$marker"; cat .github/release-notes.md; } > notes.md
+            { echo "$marker"; cat .github/release-notes.md; echo; echo "$build_line"; } > notes.md
             gh release create "$RELEASE_TAG" --verify-tag --title "$RELEASE_TAG" --notes-file notes.md
           fi
           # 上传安装包，同名文件直接替换
