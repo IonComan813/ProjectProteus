@@ -217,7 +217,7 @@ function render(target, components) {
   if (target === 'desktop') {
     const electron = JSON.parse(read(path.join(ROOT, 'package-lock.json'))).packages['node_modules/electron'].version;
     out.push(`Electron ${electron} (MIT) and the Chromium components it contains: see LICENSE.electron.txt and`);
-    out.push('LICENSES.chromium.html next to the program (inside the .app bundle on macOS).');
+    out.push('LICENSES.chromium.html next to the program (on macOS: Proteus.app/Contents/Resources).');
     out.push('');
   }
   const w = Math.max(...components.map((c) => c.name.length));

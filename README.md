@@ -303,4 +303,4 @@ AGPL v3 在 GPL v3 的基础上多了一条：修改了本软件并通过网络�
 - 桌面版：[Electron](https://www.electronjs.org/)（MIT）及其包含的 Chromium 组件
 - 安卓版：[Capacitor](https://capacitorjs.com/)（MIT）、Apache Cordova、AndroidX、Kotlin 等（Apache-2.0）
 
-完整清单和许可证全文在安装包里的 `THIRD_PARTY_NOTICES.txt`：桌面版在程序旁边（和 `LICENSE.txt`、Electron 的 `LICENSE.electron.txt`、`LICENSES.chromium.html` 放在一起），安卓版在 APK 里。
+完整清单和许可证全文在安装包里的 `THIRD_PARTY_NOTICES.txt`：桌面版在程序旁边（和 `LICENSE.txt`、Electron 的 `LICENSE.electron.txt`、`LICENSES.chromium.html` 放在一起；macOS 在 `Proteus.app/Contents/Resources` 里），安卓版在 APK 里。
