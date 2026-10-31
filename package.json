@@ -48,16 +48,6 @@
       "build/icon.png",
       "LICENSE"
     ],
-    "extraFiles": [
-      {
-        "from": "LICENSE",
-        "to": "LICENSE.txt"
-      },
-      {
-        "from": "THIRD_PARTY_NOTICES.txt",
-        "to": "THIRD_PARTY_NOTICES.txt"
-      }
-    ],
     "artifactName": "Proteus-${version}-${os}-${arch}.${ext}",
     "publish": null,
     "win": {
@@ -74,6 +64,16 @@
           "arch": [
             "x64"
           ]
+        }
+      ],
+      "extraFiles": [
+        {
+          "from": "LICENSE",
+          "to": "LICENSE.txt"
+        },
+        {
+          "from": "THIRD_PARTY_NOTICES.txt",
+          "to": "THIRD_PARTY_NOTICES.txt"
         }
       ]
     },
@@ -96,6 +96,16 @@
             "x64"
           ]
         }
+      ],
+      "extraFiles": [
+        {
+          "from": "LICENSE",
+          "to": "LICENSE.txt"
+        },
+        {
+          "from": "THIRD_PARTY_NOTICES.txt",
+          "to": "THIRD_PARTY_NOTICES.txt"
+        }
       ]
     },
     "mac": {
@@ -110,6 +120,16 @@
             "arm64",
             "x64"
           ]
+        }
+      ],
+      "extraResources": [
+        {
+          "from": "LICENSE",
+          "to": "LICENSE.txt"
+        },
+        {
+          "from": "THIRD_PARTY_NOTICES.txt",
+          "to": "THIRD_PARTY_NOTICES.txt"
         }
       ]
     },
