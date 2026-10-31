@@ -37,12 +37,12 @@ const Render = (() => {
     .proteus-thinking { color: #8d8f98; font-style: italic; }
   `;
 
-  // 开场白窗口内部的辅助脚本：汇报内容高度
+  // 开场白窗口内部的辅助脚本：汇报内容高度。GEN 是这次载入的编号，父页面只认当前这次载入的汇报
   const HELPER = `(function () {
     var last = -1;
     function report() {
       var h = Math.ceil(document.body.getBoundingClientRect().height);
-      if (h !== last) { last = h; parent.postMessage({ proteus: 'height', h: h }, '*'); }
+      if (h !== last) { last = h; parent.postMessage({ proteus: 'height', h: h, gen: GEN }, '*'); }
     }
     new ResizeObserver(report).observe(document.body);
     window.addEventListener('load', report);
@@ -62,14 +62,16 @@ const Render = (() => {
   const LOCKED_JS = "document.addEventListener('contextmenu', function (e) { e.preventDefault(); }, true);"
     + "document.addEventListener('copy', function (e) { e.preventDefault(); }, true);";
 
-  function buildDoc(html, scripts, locked) {
+  function buildDoc(html, scripts, locked, gen) {
     return '<!doctype html><html><head><meta charset="utf-8"><base target="_blank">'
       + '<style>' + BASE_CSS + (locked ? LOCKED_CSS : '') + '</style></head><body><div id="root">' + html + '</div>'
-      + (scripts ? '<script>' + HELPER + (locked ? LOCKED_JS : '') + '</' + 'script>' : '')
+      + (scripts ? '<script>var GEN = ' + (gen || 0) + ';' + HELPER + (locked ? LOCKED_JS : '') + '</' + 'script>' : '')
       + '</body></html>';
   }
 
   function setHeight(f, h) {
+    // 窗口被隐藏时（例如正在编辑这条消息）量出来的高度是 0，不采用，也不记进缓存；重新显示后会再量一次
+    if (f.offsetParent === null) return;
     h = Math.max(0, Math.min(Number(h) || 0, 100000));
     if (f.style.height === h + 'px') return;
     f.style.height = h + 'px';
@@ -129,7 +131,9 @@ const Render = (() => {
   function set(f, text, { locked = false } = {}) {
     f._text = text;
     if (f._scripts) {
-      f.srcdoc = buildDoc(toHtml(text), true, locked);
+      // 重新载入时换一个编号：上一次载入的文档可能还会晚到一条高度汇报，不能让它覆盖新内容的高度
+      f._gen = (f._gen || 0) + 1;
+      f.srcdoc = buildDoc(toHtml(text), true, locked, f._gen);
     } else {
       f._pending = toHtml(text);
       applySafe(f);
@@ -147,7 +151,10 @@ const Render = (() => {
   window.addEventListener('message', (e) => {
     if (!e.data || e.data.proteus !== 'height') return;
     for (const el of document.querySelectorAll('iframe.msg-frame')) {
-      if (el._scripts && el.contentWindow === e.source) { setHeight(el, e.data.h); break; }
+      if (el._scripts && el.contentWindow === e.source) {
+        if (e.data.gen === el._gen) setHeight(el, e.data.h);
+        break;
+      }
     }
   });
 
