@@ -10,6 +10,9 @@
       "insetsHandling": "css",
       "style": "DARK",
       "initialViewportFitValueHint": "cover"
+    },
+    "CapacitorHttp": {
+      "enabled": true
     }
   }
 }

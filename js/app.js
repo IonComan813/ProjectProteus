@@ -1273,6 +1273,8 @@ function exportLog() {
     '',
     '===== REQUEST =====',
     `${x.request.method} ${x.request.url}`,
+    // 安卓版改用原生请求发出时注明（不受跨域限制，回复一次性返回）
+    ...(x.request.via === 'native' ? ['(sent by the Android app\'s native HTTP client)'] : []),
     JSON.stringify(headers, null, 2),
     '',
     JSON.stringify(body, null, 2),

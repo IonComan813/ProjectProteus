@@ -194,6 +194,50 @@ function readWhole(j, onText) {
   return choice.finish_reason || null;
 }
 
+// ---- 安卓版：绕过跨域限制 ----
+// 安卓版开启了 Capacitor 的原生请求（capacitor.config.json 里的 CapacitorHttp）：window.fetch 被换成由
+// 原生代码发请求的版本，不受跨域限制，但要等整个回复生成完才一次性返回，也不理会“停止”。
+// 原来的 WebView fetch 保存在 window.CapacitorWebFetch。
+// 所以对话请求先用 WebView 发（文字边生成边显示）；连不上（跨域被拦就是这样）时改用原生请求重发一次，
+// 并记住这个接口地址，以后直接用原生请求。获取模型列表直接用原生请求（它本来就不是流式的）。
+const NATIVE_ORIGINS_KEY = 'proteus.nativeHttpOrigins';
+const nativeOrigins = new Set();
+try { for (const o of JSON.parse(localStorage.getItem(NATIVE_ORIGINS_KEY) || '[]')) nativeOrigins.add(o); } catch (_) { /* 读不到就从头记 */ }
+
+function rememberNativeOrigin(origin) {
+  if (nativeOrigins.has(origin)) return;
+  nativeOrigins.add(origin);
+  try { localStorage.setItem(NATIVE_ORIGINS_KEY, JSON.stringify([...nativeOrigins])); } catch (_) { /* 只在这次打开期间记住 */ }
+}
+
+// 原生请求不理会 signal：点“停止”时不再等它，直接按中止处理（原生请求在后台结束，结果丢弃）
+function abortable(promise, signal) {
+  if (!signal) return promise;
+  return new Promise((resolve, reject) => {
+    const onAbort = () => reject(new DOMException('Aborted', 'AbortError'));
+    if (signal.aborted) return onAbort();
+    signal.addEventListener('abort', onAbort, { once: true });
+    promise.then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort));
+  });
+}
+
+// 发送对话请求，返回 { res, native }。native 表示用的是原生请求（回复一次性返回）
+async function postChat(url, init, signal) {
+  if (!window.CapacitorWebFetch) return { res: await fetch(url, init), native: false };
+  const origin = new URL(url).origin;
+  if (!nativeOrigins.has(origin)) {
+    try {
+      return { res: await window.CapacitorWebFetch(url, init), native: false };
+    } catch (e) {
+      if (e.name === 'AbortError') throw e;
+      // 连不上：可能是跨域被拦，也可能是网络问题。用原生请求再试一次，成功才记住
+    }
+  }
+  const res = await abortable(fetch(url, init), signal);
+  rememberNativeOrigin(origin);
+  return { res, native: true };
+}
+
 // 发送一次对话请求。onText(增量文字) 会被多次调用。
 // 返回 { stopReason }。
 async function streamChat(cfg, system, messages, { signal, onText, onThinking }) {
@@ -204,7 +248,9 @@ async function streamChat(cfg, system, messages, { signal, onText, onThinking })
   try {
     let res;
     try {
-      res = await fetch(req.url, { method: 'POST', headers: req.headers, body: JSON.stringify(req.body), signal });
+      const sent = await postChat(req.url, { method: 'POST', headers: req.headers, body: JSON.stringify(req.body), signal }, signal);
+      res = sent.res;
+      if (sent.native) log.request.via = 'native';
     } catch (e) {
       if (e.name === 'AbortError') throw e;
       throw new Error(t('api.connectFailed') + '\n' + e.message);
