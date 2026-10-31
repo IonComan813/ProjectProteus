@@ -5,7 +5,7 @@
   "description": "Roleplay chat app for large language models (desktop version with built-in Chromium)",
   "main": "electron/main.js",
   "author": "IonComan813",
-  "license": "GPL-3.0-only",
+  "license": "AGPL-3.0-only",
   "homepage": "https://github.com/IonComan813/ProjectProteus",
   "repository": {
     "type": "git",
@@ -14,11 +14,13 @@
   "private": true,
   "scripts": {
     "start": "electron .",
-    "dist:win": "electron-builder --win --x64",
-    "dist:linux": "electron-builder --linux --x64",
-    "dist:mac": "electron-builder --mac",
+    "notices": "node scripts/third-party-notices.js desktop THIRD_PARTY_NOTICES.txt",
+    "dist:win": "npm run notices && electron-builder --win --x64",
+    "dist:linux": "npm run notices && electron-builder --linux --x64",
+    "dist:mac": "npm run notices && electron-builder --mac",
     "android:sync": "node scripts/build-www.js && cap sync android",
-    "android:apk": "npm run android:sync && cd android && ./gradlew assembleRelease"
+    "android:notices": "cd android && ./gradlew -q listReleaseDependencies && cd .. && node scripts/third-party-notices.js android android/app/src/main/assets/public/THIRD_PARTY_NOTICES.txt",
+    "android:apk": "npm run android:sync && npm run android:notices && cd android && ./gradlew assembleRelease"
   },
   "devDependencies": {
     "@capacitor/android": "8.5.3",
@@ -33,7 +35,7 @@
   "build": {
     "appId": "io.github.ioncoman813.proteus",
     "productName": "海神Proteus",
-    "copyright": "Copyright © 2026 IonComan813 · GPL-3.0",
+    "copyright": "Copyright © 2026 IonComan813 · AGPL-3.0",
     "directories": {
       "output": "dist",
       "buildResources": "build"
@@ -45,6 +47,16 @@
       "electron/**",
       "build/icon.png",
       "LICENSE"
+    ],
+    "extraFiles": [
+      {
+        "from": "LICENSE",
+        "to": "LICENSE.txt"
+      },
+      {
+        "from": "THIRD_PARTY_NOTICES.txt",
+        "to": "THIRD_PARTY_NOTICES.txt"
+      }
     ],
     "artifactName": "Proteus-${version}-${os}-${arch}.${ext}",
     "publish": null,
