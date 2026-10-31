@@ -1,4 +1,4 @@
-// Electron 桌面版的入口：用自带的 Chromium 内核打开 index.html。
+// Windows / macOS / Linux 原生应用（Electron）的入口：用自带的 Chromium 内核打开 index.html。
 // 页面本身和浏览器版完全相同；这里只负责窗口、安全设置，以及去掉跨域限制。
 
 const { app, BrowserWindow, Menu, dialog, shell, session } = require('electron');
@@ -83,7 +83,7 @@ function createWindow() {
 }
 
 // 去掉跨域限制：浏览器会拦截不允许网页直接访问的接口（部分中转站就是这样）。
-// 桌面版里，主页面发出的请求一律放行。消息显示用的沙箱小窗口不在此列。
+// 原生应用里，主页面发出的请求一律放行。消息显示用的沙箱小窗口不在此列。
 const CORS_HEADERS = 'authorization, content-type, x-api-key, anthropic-version, anthropic-beta, '
   + 'anthropic-dangerous-direct-browser-access, x-title, http-referer';
 
