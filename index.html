@@ -50,12 +50,6 @@
         <button class="jump-btn jump-bottom" id="btnJumpBottom" data-i18n="msg.jumpBottom" hidden></button>
       </div>
 
-      <!-- 放大的编辑窗口（System Prompt / 世界观）：内容和右侧的输入框同步，点窗口以外的地方关闭 -->
-      <div class="expand-box" id="expandBox" hidden>
-        <div class="expand-head"><strong id="expandTitle"></strong><span class="muted small" data-i18n="expand.hint"></span></div>
-        <textarea id="expandText"></textarea>
-      </div>
-
       <footer class="composer" id="composer">
         <div class="row-resizer" id="composerResizer" data-i18n-title="input.resizer"></div>
         <div class="error-bar" id="errorBar" hidden></div>
@@ -121,6 +115,17 @@
           <button class="btn btn-small unlockable" id="btnExpandWorld" data-i18n="expand.button"></button>
           <button class="btn btn-small btn-ghost unlockable" id="btnClearWorld" data-i18n="set.clear"></button>
           <span class="muted small" id="worldCount"></span>
+        </div>
+      </section>
+
+      <section class="card">
+        <h3 data-i18n="set.npc"></h3>
+        <p class="hint" data-i18n="set.npcHint"></p>
+        <textarea id="npcText" class="scroll-box unlockable" rows="5" data-i18n-ph="set.npcPlaceholder"></textarea>
+        <div class="lock-box lock-only" data-i18n="lock.protected"></div>
+        <div class="row">
+          <button class="btn btn-small unlockable" id="btnExpandNpc" data-i18n="expand.button"></button>
+          <span class="muted small" id="npcCount"></span>
         </div>
       </section>
 
@@ -299,6 +304,13 @@
   <div class="split-menu ctx-menu" id="convCtxMenu" role="menu" hidden>
     <button id="btnCtxRename" class="split-item" role="menuitem" data-i18n="conv.rename"></button>
     <button id="btnCtxDelete" class="split-item danger" role="menuitem" data-i18n="conv.delete"></button>
+  </div>
+
+  <!-- 放大的编辑窗口（System Prompt / 世界观 / NPC角色）：内容和右侧的输入框同步，点窗口以外的地方关闭。
+       电脑布局盖在聊天区上，手机布局盖在设置面板上（位置由 JS 设置） -->
+  <div class="expand-box" id="expandBox" hidden>
+    <div class="expand-head"><strong id="expandTitle"></strong><span class="muted small" data-i18n="expand.hint"></span></div>
+    <textarea id="expandText"></textarea>
   </div>
 
   <div class="toast" id="toast" hidden></div>

@@ -65,13 +65,15 @@ Switching computers, reinstalling your system or (for the web version) clearing 
 |---|---|
 | Left | Artwork. Click to upload; portrait images work best. The image is shown at the width of the left column without stretching: if it is taller than the column, the top and bottom are cropped; if it is shorter, black bars are added above and below. Drag the right edge of the column to resize it (up to about 45% of the window, always leaving enough room for the chat); double-click the edge to reset |
 | Middle | The story. At the top you can switch, create, rename and delete conversations ("＋ New chat" opens a menu where you choose a "🎭 roleplay", "🤖 assistant" (see [Assistant mode](#assistant-mode)) or "🍺 SillyTavern" chat (see [Loading SillyTavern character cards](#loading-sillytavern-character-cards)); in the list, the emoji before each conversation's name shows its type, followed by its number of rounds and the time of its latest activity — creating it, saving the opening, or sending a request to the model — and the list is sorted by that time; in the open list, left-click switches to a conversation and right-click lets you rename or delete it); at the bottom is the input box, press **Ctrl + Enter** to send. Drag the edge above the input box to change its height |
-| Right | Settings, from top to bottom: System Prompt → World → User's character (with the `{{user}}` value) → Key Instructions → Memory length → Model & API → Artwork → Export & backup → Local data → Language |
+| Right | Settings, from top to bottom: System Prompt → World → NPC characters → User's character (with the `{{user}}` value) → Key Instructions → Memory length → Model & API → Artwork → Export & backup → Local data → Language |
 
-Below the System Prompt and world boxes, "Enlarge" opens a large editing window over the chat for easier writing; it stays in sync with the box on the right. Click outside it (or press Esc) to close it.
+Below the System Prompt, world and NPC characters boxes, "Enlarge" opens a large editing window for easier writing; it stays in sync with the box on the right. Click outside it (or press Esc) to close it. On a computer it covers the chat; in the mobile layout (the settings panel opened with ⚙) it covers the settings panel.
+
+"NPC characters" is for the other characters in the world, played by the model; keeping them apart from the world makes both clearer. When a SillyTavern character card is loaded, the character goes here.
 
 ### Each conversation has its own settings
 
-**The System Prompt, world, user's character, `{{user}}` value, key instructions, opening (all versions) and artwork belong to each conversation.** A new chat of the same type copies these from the current conversation (with an empty story); after that the two are independent. Switching back to an older conversation shows that conversation's own settings.
+**The System Prompt, world, NPC characters, user's character, `{{user}}` value, key instructions, opening (all versions) and artwork belong to each conversation.** A new chat of the same type copies these from the current conversation (with an empty story); after that the two are independent. Switching back to an older conversation shows that conversation's own settings.
 
 Memory length, Model & API, API keys, interface language and layout are app settings shared by all conversations.
 
@@ -80,7 +82,7 @@ Memory length, Model & API, API keys, interface language and layout are app sett
 The one-line box above the user's character (its placeholder reads "{{user}} value"). Wherever `{{user}}` appears in the settings, the opening or the story (in any capitalization; it is common in SillyTavern character cards):
 
 - **Display**: the chat shows it as the value entered here (in the opening, your messages and the model's replies), and so do story exports
-- **Sending**: it is replaced with this value in everything sent to the model (System Prompt, world, character, key instructions, opening, story)
+- **Sending**: it is replaced with this value in everything sent to the model (System Prompt, world, NPC characters, character, key instructions, opening, story)
 - **Storage**: what is saved still says `{{user}}`, so a new value takes effect everywhere at once; the System Prompt, world and other edit boxes also show the original `{{user}}`
 - **Left empty**: `{{user}}` is shown and sent as is; models generally understand that it means the user
 - If nothing contains `{{user}}`, the value has no effect at all
@@ -93,7 +95,7 @@ The box below the user's character. What you write here is added to **the end of
 
 - When it is empty nothing is sent, not even the label
 - It is only added to the latest user message (when regenerating, the user message before that reply); it is not saved into the message, and earlier messages don't carry it
-- Like the System Prompt and world, it counts as part of the setting: it is included in world cards and full backups and encrypted along with them. Assistant mode doesn't use it
+- Like the System Prompt, world and NPC characters, it counts as part of the setting: it is included in world cards and full backups and encrypted along with them. Assistant mode doesn't use it
 
 ### Opening
 
@@ -152,8 +154,8 @@ While the model is writing you can scroll up and read; the page won't be pulled 
 Besides roleplay, Proteus can be used as an ordinary LLM chat tool (a personal assistant), sharing the same API and model settings.
 
 - **Start one**: click "＋ New chat" above the chat and choose "🤖 New assistant chat"
-- **Settings**: nothing is carried over from the current conversation — not the opening, System Prompt, world, user's character or artwork. The System Prompt is replaced with a general personal-assistant prompt (one for each interface language; you can edit it). "Reset to default" depends on the conversation's mode: a roleplay chat gets the roleplay default, an assistant chat the assistant default. The world, user's character, `{{user}}` value and key instructions are empty and cannot be edited (not because they are protected, but because this mode doesn't use them); there is no "Add opening". Artwork can still be uploaded; it is only displayed, never sent to the model
-- **Sent to the model**: only the System Prompt, the conversation within the memory range and your current message — no world, character, key instructions or opening, and none of their labels (see the next section); `{{user}}` is not replaced. Memory length works as usual
+- **Settings**: nothing is carried over from the current conversation — not the opening, System Prompt, world, user's character or artwork. The System Prompt is replaced with a general personal-assistant prompt (one for each interface language; you can edit it). "Reset to default" depends on the conversation's mode: a roleplay chat gets the roleplay default, an assistant chat the assistant default. The world, NPC characters, user's character, `{{user}}` value and key instructions are empty and cannot be edited (not because they are protected, but because this mode doesn't use them); there is no "Add opening". Artwork can still be uploaded; it is only displayed, never sent to the model
+- **Sent to the model**: only the System Prompt, the conversation within the memory range and your current message — no world, NPC characters, character, key instructions or opening, and none of their labels (see the next section); `{{user}}` is not replaced. Memory length works as usual
 - **New chats**: every type of new chat is chosen in the "＋ New chat" menu. A new chat copies the most recently used conversation of the same type (the current one, if it is of that type): in an assistant chat, "🤖 New assistant chat" keeps the current System Prompt and artwork; "🎭 New roleplay chat" takes the settings, opening and artwork of the roleplay chat you used most recently (or the defaults if there is none). Likewise, a new assistant chat started from a roleplay chat keeps the System Prompt and artwork of the most recent assistant chat, if there is one (a roleplay chat's artwork is not carried over)
 - **Export**: only the chat (TXT / Markdown), full backup (all conversations) and log; world cards and single-conversation backups are not offered. "Load world card / backup / SillyTavern card" works as usual: world cards, single-conversation backups and SillyTavern cards are loaded as new conversations, and a full backup replaces all conversations, whatever mode the current chat is in
 - **Storage**: assistant chats use the same format as roleplay chats with one extra `mode: "assistant"` marker, so they are included in full backups (all conversations) and loaded back as usual. When a full backup is encrypted, assistant chats and their artwork are not encrypted (they have no settings to protect)
@@ -166,12 +168,13 @@ Each request has two parts: the **system settings** and the **story so far**. Th
 
 ### System settings
 
-These three parts, in this order, separated by a blank line; empty parts are left out entirely:
+These four parts, in this order, separated by a blank line; empty parts are left out entirely, label included:
 
 | Part | How it is sent |
 |---|---|
 | System Prompt | As written, with no label |
 | World | The label `[World Setting]` on the first line, then the full world setting |
+| NPC characters | The label `[NPC Characters]` on the first line, then the full NPC characters text |
 | User's character | The label `[User's Character]` on the first line, then the full character description |
 
 In the Anthropic format (official Claude API and Anthropic-compatible relays) this goes in the request's `system` field; in the OpenAI format (official OpenAI, Gemini, OpenRouter and other relays) it is the first `system` message.
@@ -208,6 +211,9 @@ Memory length 1 round, the opening set to be sent, and you are sending your 3rd 
              [World Setting]
              …world setting…
              (blank line)
+             [NPC Characters]
+             …NPC characters…
+             (blank line)
              [User's Character]
              …character…
 [user]       2nd message
@@ -227,6 +233,7 @@ Labels follow the interface language **at the time the request is sent**:
 | | 简体中文 | 繁體中文 | English | 日本語 |
 |---|---|---|---|---|
 | World | `【世界观设定】` | `【世界觀設定】` | `[World Setting]` | `【世界観設定】` |
+| NPC characters | `【NPC角色】` | `【NPC角色】` | `[NPC Characters]` | `【NPCキャラクター】` |
 | User's character | `【用户角色人设】` | `【使用者角色設定】` | `[User's Character]` | `【ユーザーキャラクター設定】` |
 | Start of opening | `【开场白】` | `【開場白】` | `[Opening]` | `【オープニング】` |
 | End of opening | `【开场白结束】` | `【開場白結束】` | `[End of Opening]` | `【オープニングここまで】` |
@@ -247,7 +254,7 @@ Only two parts are sent, with no labels at all:
 [user]       your current message
 ```
 
-Range, versions and merging of same-side messages work as above; there is no opening, the world, character and key instructions are not sent, and `{{user}}` is not replaced.
+Range, versions and merging of same-side messages work as above; there is no opening, the world, NPC characters, character and key instructions are not sent, and `{{user}}` is not replaced.
 
 ### Memory range
 
@@ -262,8 +269,8 @@ You can type the memory length directly or adjust it with − / ＋. Below it is
 |---|---|---|
 | Story (TXT / Markdown) | The current conversation's opening and all messages | System Prompt, world, character, artwork |
 | Chat (TXT / Markdown) (assistant mode) | All messages in the current conversation | System Prompt |
-| World card (JSON, can be encrypted) | The current conversation's System Prompt, world, key instructions, opening (all versions, and whether it is sent to the model), artwork | User's character, `{{user}}` value, story |
-| Full backup (this conversation) (JSON, can be encrypted) | Everything in the current conversation: System Prompt, world, user's character, `{{user}}` value, key instructions, opening (all versions, and whether it is sent to the model), story (including every version of every reply), artwork | App settings |
+| World card (JSON, can be encrypted) | The current conversation's System Prompt, world, NPC characters, key instructions, opening (all versions, and whether it is sent to the model), artwork | User's character, `{{user}}` value, story |
+| Full backup (this conversation) (JSON, can be encrypted) | Everything in the current conversation: System Prompt, world, NPC characters, user's character, `{{user}}` value, key instructions, opening (all versions, and whether it is sent to the model), story (including every version of every reply), artwork | App settings |
 | Full backup (all conversations) (JSON, can be encrypted) | Every conversation (with all its content) and the app settings (memory length, Model & API, interface language, layout, etc.) | API keys |
 | Log (last request) (TXT) | The request actually sent to the model the last time (API address, headers, JSON body) and the raw response received, for troubleshooting. Only the last request since the app was opened; not saved | API keys; locked settings from encrypted world cards (shown as "(protected content)") |
 
@@ -271,7 +278,7 @@ In an assistant chat only the chat, full backup (all conversations) and log are 
 
 "Load world card / backup / SillyTavern card" accepts world cards, both kinds of full backup, and SillyTavern character cards and lorebooks (see [Loading SillyTavern character cards](#loading-sillytavern-character-cards)). It also works from an assistant chat:
 
-- **Loading a world card** creates a new conversation with the card's System Prompt, world, key instructions, opening and artwork, and an empty user's character and `{{user}}` value; existing conversations are not affected
+- **Loading a world card** creates a new conversation with the card's System Prompt, world, NPC characters, key instructions, opening and artwork, and an empty user's character and `{{user}}` value; existing conversations are not affected
 - **Loading a full backup (this conversation)** creates a new conversation exactly as it was backed up; existing conversations are not affected (loading the same backup twice gives two conversations)
 - **Loading a full backup (all conversations)** replaces all current conversations and settings (your API keys on this device are kept), restoring the whole app to the state of the backup
 
@@ -282,7 +289,7 @@ Images are stored in the JSON as text (base64), so world cards and backups with 
 When exporting a world card or full backup you can choose to **encrypt** it with a 4–16 character password (in an encrypted full backup, the story and user's character stay in plain text; only the items below are encrypted):
 
 - Opening the file directly shows only gibberish
-- After loading it in Proteus, the System Prompt, world, key instructions, opening and artwork are **locked**: they can be used normally but not viewed, edited, copied or downloaded; the opening is displayed as usual, but versions cannot be edited, added or deleted, and whether it is sent to the model cannot be changed (with several versions you can still switch between them before the conversation starts). The user's character, `{{user}}` value and story are not affected
+- After loading it in Proteus, the System Prompt, world, NPC characters, key instructions, opening and artwork are **locked**: they can be used normally but not viewed, edited, copied or downloaded; the opening is displayed as usual, but versions cannot be edited, added or deleted, and whether it is sent to the model cannot be changed (with several versions you can still switch between them before the conversation starts). The user's character, `{{user}}` value and story are not affected
 - Entering the password unlocks it, turning it back into a normal conversation
 - A new conversation created from a locked one, and world cards or full backups exported from it, stay encrypted with the original password. You are reminded before exporting that the original password is still needed to unlock it (you are not asked whether to encrypt in this case; normal conversations in a "Full backup (all conversations)" can still be encrypted)
 - **A forgotten password cannot be recovered**
@@ -311,12 +318,14 @@ A character card may or may not include a lorebook; a standalone lorebook never 
 
 | Current conversation | Loading a lorebook | Loading a character card |
 |---|---|---|
-| Not a SillyTavern chat, already started, or locked | New conversation | New conversation |
+| Not a SillyTavern chat, already started (a message has been sent; a saved opening alone does not count), or locked | New conversation | New conversation |
 | Lorebook only | New conversation (two worlds cannot share one conversation) | **Added to this conversation** |
-| Character card only (without a lorebook) | **Added to this conversation** | No group chats: you are asked whether to create a new conversation, and then whether to copy the current lorebook into it |
+| Character card only (without a lorebook) | **Added to this conversation** | No group chats: you are asked whether to create a new conversation (load a lorebook into it afterwards if you need one) |
 | Lorebook + character card (including a card's own lorebook) | New conversation | Same as above |
 
 A character card with its own lorebook cannot be added to a conversation that already has a lorebook; it gets a new conversation. A new conversation starts with an empty user's character and `{{user}}` value; existing conversations are not affected.
+
+A lorebook goes into "World" and a character into "NPC characters". When added to a conversation, it **replaces** that box; if the box already has content (your own text), you are asked first. Once a conversation has started, a new setting could contradict the story so far, so a new conversation is always created.
 
 ### Where a character card's content goes
 
@@ -325,14 +334,14 @@ A character card with its own lorebook cannot be added to a conversation that al
 | Name (`name`) | The title of a new conversation; every `{{char}}` in the conversation is shown and sent as this name |
 | Image | Artwork (when added to a conversation, only if that conversation has no artwork yet) |
 | System Prompt (`system_prompt`) | System Prompt. Where the card says `{{original}}`, the existing System Prompt is put in its place (the author adds to it). In a new conversation, the default is used if the card has none. When added to a conversation, the card's prompt is used directly if the current one is still the default; if you have changed it, you are asked first, and the dialog shows what it would become |
-| Embedded lorebook (`character_book`) | The first part of the world (full text) |
-| Description, personality, scenario, example dialogue | The "Character: name" part of the world, each with its own heading. When added to a conversation, it goes after the current world |
+| Embedded lorebook (`character_book`) | "World" (full text) |
+| Description, personality, scenario, example dialogue | "NPC characters": headed "Character: name", each with its own subheading |
 | First message (`first_mes`) and alternate greetings (`alternate_greetings`) | Versions of the opening, with "Send to the model" checked. When added to a conversation, they go after the existing versions |
 | `post_history_instructions` | Key instructions (with any `{{original}}` removed). When added to a conversation, they are used directly if the current key instructions are empty; otherwise you are asked first |
 | Creator's notes (`creator_notes`) | Not sent to the model; shown once after loading |
 | Tags, creator, version, extensions (regex scripts etc.) | Ignored |
 
-A standalone lorebook goes at the start of the world, under the heading "Lorebook".
+A standalone lorebook goes into "World" in full.
 
 **Lorebooks**: SillyTavern triggers lorebook entries by keyword and only sends the entries that match; **Proteus does not trigger them by keyword: it puts the full text into the world and sends it with every request**. When loading, you are told how many entries there are and roughly how many tokens they take. Disabled entries are skipped; constant entries come first and the rest follow in insertion order; entries with a name (or comment) get it as a heading.
 
@@ -475,7 +484,7 @@ Until you pick an interface language yourself, the app follows your system langu
 
 When you switch the interface language, the following change too, not just the interface text:
 
-- The labels sent to the model: `[World Setting]` `[User's Character]` `[Opening]` `[End of Opening]` `[User]` in English (【世界观设定】【用户角色人设】【开场白】【开场白结束】【用户】 in Simplified Chinese, and so on)
+- The labels sent to the model: `[World Setting]` `[NPC Characters]` `[User's Character]` `[Opening]` `[End of Opening]` `[User]` in English (【世界观设定】【NPC角色】【用户角色人设】【开场白】【开场白结束】【用户】 in Simplified Chinese, and so on)
 - The default System Prompt: if the current conversation's System Prompt hasn't been edited (it is still the default for some language), it is replaced with the new language's default; edited prompts are left alone
 
 The world, character, opening and other content you write yourself are never translated.

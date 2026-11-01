@@ -178,14 +178,10 @@ body.resizing iframe { pointer-events: none; }
 }
 .split-item:hover, .split-item:focus-visible { background: rgba(201, 169, 110, .18); outline: none; }
 
-/* 放大的编辑窗口：盖在聊天区上，占大半个聊天区 */
+/* 放大的编辑窗口：电脑布局盖在聊天区上、占大半个聊天区，手机布局盖在设置面板上（位置和大小由 JS 设置） */
 .expand-box {
-  position: absolute;
-  top: 64px;
-  left: 4%;
-  right: 4%;
-  bottom: 22%;
-  z-index: 20;
+  position: fixed;
+  z-index: 35;
   display: flex;
   flex-direction: column;
   gap: 8px;
