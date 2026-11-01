@@ -419,7 +419,7 @@ npm run android:apk  # 打包安卓版（需要安装 Android SDK 和 JDK 21）
   git push origin v0.2.0
   ```
 
-- **发布测试版**：用带后缀的标签，例如 `v0.4.0-beta.1`，打在要测试的那次提交上，可以是任何分支（在「Draft a new release」页面把「Target」选成那个分支）。这样的标签新建的 Release 会标为**预发布（Pre-release）**：不会成为「最新版本（Latest）」，说明开头会注明是测试版。如果在网页上自己新建 Release，请勾选「Set as a pre-release」。安卓版里 `0.4.0-beta.1` 和 `0.4.0` 的版本号（versionCode）相同，所以正式的 `0.4.0` 可以直接覆盖更新它；但之后发布的更低版本（例如 `0.3.4`）不能装在它上面
+- **发布测试版**：用带后缀的标签，例如 `v0.4.0-beta.1`，打在要测试的那次提交上，可以是任何分支（在「Draft a new release」页面把「Target」选成那个分支）。这样的标签新建的 Release 会标为**预发布（Pre-release）**：不会成为「最新版本（Latest）」，说明开头会注明是测试版（在网页上自己新建 Release 时也一样）。想给某个版本写专门的说明，在那次提交里加上 `.github/release-notes/<标签>.md`（例如 `v0.4.0-beta.1.md`），它会放在 Release 说明的最前面。安卓版里 `0.4.0-beta.1` 和 `0.4.0` 的版本号（versionCode）相同，所以正式的 `0.4.0` 可以直接覆盖更新它；但之后发布的更低版本（例如 `0.3.4`）不能装在它上面
 - **只想试试能不能打包**：在仓库的 Actions 页面选「Build desktop app」→「Run workflow」。只打包不发布，安装包在那次运行页面底部的 Artifacts 里，保留 30 天。
 
 Release 页面上的下载说明来自 `.github/release-notes.md`（英文）。Release 说明的最后会自动写上「The installers on this page were built from commit xxx」（本页安装包构建自哪次提交），用所选分支重新打包、替换已有 Release 的安装包时也会更新这一行，源代码以这次提交为准。

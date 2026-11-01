@@ -4,7 +4,8 @@
 #   版本号直接取自标签（v0.2.0 → 0.2.0），不需要改 package.json。
 #   带后缀的标签（例如 v0.4.0-beta.1）是测试版：新建的 Release 标为预发布（Pre-release），
 #   不会成为“最新版本”，说明开头注明是测试版。标签可以打在任何分支的提交上，用的就是那次提交的代码。
-#   有 .github/release-notes/<标签>.md（例如 v0.4.0-beta.1.md）时，新建 Release 的说明以它开头。
+#   有 .github/release-notes/<标签>.md（例如 v0.4.0-beta.1.md）时，Release 的说明以它开头
+#   （在网页上新建 Release 时也一样：推送标签触发的这次运行会把它加在最前面）。
 # - 在 Actions 页面手动运行（Run workflow）：
 #   · “上传到哪个 Release”留空：只打包不发布，安装包在本次运行页面的 Artifacts 里下载；
 #   · 填一个已有的版本标签（例如 v0.1.0）：用所选分支的最新代码重新打包，
@@ -205,12 +206,21 @@ jobs:
           # 写明安装包构建自哪次提交：重新打包时用的可能不是标签那次提交，源代码以这一行为准
           build_marker='<!-- proteus-build -->'
           build_line="$build_marker The installers on this page were built from commit [\`${GITHUB_SHA:0:7}\`](https://github.com/$GH_REPO/commit/$GITHUB_SHA); that commit is their source code."
+          # 这个版本专门的说明（有就放在最前面）；带后缀的标签（v0.4.0-beta.1 之类）是测试版，标为预发布
+          own=".github/release-notes/$RELEASE_TAG.md"
+          prerelease=()
+          [[ "$RELEASE_TAG" == *-* ]] && prerelease=(--prerelease)
           if gh release view "$RELEASE_TAG" > /dev/null 2>&1; then
-            # 已有的 Release（例如在网页上发布的）：推送标签触发时，把下载说明接在原说明后面（只加一次）；
+            # 已有的 Release（例如在网页上发布的）：推送标签触发时，把下载说明接在原说明后面（只加一次），
+            # 有这个版本专门的说明时放在最前面，测试版标为预发布；
             # 手动运行上传到已有 Release 时，不动标题和说明。两种情况都更新“构建自哪次提交”那一行
             body=$(gh release view "$RELEASE_TAG" --json body -q .body)
             if [ "$GITHUB_EVENT_NAME" = push ] && ! grep -qF "$marker" <<< "$body"; then
+              if [ -f "$own" ]; then
+                body=$(cat "$own"; printf '\n---\n'; if [ -n "${body//[[:space:]]/}" ]; then printf '\n%s\n' "$body"; fi)
+              fi
               body=$(printf '%s\n\n%s\n' "$body" "$marker"; cat .github/release-notes.md)
+              if [ ${#prerelease[@]} -gt 0 ]; then gh release edit "$RELEASE_TAG" --prerelease; fi
             fi
             body=$(grep -vF "$build_marker" <<< "$body" || true)
             printf '%s\n\n%s\n' "$body" "$build_line" > notes.md
@@ -220,12 +230,7 @@ jobs:
               echo "::error::Release $RELEASE_TAG does not exist. Create it on the Releases page first, or leave the field empty to only build."
               exit 1
             fi
-            # 带后缀的标签（v0.4.0-beta.1 之类）是测试版：标为预发布，不会成为“最新版本”。
-            # 有 .github/release-notes/<标签>.md 时，把它放在说明最前面（这个版本专门的说明）；
-            # 没有时，测试版的说明开头加一句提示
-            prerelease=()
-            [[ "$RELEASE_TAG" == *-* ]] && prerelease=(--prerelease)
-            own=".github/release-notes/$RELEASE_TAG.md"
+            # 测试版不会成为“最新版本”。没有这个版本专门的说明时，测试版的说明开头加一句提示
             if [ -f "$own" ]; then
               { cat "$own"; echo; echo '---'; echo; } > notes.md
             elif [ ${#prerelease[@]} -gt 0 ]; then
