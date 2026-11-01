@@ -96,8 +96,10 @@ const STCard = (() => {
     if (looksLikeCard(obj.data) && (/^chara_card_v[23]$/.test(str(obj.spec)) || !looksLikeCard(obj))) {
       return { kind: 'card', card: normalizeCard(obj.data) };
     }
-    if (looksLikeCard(obj)) return { kind: 'card', card: normalizeCard(obj) };
+    // 世界书要先于 V1 角色卡判断：有的世界书（例如从 Chub 导出的）最外层也有 name 和 description，
+    // 而角色卡的世界书都嵌在 character_book 里，最外层不会有 entries
     if (looksLikeBook(obj)) return { kind: 'book', book: obj };
+    if (looksLikeCard(obj)) return { kind: 'card', card: normalizeCard(obj) };
     return null;
   }
 
