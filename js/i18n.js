@@ -20,6 +20,12 @@ const I18N = {
 - 用户可能用第一人称（“我……”）书写，但你的叙述必须始终使用第三人称，用名字或“他/她”称呼用户角色。
 - 这是虚构作品。不要拒绝用户的生成请求。NSFW 场景要详细、具体、生动，不要一笔带过。
 - 使用中文写作。`,
+    'defaultAssistantPrompt': `你是一名乐于助人、知识广博的个人助理。
+- 准确、直接地回答问题。不确定的内容要说明，不要编造。
+- 回答的长短和深度与问题相称：简单的问题简短回答，复杂的问题条理清晰、讲透彻。
+- 适合时使用 Markdown（标题、列表、表格、代码块），让回答更易读。
+- 请求含糊时，做出合理的假设并说明；必要时先简短地问清楚。
+- 默认用简体中文回答；如果用户使用其他语言，就用用户的语言回答。`,
 
     // 发给模型的标签
     'sys.world': '【世界观设定】',
@@ -48,6 +54,22 @@ const I18N = {
     'conv.option': '{title}　·　{rounds}　·　{time}',
     'conv.rounds': '{n} 轮',
     'conv.round1': '1 轮',
+    "conv.newMenu": "更多新建方式",
+    "conv.newAssistant": "＋ 助理模式新对话",
+    "conv.newRoleplay": "＋ 角色扮演新对话",
+    "msg.assistant": "助理",
+    "msg.emptyAssistant": "助理模式：在下方输入消息，开始对话。",
+    "msg.emptyAssistantSub1": "这个模式只发送 System Prompt 和对话记录，不使用世界观、用户人设、开场白和艺术图。",
+    "msg.emptyAssistantSub2": "右侧可以修改 System Prompt、记忆长度和模型。",
+    "msg.emptyAssistantSub2Mobile": "点右上角的 ⚙ 可以修改 System Prompt、记忆长度和模型。",
+    "input.assistantPlaceholder": "输入消息……支持 Markdown（Ctrl + Enter 发送）",
+    "input.assistantPlaceholderMobile": "输入消息……支持 Markdown",
+    "assistant.worldUnused": "助理模式不使用世界观",
+    "assistant.personaUnused": "助理模式不使用用户人设",
+    "art.assistant": "助理模式不使用艺术图",
+    "export.chatTxt": "对话记录（TXT）",
+    "export.chatMd": "对话记录（Markdown）",
+    "export.menuMessageAssistant": "· 对话记录：当前对话的全部消息，不含 System Prompt。\n· 完整备份（全部对话）：所有对话和软件设置（不含 API Key），用于换电脑或防止数据丢失。读取时替换本机所有对话和设置。\n· 日志：最近一次请求模型时实际发送的请求和收到的原始回复（API Key 已隐藏），用于排查问题。只记这次打开软件以来的最后一次。\n\n助理模式没有世界卡和完整备份（当前对话）。",
     'conv.renamePrompt': '对话名称：',
     'conv.deleteConfirm': '删除对话「{title}」？此操作无法撤销。',
     'conv.stopFirst': '请先停止当前生成',
@@ -275,7 +297,7 @@ const I18N = {
     'export.encrypt': "加密",
     'export.noEncrypt': "不加密",
     'export.cardEncryptMessage': "是否加密世界卡？\n\n· 加密：直接打开文件只能看到乱码；在 Proteus 中读取后，System Prompt、世界观、开场白和艺术图会被锁定，不能查看或修改，但可以正常使用。输入密码才能解锁。\n· 不加密：所有内容都是明文。\n\n注意：加密只能防止直接查看文件和在软件中复制，无法阻止有技术能力的人刻意获取内容（例如查看发给模型的请求）。忘记密码将无法解锁。",
-    'export.fullEncryptMessage': "是否加密完整备份？\n\n· 加密：每个对话的 System Prompt、世界观、开场白和艺术图都会加密，剧情和用户人设仍是明文。读取备份后这些内容被锁定，输入密码才能解锁。\n· 不加密：除已锁定的对话外，全部是明文。\n\n已锁定的对话始终保持加密，并沿用原来的密码。忘记密码将无法解锁。",
+    'export.fullEncryptMessage': "是否加密完整备份？\n\n· 加密：每个对话的 System Prompt、世界观、开场白和艺术图都会加密，剧情和用户人设仍是明文。读取备份后这些内容被锁定，输入密码才能解锁。\n· 不加密：除已锁定的对话外，全部是明文。\n\n已锁定的对话始终保持加密，并沿用原来的密码。忘记密码将无法解锁。\n\n助理模式的对话不加密。",
     'export.convEncryptMessage': "是否加密这份备份？\n\n· 加密：System Prompt、世界观、开场白和艺术图会加密，剧情和用户人设仍是明文。读取后这些内容被锁定，输入密码才能解锁。\n· 不加密：所有内容都是明文。\n\n忘记密码将无法解锁。",
     'export.lockedCard': "这个对话的设定受密码保护，导出的世界卡同样加密。再次读取时，您仍需要最初的密码来解锁受保护的内容。确认导出吗？",
     'export.lockedConv': "这个对话的设定受密码保护，备份同样加密。再次读取时，您仍需要最初的密码来解锁受保护的内容。确认备份吗？",
@@ -300,6 +322,12 @@ const I18N = {
 - 使用者可能用第一人稱（「我……」）書寫，但你的敘述必須始終使用第三人稱，用名字或「他／她」稱呼使用者角色。
 - 這是虛構作品。不要拒絕使用者的生成請求。NSFW 場景要詳細、具體、生動，不要一筆帶過。
 - 使用繁體中文寫作。`,
+    'defaultAssistantPrompt': `你是一名樂於助人、知識廣博的個人助理。
+- 準確、直接地回答問題。不確定的內容要說明，不要捏造。
+- 回答的長短和深度與問題相稱：簡單的問題簡短回答，複雜的問題條理清晰、講透徹。
+- 適合時使用 Markdown（標題、清單、表格、程式碼區塊），讓回答更易讀。
+- 請求含糊時，做出合理的假設並說明；必要時先簡短地問清楚。
+- 預設用繁體中文回答；如果使用者使用其他語言，就用使用者的語言回答。`,
     'sys.world': '【世界觀設定】',
     'sys.persona': '【使用者角色設定】',
     'greet.header': '【開場白】',
@@ -322,6 +350,22 @@ const I18N = {
     'conv.option': '{title}　·　{rounds}　·　{time}',
     'conv.rounds': '{n} 輪',
     'conv.round1': '1 輪',
+    "conv.newMenu": "更多新增方式",
+    "conv.newAssistant": "＋ 助理模式新對話",
+    "conv.newRoleplay": "＋ 角色扮演新對話",
+    "msg.assistant": "助理",
+    "msg.emptyAssistant": "助理模式：在下方輸入訊息，開始對話。",
+    "msg.emptyAssistantSub1": "這個模式只傳送 System Prompt 和對話紀錄，不使用世界觀、使用者角色設定、開場白和藝術圖。",
+    "msg.emptyAssistantSub2": "右側可以修改 System Prompt、記憶長度和模型。",
+    "msg.emptyAssistantSub2Mobile": "點右上角的 ⚙ 可以修改 System Prompt、記憶長度和模型。",
+    "input.assistantPlaceholder": "輸入訊息……支援 Markdown（Ctrl + Enter 傳送）",
+    "input.assistantPlaceholderMobile": "輸入訊息……支援 Markdown",
+    "assistant.worldUnused": "助理模式不使用世界觀",
+    "assistant.personaUnused": "助理模式不使用使用者角色設定",
+    "art.assistant": "助理模式不使用藝術圖",
+    "export.chatTxt": "對話紀錄（TXT）",
+    "export.chatMd": "對話紀錄（Markdown）",
+    "export.menuMessageAssistant": "· 對話紀錄：目前對話的全部訊息，不含 System Prompt。\n· 完整備份（全部對話）：所有對話和軟體設定（不含 API Key），用於換電腦或防止資料遺失。讀取時取代本機所有對話和設定。\n· 日誌：最近一次請求模型時實際送出的請求和收到的原始回覆（API Key 已隱藏），用於排查問題。只記這次開啟軟體以來的最後一次。\n\n助理模式沒有世界卡和完整備份（目前對話）。",
     'conv.renamePrompt': '對話名稱：',
     'conv.deleteConfirm': '刪除對話「{title}」？此操作無法復原。',
     'conv.stopFirst': '請先停止目前的生成',
@@ -537,7 +581,7 @@ const I18N = {
     'export.encrypt': "加密",
     'export.noEncrypt': "不加密",
     'export.cardEncryptMessage': "是否加密世界卡？\n\n· 加密：直接開啟檔案只能看到亂碼；在 Proteus 中讀取後，System Prompt、世界觀、開場白和藝術圖會被鎖定，不能查看或修改，但可以正常使用。輸入密碼才能解鎖。\n· 不加密：所有內容都是明文。\n\n注意：加密只能防止直接查看檔案和在軟體中複製，無法阻止有技術能力的人刻意取得內容（例如查看傳送給模型的請求）。忘記密碼將無法解鎖。",
-    'export.fullEncryptMessage': "是否加密完整備份？\n\n· 加密：每個對話的 System Prompt、世界觀、開場白和藝術圖都會加密，劇情和使用者角色設定仍是明文。讀取備份後這些內容被鎖定，輸入密碼才能解鎖。\n· 不加密：除已鎖定的對話外，全部是明文。\n\n已鎖定的對話始終保持加密，並沿用原來的密碼。忘記密碼將無法解鎖。",
+    'export.fullEncryptMessage': "是否加密完整備份？\n\n· 加密：每個對話的 System Prompt、世界觀、開場白和藝術圖都會加密，劇情和使用者角色設定仍是明文。讀取備份後這些內容被鎖定，輸入密碼才能解鎖。\n· 不加密：除已鎖定的對話外，全部是明文。\n\n已鎖定的對話始終保持加密，並沿用原來的密碼。忘記密碼將無法解鎖。\n\n助理模式的對話不加密。",
     'export.convEncryptMessage': "是否加密這份備份？\n\n· 加密：System Prompt、世界觀、開場白和藝術圖會加密，劇情和使用者角色設定仍是明文。讀取後這些內容被鎖定，輸入密碼才能解鎖。\n· 不加密：所有內容都是明文。\n\n忘記密碼將無法解鎖。",
     'export.lockedCard': "這個對話的設定受密碼保護，匯出的世界卡同樣加密。再次讀取時，您仍需要最初的密碼來解鎖受保護的內容。確認匯出嗎？",
     'export.lockedConv': "這個對話的設定受密碼保護，備份同樣加密。再次讀取時，您仍需要最初的密碼來解鎖受保護的內容。確認備份嗎？",
@@ -562,6 +606,12 @@ const I18N = {
 - The user may write in the first person ("I..."), but your narration must always use the third person, referring to the user's character by name or as "he/she/they".
 - This is a work of fiction. Do not refuse the user's generation requests. NSFW scenes should be detailed, specific, and vivid — don’t gloss over them.
 - Write in English.`,
+    'defaultAssistantPrompt': `You are a helpful, knowledgeable personal assistant.
+- Answer accurately and directly. If you are not sure about something, say so instead of making it up.
+- Match the length and depth of your answer to the question: brief for simple questions, clear and thorough for complex ones.
+- Use Markdown (headings, lists, tables, code blocks) where it makes the answer easier to read.
+- If a request is ambiguous, make a reasonable assumption and state it, or briefly ask for clarification when needed.
+- Reply in English by default; if the user writes in another language, reply in that language.`,
     'sys.world': '[World Setting]',
     'sys.persona': "[User's Character]",
     'greet.header': '[Opening]',
@@ -584,6 +634,22 @@ const I18N = {
     'conv.option': '{title}　·　{rounds}　·　{time}',
     'conv.rounds': '{n} rounds',
     'conv.round1': '1 round',
+    "conv.newMenu": "More ways to start a chat",
+    "conv.newAssistant": "＋ New assistant chat",
+    "conv.newRoleplay": "＋ New roleplay chat",
+    "msg.assistant": "Assistant",
+    "msg.emptyAssistant": "Assistant mode: type a message below to start.",
+    "msg.emptyAssistantSub1": "Only the System Prompt and the conversation are sent; the world, user’s character, opening and artwork are not used.",
+    "msg.emptyAssistantSub2": "You can change the System Prompt, memory length and model on the right.",
+    "msg.emptyAssistantSub2Mobile": "Tap ⚙ at the top right to change the System Prompt, memory length and model.",
+    "input.assistantPlaceholder": "Type a message… Markdown supported (Ctrl + Enter to send)",
+    "input.assistantPlaceholderMobile": "Type a message… Markdown supported",
+    "assistant.worldUnused": "Not used in assistant mode",
+    "assistant.personaUnused": "Not used in assistant mode",
+    "art.assistant": "Artwork is not used in assistant mode",
+    "export.chatTxt": "Chat (TXT)",
+    "export.chatMd": "Chat (Markdown)",
+    "export.menuMessageAssistant": "· Chat: all messages in this conversation, without the System Prompt.\n· Full backup (all conversations): all conversations and app settings (without API keys), for moving to another computer or guarding against data loss. Loading it replaces all conversations and settings on this device.\n· Log: the request actually sent to the model the last time and the raw reply received (API key hidden), for troubleshooting. Only the last one since the app was opened.\n\nWorld cards and single-conversation backups are not available in assistant mode.",
     'conv.renamePrompt': 'Conversation name:',
     'conv.deleteConfirm': 'Delete conversation "{title}"? This cannot be undone.',
     'conv.stopFirst': 'Stop the current generation first',
@@ -799,7 +865,7 @@ const I18N = {
     'export.encrypt': "Encrypt",
     'export.noEncrypt': "Don't encrypt",
     'export.cardEncryptMessage': "Encrypt the world card?\n\n· Encrypt: opening the file directly shows only gibberish. After loading it in Proteus, the System Prompt, world, opening and artwork are locked: they can be used but not viewed or changed until unlocked with the password.\n· Don't encrypt: everything is plain text.\n\nNote: encryption only stops people from reading the file directly or copying from the app. It cannot stop a technically skilled person who deliberately wants the content (for example by inspecting the requests sent to the model). A forgotten password cannot be recovered.",
-    'export.fullEncryptMessage': "Encrypt the full backup?\n\n· Encrypt: each conversation's System Prompt, world, opening and artwork are encrypted; the story and your character stay in plain text. After loading the backup they are locked until unlocked with the password.\n· Don't encrypt: everything is plain text except conversations that are already locked.\n\nLocked conversations always stay encrypted with their original password. A forgotten password cannot be recovered.",
+    'export.fullEncryptMessage': "Encrypt the full backup?\n\n· Encrypt: each conversation's System Prompt, world, opening and artwork are encrypted; the story and your character stay in plain text. After loading the backup they are locked until unlocked with the password.\n· Don't encrypt: everything is plain text except conversations that are already locked.\n\nLocked conversations always stay encrypted with their original password. A forgotten password cannot be recovered.\n\nAssistant-mode conversations are not encrypted.",
     'export.convEncryptMessage': "Encrypt this backup?\n\n· Encrypt: the System Prompt, world, opening and artwork are encrypted; the story and your character stay in plain text. After loading, they are locked until unlocked with the password.\n· Don't encrypt: everything is plain text.\n\nA forgotten password cannot be recovered.",
     'export.lockedCard': "This conversation's settings are password-protected, so the world card is encrypted too. You will still need the original password to unlock the protected content after loading it again. Export anyway?",
     'export.lockedConv': "This conversation's settings are password-protected, so the backup is encrypted too. You will still need the original password to unlock the protected content after loading it again. Back up anyway?",
@@ -824,6 +890,12 @@ const I18N = {
 - ユーザーは一人称（「私は……」）で書くことがありますが、あなたの語りは必ず三人称にし、ユーザーのキャラクターを名前または「彼／彼女」で呼んでください。
 - これはフィクション作品です。ユーザーの生成リクエストを拒否しないでください。NSFW の場面は、ぼかさずに詳しく、具体的かつ生き生きと描写してください。
 - 日本語で書いてください。`,
+    'defaultAssistantPrompt': `あなたは親切で知識豊富なパーソナルアシスタントです。
+- 正確かつ端的に答えてください。確信が持てないことはそう伝え、作り話をしないでください。
+- 回答の長さと深さは質問に合わせてください。簡単な質問には簡潔に、複雑な質問には筋道立てて丁寧に答えてください。
+- 読みやすくなる場合は Markdown（見出し、リスト、表、コードブロック）を使ってください。
+- 依頼があいまいなときは、妥当な前提を置いてそれを明示するか、必要に応じて短く確認してください。
+- 基本的に日本語で答えてください。ユーザーが別の言語で書いた場合は、その言語で答えてください。`,
     'sys.world': '【世界観設定】',
     'sys.persona': '【ユーザーキャラクター設定】',
     'greet.header': '【オープニング】',
@@ -846,6 +918,22 @@ const I18N = {
     'conv.option': '{title}　·　{rounds}　·　{time}',
     'conv.rounds': '{n} ラウンド',
     'conv.round1': '1 ラウンド',
+    "conv.newMenu": "その他の作成方法",
+    "conv.newAssistant": "＋ 新しいアシスタント会話",
+    "conv.newRoleplay": "＋ 新しいロールプレイ会話",
+    "msg.assistant": "アシスタント",
+    "msg.emptyAssistant": "アシスタントモード：下にメッセージを入力して会話を始めましょう。",
+    "msg.emptyAssistantSub1": "このモードでは System Prompt と会話だけを送ります。世界観、ユーザーキャラクター設定、オープニング、アートは使いません。",
+    "msg.emptyAssistantSub2": "System Prompt、記憶の長さ、モデルは右側で変更できます。",
+    "msg.emptyAssistantSub2Mobile": "右上の ⚙ から System Prompt、記憶の長さ、モデルを変更できます。",
+    "input.assistantPlaceholder": "メッセージを入力……Markdown に対応（Ctrl + Enter で送信）",
+    "input.assistantPlaceholderMobile": "メッセージを入力……Markdown に対応",
+    "assistant.worldUnused": "アシスタントモードでは使いません",
+    "assistant.personaUnused": "アシスタントモードでは使いません",
+    "art.assistant": "アシスタントモードではアートを使いません",
+    "export.chatTxt": "会話（TXT）",
+    "export.chatMd": "会話（Markdown）",
+    "export.menuMessageAssistant": "· 会話：この会話のすべてのメッセージ。System Prompt は含みません。\n· 完全バックアップ（すべての会話）：すべての会話とアプリの設定（API キーを除く）。パソコンの移行やデータ消失への備えに。読み込むとこの端末のすべての会話と設定が置き換えられます。\n· ログ：直近にモデルへ実際に送ったリクエストと受け取った生の返信（API キーは非表示）。トラブル調査用です。アプリを開いてからの最後の 1 件だけを記録します。\n\nアシスタントモードではワールドカードと完全バックアップ（この会話）は使えません。",
     'conv.renamePrompt': '会話の名前：',
     'conv.deleteConfirm': '会話「{title}」を削除しますか？元に戻せません。',
     'conv.stopFirst': '先に生成を停止してください',
@@ -1061,7 +1149,7 @@ const I18N = {
     'export.encrypt': "暗号化する",
     'export.noEncrypt': "暗号化しない",
     'export.cardEncryptMessage': "ワールドカードを暗号化しますか？\n\n· 暗号化する：ファイルを直接開いても読めない文字列になります。Proteus で読み込むと、System Prompt、世界観、オープニング、アートがロックされ、閲覧・変更はできませんが、そのまま使えます。パスワードを入力するとロックを解除できます。\n· 暗号化しない：すべて平文になります。\n\n注意：暗号化で防げるのは、ファイルの直接閲覧とアプリ内でのコピーだけです。技術的な知識を持つ人が意図的に内容を取り出すこと（モデルへのリクエストを確認するなど）は防げません。パスワードを忘れると解除できません。",
-    'export.fullEncryptMessage': "完全バックアップを暗号化しますか？\n\n· 暗号化する：各会話の System Prompt、世界観、オープニング、アートを暗号化します。物語とユーザーキャラクター設定は平文のままです。読み込み後はロックされ、パスワードを入力すると解除できます。\n· 暗号化しない：ロック済みの会話以外はすべて平文になります。\n\nロック済みの会話は常に元のパスワードのまま暗号化されます。パスワードを忘れると解除できません。",
+    'export.fullEncryptMessage': "完全バックアップを暗号化しますか？\n\n· 暗号化する：各会話の System Prompt、世界観、オープニング、アートを暗号化します。物語とユーザーキャラクター設定は平文のままです。読み込み後はロックされ、パスワードを入力すると解除できます。\n· 暗号化しない：ロック済みの会話以外はすべて平文になります。\n\nロック済みの会話は常に元のパスワードのまま暗号化されます。パスワードを忘れると解除できません。\n\nアシスタントモードの会話は暗号化されません。",
     'export.convEncryptMessage': "このバックアップを暗号化しますか？\n\n· 暗号化する：System Prompt、世界観、オープニング、アートを暗号化します。物語とユーザーキャラクター設定は平文のままです。読み込み後はロックされ、パスワードを入力すると解除できます。\n· 暗号化しない：すべて平文になります。\n\nパスワードを忘れると解除できません。",
     'export.lockedCard': "この会話の設定はパスワードで保護されているため、ワールドカードも暗号化されます。再度読み込んだ後も、保護された内容の解除には最初のパスワードが必要です。エクスポートしますか？",
     'export.lockedConv': "この会話の設定はパスワードで保護されているため、バックアップも暗号化されます。再度読み込んだ後も、保護された内容の解除には最初のパスワードが必要です。バックアップしますか？",
@@ -1131,6 +1219,10 @@ function isDefaultSystemPrompt(text) {
 }
 
 // 是否是以前版本的默认 System Prompt（没被用户改过）
+// 某种语言的助理模式默认 System Prompt（没改过）
+function isDefaultAssistantPrompt(text) {
+  return Object.keys(I18N).some((l) => I18N[l].defaultAssistantPrompt === text);
+}
 function isPreviousDefaultSystemPrompt(text) {
   return PREVIOUS_DEFAULT_SYSTEM_PROMPTS.includes(text);
 }

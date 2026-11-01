@@ -5,6 +5,9 @@
 //     新建对话时复制当前对话的设定和开场白，之后互不影响。
 //   - 来自加密世界卡的对话带有 conv.lock：System Prompt、世界观、开场白和艺术图只以密文保存，
 //     在内存里解密后使用，界面上不能查看或修改，输入密码解锁后变回普通对话。
+//   - 助理模式的对话（conv.mode === 'assistant'）：普通的 LLM 对话，只发送 System Prompt 和对话记录。
+//     世界观、用户人设、开场白、艺术图都不使用（保持为空），也不加密。没有 mode 的就是角色扮演对话，
+//     所以存储和备份格式与角色扮演对话相同。
 //   - 软件设置（所有对话共用）：界面语言、记忆长度、模型与接口、API Key、布局。
 
 const ROUNDS_MIN = 1;
@@ -208,6 +211,8 @@ function providerCfg() {
 // 顺序：System Prompt → 世界观 → 用户角色人设（都取自当前对话）
 
 function buildSystem(conv = state.conv) {
+  // 助理模式只发送 System Prompt，不带世界观、人设和它们的标签
+  if (isAssistant(conv)) return conv.systemPrompt.trim();
   const parts = [];
   if (conv.systemPrompt.trim()) parts.push(conv.systemPrompt.trim());
   if (conv.worldText.trim()) parts.push(t('sys.world') + '\n' + conv.worldText.trim());
@@ -247,9 +252,32 @@ function memoryCutoff() {
 
 // ---------------- 对话管理 ----------------
 
-// 新建对话。from 是要复制设定和开场白的对话（不复制剧情）；锁定状态也一起复制
-function newConversation(from) {
+const isAssistant = (conv) => !!conv && conv.mode === 'assistant';
+
+// 这种模式的默认 System Prompt
+const defaultPromptOf = (conv) => t(isAssistant(conv) ? 'defaultAssistantPrompt' : 'defaultSystemPrompt');
+
+// 新建对话。from 是要复制设定和开场白的对话（不复制剧情）；锁定状态也一起复制。
+// assistant = true 时新建助理模式的对话：只复制助理模式对话的 System Prompt，其他全部为空
+function newConversation(from, assistant = isAssistant(from)) {
   const now = Date.now();
+  if (assistant) {
+    return {
+      id: uid(),
+      title: '',
+      mode: 'assistant',
+      systemPrompt: isAssistant(from) ? from.systemPrompt : t('defaultAssistantPrompt'),
+      worldText: '',
+      persona: '',
+      greeting: null,
+      greetingSend: true,
+      createdAt: now,
+      updatedAt: now,
+      activeAt: now,
+      messages: [],
+    };
+  }
+  if (isAssistant(from)) from = null;
   const c = {
     id: uid(),
     title: '',
@@ -270,6 +298,19 @@ function newConversation(from) {
 // 补齐旧版本数据缺少的字段
 function normalizeConv(c, legacy) {
   if (c.title === '新对话') c.title = '';
+  if (isAssistant(c)) {
+    // 助理模式：只有 System Prompt 和对话记录，其他保持为空；不加密
+    delete c.lock;
+    if (typeof c.systemPrompt !== 'string') c.systemPrompt = t('defaultAssistantPrompt');
+    c.worldText = '';
+    c.persona = '';
+    c.greeting = null;
+    c.greetingSend = true;
+    if (!Array.isArray(c.messages)) c.messages = [];
+    if (typeof c.activeAt !== 'number') c.activeAt = c.updatedAt || c.createdAt || Date.now();
+    return c;
+  }
+  if (c.mode !== undefined) delete c.mode;
   if (typeof c.systemPrompt !== 'string') c.systemPrompt = legacy && typeof legacy.systemPrompt === 'string' ? legacy.systemPrompt : t('defaultSystemPrompt');
   // 还是旧版本的默认 System Prompt（没改过）就换成新的默认值；锁定的对话不能改
   if (!c.lock && isPreviousDefaultSystemPrompt(c.systemPrompt)) c.systemPrompt = t('defaultSystemPrompt');
@@ -301,18 +342,36 @@ async function switchConv(id) {
   await loadArt();
 }
 
-// 新建一个对话，复制当前对话的设定、开场白和艺术图
-async function createConversation() {
+// 新建一个对话。assistant 是要新建的模式，默认和当前对话相同。
+// 设定、开场白和艺术图复制自这种模式最近使用的对话（就是当前对话时复制当前对话）；还没有这种对话时用默认值。
+// 助理模式只复制 System Prompt
+async function createConversation(assistant = isAssistant(state.conv)) {
+  closeNewConvMenu();
   if (state.generating) return toast(t('conv.stopFirst'));
   await flushConvSave();
-  const from = state.conv;
-  const c = newConversation(from);
+  const from = isAssistant(state.conv) === assistant ? state.conv
+    : [...state.conversations].filter((x) => isAssistant(x) === assistant).sort((a, b) => b.activeAt - a.activeAt)[0];
+  const c = newConversation(from, assistant);
   state.conversations.push(c);
   await DB.putConversation(storable(c));
-  const art = from && (await DB.get(artKey(from.id)));
+  const art = from && !assistant && (await DB.get(artKey(from.id)));
   if (art) await DB.set(artKey(c.id), art);
   await switchConv(c.id);
   els.input.focus();
+}
+
+// “＋ 新对话”右边的 ▾：菜单里是另一种模式的新对话
+function openNewConvMenu() {
+  els.btnNewConvOther.textContent = t(isAssistant(state.conv) ? 'conv.newRoleplay' : 'conv.newAssistant');
+  els.newConvMenu.hidden = false;
+  els.btnNewConvMenu.setAttribute('aria-expanded', 'true');
+  els.btnNewConvOther.focus();
+}
+
+function closeNewConvMenu() {
+  if (els.newConvMenu.hidden) return;
+  els.newConvMenu.hidden = true;
+  els.btnNewConvMenu.setAttribute('aria-expanded', 'false');
 }
 
 const roundsText = (n) => t(n === 1 ? 'conv.round1' : 'conv.rounds', { n });
@@ -323,7 +382,7 @@ function renderConvSelect() {
   for (const c of sorted) {
     const o = document.createElement('option');
     o.value = c.id;
-    o.textContent = (c.lock ? '🔒 ' : '') + t('conv.option', { title: convTitle(c), rounds: roundsText(roundsOf(c)), time: fmtTime(c.activeAt) });
+    o.textContent = (c.lock ? '🔒 ' : isAssistant(c) ? '💬 ' : '') + t('conv.option', { title: convTitle(c), rounds: roundsText(roundsOf(c)), time: fmtTime(c.activeAt) });
     if (state.conv && c.id === state.conv.id) o.selected = true;
     els.convSelect.appendChild(o);
   }
@@ -373,6 +432,12 @@ function renderMessages() {
     hint.className = 'empty-hint';
     if (gm) {
       hint.textContent = t('msg.emptyGreetingMode');
+    } else if (isAssistant(conv)) {
+      hint.append(t('msg.emptyAssistant'), document.createElement('br'));
+      const sub = document.createElement('span');
+      sub.className = 'small';
+      sub.append(t('msg.emptyAssistantSub1'), document.createElement('br'), t(isMobileLayout() ? 'msg.emptyAssistantSub2Mobile' : 'msg.emptyAssistantSub2'));
+      hint.appendChild(sub);
     } else {
       hint.append(t('msg.empty'), document.createElement('br'));
       const sub = document.createElement('span');
@@ -446,7 +511,7 @@ function updateView(v, it) {
   v.el.className = 'msg ' + role + (it.preview ? ' preview' : '');
   v.el.dataset.id = it.id;
   v.el.classList.toggle('generating', isGen);
-  v.label.textContent = it.greeting ? t('msg.greeting') : it.preview ? t('msg.greetingPreview') : m.role === 'user' ? t('msg.you') : t('msg.story');
+  v.label.textContent = it.greeting ? t('msg.greeting') : it.preview ? t('msg.greetingPreview') : m.role === 'user' ? t('msg.you') : t(isAssistant(conv) ? 'msg.assistant' : 'msg.story');
   if (isGen) v.label.textContent += t('msg.generating');
   if (v.sendBox) {
     v.sendBox.checked = conv.greetingSend !== false;
@@ -586,14 +651,14 @@ function updateComposer() {
   els.btnStop.hidden = !busy;
   els.btnReply.hidden = busy || gm || !(last && last.role === 'user');
   // “添加开场白”只在对话完全为空时出现（锁定的对话不能添加）
-  els.btnAddGreeting.hidden = busy || gm || conv.greeting != null || msgs.length > 0 || !!conv.lock;
+  els.btnAddGreeting.hidden = busy || gm || conv.greeting != null || msgs.length > 0 || !!conv.lock || isAssistant(conv);
   els.btnGreetingReload.hidden = !gm;
   els.btnGreetingConfirm.hidden = !gm;
   els.btnGreetingCancel.hidden = !gm;
   els.composer.classList.toggle('greeting-mode', gm);
   // 手机上没有 Ctrl + Enter，提示里不提它
   const mobile = isMobileLayout() ? 'Mobile' : '';
-  els.input.placeholder = t((gm ? 'input.greetingPlaceholder' : 'input.placeholder') + mobile);
+  els.input.placeholder = t((gm ? 'input.greetingPlaceholder' : isAssistant(conv) ? 'input.assistantPlaceholder' : 'input.placeholder') + mobile);
   updateEstimate();
 }
 
@@ -806,7 +871,7 @@ async function ask(message, { ok = t('btn.ok'), danger = false } = {}) {
 // ---- 开场白编辑模式（借用下方的输入框） ----
 
 function enterGreetingMode() {
-  if (state.generating) return;
+  if (state.generating || isAssistant(state.conv)) return;
   state.greetingMode = { preview: null };
   renderMessages();
   els.input.focus();
@@ -977,7 +1042,7 @@ async function artBlobOf(conv) {
 
 async function loadArt() {
   const conv = state.conv;
-  const blob = await artBlobOf(conv);
+  const blob = isAssistant(conv) ? null : await artBlobOf(conv);
   if (conv !== state.conv) return;
   if (state.artUrl) URL.revokeObjectURL(state.artUrl);
   state.artUrl = blob ? URL.createObjectURL(blob) : null;
@@ -989,6 +1054,7 @@ async function loadArt() {
 }
 
 async function setArt(file) {
+  if (isAssistant(state.conv)) return toast(t('art.assistant'));
   if (state.conv.lock) return toast(t('lock.artLocked'));
   if (!file || !file.type.startsWith('image/')) return toast(t('art.notImage'));
   await DB.set(artKey(state.conv.id), file);
@@ -1105,7 +1171,8 @@ function exportText(markdown) {
     out.push('');
   };
   if (conv.greeting != null) section(t('msg.greeting'), conv.lock ? t('lock.protected') : conv.greeting);
-  for (const m of conv.messages) section(m.role === 'user' ? t('msg.you') : t('msg.story'), msgText(m));
+  const replyLabel = t(isAssistant(conv) ? 'msg.assistant' : 'msg.story');
+  for (const m of conv.messages) section(m.role === 'user' ? t('msg.you') : replyLabel, msgText(m));
   download(`${safeFilename(convTitle(conv))}.${markdown ? 'md' : 'txt'}`, out.join('\n'));
 }
 
@@ -1188,6 +1255,7 @@ async function confirmLockedExport(title, message) {
 // 可以加密：直接打开文件只能看到乱码，在 Proteus 里读取后这些内容被锁定。
 async function exportWorldCard() {
   const conv = state.conv;
+  if (isAssistant(conv)) return;
   let password = null;
   if (conv.lock) {
     if (!(await confirmLockedExport(t('export.card'), t('export.lockedCard')))) return;
@@ -1223,6 +1291,7 @@ async function exportWorldCard() {
 // 读取时新建一个对话，已有对话不受影响。锁定的对话原样导出密文，沿用原来的密码。
 async function backupConv() {
   const conv = state.conv;
+  if (isAssistant(conv)) return;
   let lock = conv.lock || null;
   if (lock) {
     if (!(await confirmLockedExport(t('export.conv'), t('export.lockedConv')))) return;
@@ -1250,7 +1319,8 @@ async function backup() {
   const lockedN = state.conversations.filter((c) => c.lock).length;
   if (lockedN && !(await confirmLockedExport(t('export.full'), t('export.lockedAll', { n: lockedN })))) return;
   let password = null;
-  if (lockedN < state.conversations.length) {
+  // 助理模式的对话不加密：只有还有未锁定的角色扮演对话时才问
+  if (state.conversations.some((c) => !c.lock && !isAssistant(c))) {
     const enc = await askEncrypt(t('export.full'), t('export.fullEncryptMessage'), false);
     if (!enc) return;
     password = enc.password;
@@ -1259,6 +1329,7 @@ async function backup() {
   const conversations = [];
   const arts = {};
   for (const c of state.conversations) {
+    if (isAssistant(c)) { conversations.push(storable(c)); continue; } // 没有艺术图
     const encrypt = !!c.lock || password !== null;
     if (c.lock || password === null) conversations.push(storable(c));
     else conversations.push(storable({ ...c, lock: await Locker.lock(lockedFields(c), password) }));
@@ -1316,15 +1387,24 @@ function exportLog() {
 }
 
 async function exportMenu() {
-  const choice = await choose(t('export.menuTitle'), t('export.menuMessage'), [
-    { label: t('btn.cancel'), value: null, ghost: true },
-    { label: t('export.storyTxt'), value: 'txt' },
-    { label: t('export.storyMd'), value: 'md' },
-    { label: t('export.card'), value: 'card' },
-    { label: t('export.conv'), value: 'conv', primary: true },
-    { label: t('export.full'), value: 'full' },
-    { label: t('export.log'), value: 'log' },
-  ]);
+  // 助理模式：只有对话记录、完整备份（全部对话）和日志；世界卡和完整备份（当前对话）不显示
+  const choice = isAssistant(state.conv)
+    ? await choose(t('export.menuTitle'), t('export.menuMessageAssistant'), [
+      { label: t('btn.cancel'), value: null, ghost: true },
+      { label: t('export.chatTxt'), value: 'txt' },
+      { label: t('export.chatMd'), value: 'md', primary: true },
+      { label: t('export.full'), value: 'full' },
+      { label: t('export.log'), value: 'log' },
+    ])
+    : await choose(t('export.menuTitle'), t('export.menuMessage'), [
+      { label: t('btn.cancel'), value: null, ghost: true },
+      { label: t('export.storyTxt'), value: 'txt' },
+      { label: t('export.storyMd'), value: 'md' },
+      { label: t('export.card'), value: 'card' },
+      { label: t('export.conv'), value: 'conv', primary: true },
+      { label: t('export.full'), value: 'full' },
+      { label: t('export.log'), value: 'log' },
+    ]);
   if (choice === 'txt') exportText(false);
   else if (choice === 'md') exportText(true);
   else if (choice === 'card') await exportWorldCard();
@@ -1539,13 +1619,23 @@ function bindLayout() {
 function fillConvFields() {
   const c = state.conv;
   const locked = !!c.lock;
+  const assistant = isAssistant(c);
   els.settingsPane.classList.toggle('locked', locked);
   els.systemPrompt.value = locked ? '' : c.systemPrompt;
   els.worldText.value = locked ? '' : c.worldText;
   els.persona.value = c.persona;
-  els.btnUploadArt.disabled = locked;
-  els.btnRemoveArt.disabled = locked;
+  // 助理模式：世界观和用户人设空白、不能编辑（不是受保护，是这个模式不用）；艺术图也不用
+  els.worldText.disabled = assistant;
+  els.persona.disabled = assistant;
+  els.worldText.placeholder = t(assistant ? 'assistant.worldUnused' : 'set.worldPlaceholder');
+  els.persona.placeholder = t(assistant ? 'assistant.personaUnused' : 'set.personaPlaceholder');
+  els.btnUploadWorld.disabled = assistant;
+  els.btnClearWorld.disabled = assistant;
+  els.btnUploadArt.disabled = locked || assistant;
+  els.btnRemoveArt.disabled = locked || assistant;
   els.artPane.classList.toggle('locked', locked);
+  els.artPane.classList.toggle('assistant', assistant);
+  els.artPane.title = assistant ? '' : t('art.title');
   updateWorldCount();
   updateEstimate();
 }
@@ -1702,11 +1792,14 @@ function applyLang(lang) {
   renderFooter();
   els.btnToggleKey.textContent = t(els.apiKey.type === 'password' ? 'set.show' : 'set.hide');
   if (state.conv) {
-    if (!state.conv.lock && isDefaultSystemPrompt(state.conv.systemPrompt) && state.conv.systemPrompt !== t('defaultSystemPrompt')) {
-      state.conv.systemPrompt = t('defaultSystemPrompt');
-      els.systemPrompt.value = state.conv.systemPrompt;
+    const conv = state.conv;
+    const isDefault = isAssistant(conv) ? isDefaultAssistantPrompt : isDefaultSystemPrompt;
+    if (!conv.lock && isDefault(conv.systemPrompt) && conv.systemPrompt !== defaultPromptOf(conv)) {
+      conv.systemPrompt = defaultPromptOf(conv);
+      els.systemPrompt.value = conv.systemPrompt;
       saveConvSoon();
     }
+    fillConvFields(); // 世界观、人设的占位文字
     updateWorldCount();
     renderConvSelect();
     // 消息标签、按钮等需要重画：清掉视图重新生成
@@ -1723,8 +1816,8 @@ function bindSettings() {
 
   // 属于当前对话的设定
   onConv(els.systemPrompt, (el) => { if (!c().lock) c().systemPrompt = el.value; });
-  onConv(els.worldText, (el) => { if (!c().lock) { c().worldText = el.value; updateWorldCount(); } });
-  onConv(els.persona, (el) => { c().persona = el.value; });
+  onConv(els.worldText, (el) => { if (!c().lock && !isAssistant(c())) { c().worldText = el.value; updateWorldCount(); } });
+  onConv(els.persona, (el) => { if (!isAssistant(c())) c().persona = el.value; });
 
   // 记忆轮数：可以直接输入，也可以点 − / +，范围 1–40
   const setRounds = (n) => {
@@ -1772,7 +1865,7 @@ function bindSettings() {
     const conv = c();
     if (conv.lock || !(await ask(t('set.resetConfirm'), { ok: t('set.resetDefault') }))) return;
     if (conv !== c()) return;
-    c().systemPrompt = t('defaultSystemPrompt');
+    c().systemPrompt = defaultPromptOf(conv);
     els.systemPrompt.value = c().systemPrompt;
     saveConvSoon();
     updateEstimate();
@@ -1783,7 +1876,7 @@ function bindSettings() {
     const f = els.fileWorld.files[0];
     els.fileWorld.value = '';
     if (!f) return;
-    if (c().lock) return;
+    if (c().lock || isAssistant(c())) return;
     if (!/\.(txt|md)$/i.test(f.name)) return toast(t('set.worldOnlyText'));
     const text = await f.text();
     const conv = c();
@@ -1798,7 +1891,7 @@ function bindSettings() {
   });
   els.btnClearWorld.addEventListener('click', async () => {
     const conv = c();
-    if (conv.lock || !conv.worldText || !(await ask(t('set.worldClear'), { ok: t('set.clear'), danger: true }))) return;
+    if (conv.lock || isAssistant(conv) || !conv.worldText || !(await ask(t('set.worldClear'), { ok: t('set.clear'), danger: true }))) return;
     if (conv !== c()) return;
     c().worldText = '';
     els.worldText.value = '';
@@ -1829,7 +1922,7 @@ function bindSettings() {
   });
 
 
-  const pickArt = () => { if (!state.conv.lock) els.fileArt.click(); };
+  const pickArt = () => { if (!state.conv.lock && !isAssistant(state.conv)) els.fileArt.click(); };
   // 手机布局里艺术图是背景，点它不打开上传
   els.artPane.addEventListener('click', () => { if (!isMobileLayout()) pickArt(); });
   els.artPane.addEventListener('contextmenu', (e) => { if (state.conv.lock) e.preventDefault(); });
@@ -1842,7 +1935,7 @@ function bindSettings() {
     if (f) await setArt(f);
   });
   els.btnRemoveArt.addEventListener('click', async () => {
-    if (state.conv.lock) return;
+    if (state.conv.lock || isAssistant(state.conv)) return;
     await DB.del(artKey(state.conv.id));
     await loadArt();
   });
@@ -1925,7 +2018,16 @@ function bindChat() {
   els.btnJumpBottom.addEventListener('click', scrollToBottom);
 
   els.convSelect.addEventListener('change', () => switchConv(els.convSelect.value));
-  els.btnNewConv.addEventListener('click', createConversation);
+  els.btnNewConv.addEventListener('click', () => createConversation());
+  els.btnNewConvMenu.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (els.newConvMenu.hidden) openNewConvMenu(); else closeNewConvMenu();
+  });
+  els.btnNewConvOther.addEventListener('click', () => createConversation(!isAssistant(state.conv)));
+  document.addEventListener('click', (e) => { if (!els.newConvGroup.contains(e.target)) closeNewConvMenu(); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !els.newConvMenu.hidden) { e.stopPropagation(); closeNewConvMenu(); els.btnNewConvMenu.focus(); }
+  }, true);
   els.btnRenameConv.addEventListener('click', renameConv);
   els.btnRenameConv2.addEventListener('click', renameConv);
   els.btnDeleteConv.addEventListener('click', deleteConv);
@@ -1972,7 +2074,7 @@ async function boot() {
   for (const c of await DB.listConversations()) {
     try { await openLock(c); } catch (e) { console.error('无法解密对话', c.id, e); continue; }
     state.conversations.push(c);
-    const fields = () => JSON.stringify([c.title, c.systemPrompt, c.worldText, c.persona, c.greeting, c.greetingSend, c.activeAt]);
+    const fields = () => JSON.stringify([c.title, c.mode, c.systemPrompt, c.worldText, c.persona, c.greeting, c.greetingSend, c.activeAt, !!c.lock]);
     const before = fields();
     normalizeConv(c, legacy);
     if (fields() !== before) await DB.putConversation(storable(c));

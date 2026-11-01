@@ -14,8 +14,9 @@
       <img id="artImage" alt="" hidden>
       <div class="art-placeholder" id="artPlaceholder">
         <div class="art-placeholder-icon">🖼</div>
-        <div data-i18n="art.upload"></div>
-        <div class="muted small" data-i18n="art.hint"></div>
+        <div class="roleplay-only" data-i18n="art.upload"></div>
+        <div class="muted small roleplay-only" data-i18n="art.hint"></div>
+        <div class="assistant-only" data-i18n="art.assistant"></div>
       </div>
       <div class="col-resizer" id="artResizer" data-i18n-title="art.resizer"></div>
     </aside>
@@ -24,7 +25,13 @@
     <main class="chat-pane" id="chatPane">
       <header class="chat-header">
         <select id="convSelect" data-i18n-title="conv.switch"></select>
-        <button id="btnNewConv" class="btn" data-i18n="conv.new"></button>
+        <!-- 新对话：主按钮新建同一种模式的对话；右边的 ▾ 打开菜单，新建另一种模式（角色扮演 / 助理模式）的对话 -->
+        <div class="split-btn" id="newConvGroup">
+          <button id="btnNewConv" class="btn" data-i18n="conv.new"></button><button id="btnNewConvMenu" class="btn split-toggle" data-i18n-title="conv.newMenu" aria-haspopup="menu"><span class="caret"></span></button>
+          <div class="split-menu" id="newConvMenu" role="menu" hidden>
+            <button id="btnNewConvOther" class="split-item" role="menuitem"></button>
+          </div>
+        </div>
         <button id="btnRenameConv" class="btn btn-ghost desktop-only" data-i18n="conv.rename" data-i18n-title="conv.renameTitle"></button>
         <button id="btnDeleteConv" class="btn btn-ghost danger desktop-only" data-i18n="conv.delete" data-i18n-title="conv.deleteTitle"></button>
         <!-- 手机布局：设置面板收起来，点齿轮打开 -->
