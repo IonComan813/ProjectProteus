@@ -63,7 +63,7 @@ Switching computers, reinstalling your system or (for the web version) clearing 
 | Area | What it does |
 |---|---|
 | Left | Artwork. Click to upload; portrait images work best. The image is shown at the width of the left column without stretching: if it is taller than the column, the top and bottom are cropped; if it is shorter, black bars are added above and below. Drag the right edge of the column to resize it (up to about 45% of the window, always leaving enough room for the chat); double-click the edge to reset |
-| Middle | The story. At the top you can switch, create, rename and delete conversations; at the bottom is the input box, press **Ctrl + Enter** to send. Drag the edge above the input box to change its height |
+| Middle | The story. At the top you can switch, create, rename and delete conversations (the list shows each conversation's number of rounds and the time of its latest activity — creating it, saving the opening, or sending a request to the model — and is sorted by that time); at the bottom is the input box, press **Ctrl + Enter** to send. Drag the edge above the input box to change its height |
 | Right | Settings, from top to bottom: System Prompt → World → User's character → Memory length → Model & API → Artwork → Export & backup → Local data → Language |
 
 ### Each conversation has its own settings
@@ -122,12 +122,74 @@ While the model is writing you can scroll up and read; the page won't be pulled 
 
 ## What is sent to the model each time
 
+Each request has two parts: the **system settings** and the **story so far**. This is exactly what goes out; you can check it with "Export / Backup…" → "Log (last request)".
+
+### System settings
+
+These three parts, in this order, separated by a blank line; empty parts are left out entirely:
+
+| Part | How it is sent |
+|---|---|
+| System Prompt | As written, with no label |
+| World | The label `[World Setting]` on the first line, then the full world setting |
+| User's character | The label `[User's Character]` on the first line, then the full character description |
+
+In the Anthropic format (official Claude API and Anthropic-compatible relays) this goes in the request's `system` field; in the OpenAI format (official OpenAI, Gemini, OpenRouter and other relays) it is the first `system` message.
+
+### The story so far
+
+User messages and model replies, alternating:
+
+- **Range**: the last one is your current message (when regenerating, the user message before that reply), preceded by the most recent N rounds. N is the memory length, 1–40 rounds; **1 round = one message from you + the model's reply to it**. Older messages are not sent
+- **Versions**: only the version currently shown of each message is sent
+- **Opening**: it does not count as a round of its own. If it is set to be sent and the conversation's first message is still within range, it is merged with the first message into one user message:
+  ```
+  [Opening]
+  …the opening…
+  [End of Opening]
+
+  [User]
+  …your first message…
+  ```
+  When the opening is not sent, the first message is sent as is, without labels
+- **Earlier story omitted**: the Anthropic format requires the first message to be from the user. If the range happens to start with a model reply, a user message reading `(Earlier story omitted)` is added in front. This doesn't happen in a normally alternating story
+- If two messages in a row ever come from the same side, they are merged into one (separated by a blank line) so the API doesn't reject the request
+
+### Example
+
+Memory length 1 round, the opening set to be sent, and you are sending your 3rd message: only round 2 is included; round 1 is out of range, and the opening goes with it.
+
 ```
-[system]   System Prompt + full world setting + user's character
-[history]  The most recent N rounds of the story (N = memory length, 1–40 rounds; 1 round = one model reply + one user reply)
-           If the opening is set to be sent and the conversation's first message is still within range, the opening is merged into it
-[user]     Your current reply
+[system]     System Prompt
+             (blank line)
+             [World Setting]
+             …world setting…
+             (blank line)
+             [User's Character]
+             …character…
+[user]       2nd message
+[assistant]  2nd reply
+[user]       3rd message (this one)
 ```
+
+With a memory length of 2 rounds, round 1 is in range too, and the first user message takes the `[Opening] … [User]` form shown above.
+
+### Label language
+
+Labels follow the interface language **at the time the request is sent**:
+
+| | 简体中文 | 繁體中文 | English | 日本語 |
+|---|---|---|---|---|
+| World | `【世界观设定】` | `【世界觀設定】` | `[World Setting]` | `【世界観設定】` |
+| User's character | `【用户角色人设】` | `【使用者角色設定】` | `[User's Character]` | `【ユーザーキャラクター設定】` |
+| Start of opening | `【开场白】` | `【開場白】` | `[Opening]` | `【オープニング】` |
+| End of opening | `【开场白结束】` | `【開場白結束】` | `[End of Opening]` | `【オープニングここまで】` |
+| First message | `【用户】` | `【使用者】` | `[User]` | `【ユーザー】` |
+| Earlier story omitted | `（前情省略）` | `（前情省略）` | `(Earlier story omitted)` | `（前略）` |
+
+The model name, maximum output length, effort or temperature and other parameters come from "Model & API".
+
+### Memory range
 
 Older messages are not sent, so the model can't "see" them. A dashed line in the story marks the edge of the memory range; messages above it are still shown, the model just can't see them.
 You can type the memory length directly or adjust it with − / ＋. Below it is a rough estimate of how many tokens the next request will use.
@@ -258,7 +320,7 @@ The output is in the `dist/` folder.
 
 - **Just checking that it builds**: on the repository's Actions page choose "Build desktop app" → "Run workflow". This builds without publishing; the installers are in the Artifacts at the bottom of that run's page and are kept for 30 days.
 
-The download instructions in a release come from `.github/release-notes.md`. A line saying which commit the installers were built from is added to the end of the release notes automatically; it is also updated when the installers of an existing release are rebuilt from a chosen branch and replaced. That commit is the source code of those installers.
+The download instructions on a release page come from `.github/release-notes.md` (in English). A line saying which commit the installers were built from is added to the end of the release notes automatically; it is also updated when the installers of an existing release are rebuilt from a chosen branch and replaced. That commit is the source code of those installers.
 
 Before each build, the licenses of the third-party components that go into the installers are checked (`scripts/third-party-notices.js`): an unknown license, or one incompatible with AGPL v3, fails the build until it has been reviewed and registered in the script; otherwise `THIRD_PARTY_NOTICES.txt` is generated and included in the installers.
 

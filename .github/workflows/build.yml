@@ -201,7 +201,7 @@ jobs:
           marker='<!-- proteus-download-notes -->'
           # 写明安装包构建自哪次提交：重新打包时用的可能不是标签那次提交，源代码以这一行为准
           build_marker='<!-- proteus-build -->'
-          build_line="$build_marker 本页安装包构建自提交 [\`${GITHUB_SHA:0:7}\`](https://github.com/$GH_REPO/commit/$GITHUB_SHA)，对应的源代码就是这次提交。"
+          build_line="$build_marker The installers on this page were built from commit [\`${GITHUB_SHA:0:7}\`](https://github.com/$GH_REPO/commit/$GITHUB_SHA); that commit is their source code."
           if gh release view "$RELEASE_TAG" > /dev/null 2>&1; then
             # 已有的 Release（例如在网页上发布的）：推送标签触发时，把下载说明接在原说明后面（只加一次）；
             # 手动运行上传到已有 Release 时，不动标题和说明。两种情况都更新“构建自哪次提交”那一行

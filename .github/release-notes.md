@@ -1,29 +1,29 @@
-Proteus 原生应用，下载后即可使用，不需要另外安装浏览器：Windows / macOS / Linux 版自带 Chromium 浏览器内核，安卓版使用系统自带的 WebView。
+Proteus native apps, ready to use after download with no separate browser needed: the Windows / macOS / Linux apps come with a built-in Chromium engine, and the Android app uses the system WebView.
 
-## 下载
+## Downloads
 
-| 文件 | 适用于 |
+| File | For |
 |---|---|
-| `Proteus-Setup-版本号-win-x64.exe` | Windows 10 / 11（64 位）安装程序，会创建桌面和开始菜单快捷方式 |
-| `Proteus-版本号-win-x64.zip` | Windows 免安装版：解压后双击 `Proteus.exe` |
-| `Proteus-版本号-mac-arm64.dmg` | macOS，Apple 芯片（M1 及更新） |
-| `Proteus-版本号-mac-x64.dmg` | macOS，Intel 芯片 |
-| `Proteus-版本号-linux-x86_64.AppImage` | Linux（64 位）：加上可执行权限后直接运行 |
-| `Proteus-版本号-android.apk` | 安卓 7.0 及以上：下载后点击安装（需要允许“安装未知来源应用”） |
+| `Proteus-Setup-<version>-win-x64.exe` | Windows 10 / 11 (64-bit) installer; adds shortcuts to the desktop and Start menu |
+| `Proteus-<version>-win-x64.zip` | Windows portable version: unzip and double-click `Proteus.exe` |
+| `Proteus-<version>-mac-arm64.dmg` | macOS, Apple silicon (M1 and later) |
+| `Proteus-<version>-mac-x64.dmg` | macOS, Intel |
+| `Proteus-<version>-linux-x86_64.AppImage` | Linux (64-bit): make it executable and run it |
+| `Proteus-<version>-android.apk` | Android 7.0 and later: download and tap to install (installing apps from unknown sources must be allowed) |
 
-> 原生应用没有经过付费的代码签名，安卓版也不是从应用商店下载的，第一次安装或打开时可能会看到提示：
+> The native apps are not code-signed (paid certificates), and the Android app is not installed from an app store, so you may see a warning on first install or launch:
 >
-> - **Windows** 第一次运行可能提示「Windows 已保护你的电脑」，点「**更多信息**」→「**仍要运行**」即可。
-> - **macOS** 第一次打开可能提示「无法验证开发者」，在「系统设置」→「隐私与安全性」底部点「**仍要打开**」即可。
-> - **安卓** 安装时可能提示「出于安全考虑，已禁止安装未知来源的应用」（各品牌手机的说法略有不同），按提示允许浏览器（或文件管理器）「安装未知应用」，再回来点安装即可。
+> - **Windows** may show "Windows protected your PC" on first run: click "**More info**" → "**Run anyway**".
+> - **macOS** may say the developer cannot be verified: go to System Settings → Privacy & Security and click "**Open Anyway**" at the bottom.
+> - **Android** may block installing apps from unknown sources (the wording varies by phone brand): follow the prompt to allow your browser (or file manager) to "install unknown apps", then go back and tap Install.
 
-## 原生应用与网页版的区别
+## Native apps vs. the web version
 
-- 原生应用**没有跨域限制**，不允许浏览器直接访问的中转站也能使用（安卓版上这类接口的回复会等全部生成完才一次性显示）
-- 原生应用的数据和浏览器分开保存。网页版的数据不会自动出现在原生应用里，可以在网页版中做「完整备份（全部对话）」，再在原生应用中读取
+- The native apps have **no CORS restrictions**, so relay endpoints that don't allow direct browser access work too (on Android, replies from such endpoints appear all at once when they are finished)
+- The native apps keep their data separate from your browser. Data from the web version does not show up in the native apps automatically: make a "Full backup (all conversations)" in the web version and load it in the native app
 
-更新内容见 [提交记录](https://github.com/IonComan813/ProjectProteus/commits/main)，使用说明见 [README](https://github.com/IonComan813/ProjectProteus/blob/main/README.zh-CN.md)。
+See the [commit history](https://github.com/IonComan813/ProjectProteus/commits/main) for what changed, and the [README](https://github.com/IonComan813/ProjectProteus#readme) for how to use it ([简体中文](https://github.com/IonComan813/ProjectProteus/blob/main/README.zh-CN.md)).
 
 ---
 
-基于 AGPL v3 开源。使用者需自备 API Key，开发者不为使用者在本软件中的输入和输出承担法律责任。
+Open source under AGPL v3. You need your own API key. The developers bear no legal responsibility for what users enter into or receive from this software.
