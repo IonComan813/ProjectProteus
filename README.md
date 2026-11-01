@@ -2,7 +2,7 @@
 
 [简体中文](README.zh-CN.md) | English
 
-A roleplay chat app for large language models (LLMs), similar in spirit to SillyTavern. Available as native apps (Windows / macOS / Linux and Android) and as a web version.
+A roleplay chat app for large language models (LLMs), similar in spirit to SillyTavern; it can also switch to an [assistant mode](#assistant-mode) for ordinary LLM chats. Available as native apps (Windows / macOS / Linux and Android) and as a web version.
 
 The interface is available in Simplified Chinese, Traditional Chinese, English and Japanese. On first launch it follows your system language (English if your system language is none of these four); you can switch at any time at the bottom of the settings panel on the right (on Android, tap ⚙ at the top right and scroll to the bottom). Open source under AGPL v3; you need your own API key.
 
@@ -63,7 +63,7 @@ Switching computers, reinstalling your system or (for the web version) clearing 
 | Area | What it does |
 |---|---|
 | Left | Artwork. Click to upload; portrait images work best. The image is shown at the width of the left column without stretching: if it is taller than the column, the top and bottom are cropped; if it is shorter, black bars are added above and below. Drag the right edge of the column to resize it (up to about 45% of the window, always leaving enough room for the chat); double-click the edge to reset |
-| Middle | The story. At the top you can switch, create, rename and delete conversations (the list shows each conversation's number of rounds and the time of its latest activity — creating it, saving the opening, or sending a request to the model — and is sorted by that time); at the bottom is the input box, press **Ctrl + Enter** to send. Drag the edge above the input box to change its height |
+| Middle | The story. At the top you can switch, create, rename and delete conversations (the small arrow to the right of "＋ New chat" starts an assistant-mode chat, see [Assistant mode](#assistant-mode); the list shows each conversation's number of rounds and the time of its latest activity — creating it, saving the opening, or sending a request to the model — and is sorted by that time); at the bottom is the input box, press **Ctrl + Enter** to send. Drag the edge above the input box to change its height |
 | Right | Settings, from top to bottom: System Prompt → World → User's character → Memory length → Model & API → Artwork → Export & backup → Local data → Language |
 
 ### Each conversation has its own settings
@@ -119,6 +119,19 @@ Each message is shown in its own isolated "sandbox" frame. Its styles and script
 - **Copy**
 
 While the model is writing you can scroll up and read; the page won't be pulled back to the bottom. To jump to the latest text, click "↓ Back to bottom".
+
+## Assistant mode
+
+Besides roleplay, Proteus can be used as an ordinary LLM chat tool (a personal assistant), sharing the same API and model settings.
+
+- **Start one**: click the small arrow to the right of "＋ New chat" above the chat and choose "＋ New assistant chat". In the conversation list, assistant chats are marked with 💬
+- **Settings**: nothing is carried over from the current conversation — not the opening, System Prompt, world, user's character or artwork. The System Prompt is replaced with a general personal-assistant prompt (one for each interface language; you can edit it). "Reset to default" depends on the conversation's mode: a roleplay chat gets the roleplay default, an assistant chat the assistant default. The world and user's character are empty and cannot be edited (not because they are protected, but because this mode doesn't use them); there is no "Add opening". Artwork can still be uploaded; it is only displayed, never sent to the model
+- **Sent to the model**: only the System Prompt, the conversation within the memory range and your current message — no world, character or opening, and none of their labels (see the next section). Memory length works as usual
+- **New chats**: in an assistant chat, "＋ New chat" starts another assistant chat (keeping the current System Prompt and artwork); "＋ New roleplay chat" in the arrow menu starts a roleplay chat with the settings, opening and artwork of the roleplay chat you used most recently (or the defaults if there is none). Likewise, "＋ New assistant chat" from a roleplay chat keeps the System Prompt and artwork of the most recent assistant chat, if there is one (a roleplay chat's artwork is not carried over)
+- **Export**: only the chat (TXT / Markdown), full backup (all conversations) and log; world cards and single-conversation backups are not offered. "Load world card / backup" works as usual: world cards and single-conversation backups are loaded as new conversations, and a full backup replaces all conversations, whatever mode the current chat is in
+- **Storage**: assistant chats use the same format as roleplay chats with one extra `mode: "assistant"` marker, so they are included in full backups (all conversations) and loaded back as usual. When a full backup is encrypted, assistant chats and their artwork are not encrypted (they have no settings to protect)
+
+> Older versions of Proteus don't know the marker and load assistant chats from a full backup as ordinary roleplay chats (with the assistant System Prompt and an empty world and character); nothing is lost.
 
 ## What is sent to the model each time
 
@@ -189,6 +202,19 @@ Labels follow the interface language **at the time the request is sent**:
 
 The model name, maximum output length, effort or temperature and other parameters come from "Model & API".
 
+### Assistant mode
+
+Only two parts are sent, with no labels at all:
+
+```
+[system]     System Prompt (as written)
+[user]       …
+[assistant]  …
+[user]       your current message
+```
+
+Range, versions and merging of same-side messages work as above; there is no opening, and the world and character are not sent.
+
 ### Memory range
 
 Older messages are not sent, so the model can't "see" them. A dashed line in the story marks the edge of the memory range; messages above it are still shown, the model just can't see them.
@@ -201,12 +227,15 @@ You can type the memory length directly or adjust it with − / ＋. Below it is
 | Option | Includes | Does not include |
 |---|---|---|
 | Story (TXT / Markdown) | The current conversation's opening and all messages | System Prompt, world, character, artwork |
+| Chat (TXT / Markdown) (assistant mode) | All messages in the current conversation | System Prompt |
 | World card (JSON, can be encrypted) | The current conversation's System Prompt, world, opening (and whether it is sent to the model), artwork | User's character, story |
 | Full backup (this conversation) (JSON, can be encrypted) | Everything in the current conversation: System Prompt, world, user's character, opening (and whether it is sent to the model), story (including every version of every reply), artwork | App settings |
 | Full backup (all conversations) (JSON, can be encrypted) | Every conversation (with all its content) and the app settings (memory length, Model & API, interface language, layout, etc.) | API keys |
 | Log (last request) (TXT) | The request actually sent to the model the last time (API address, headers, JSON body) and the raw response received, for troubleshooting. Only the last request since the app was opened; not saved | API keys; locked settings from encrypted world cards (shown as "(protected content)") |
 
-"Load world card / backup" accepts world cards and both kinds of full backup:
+In an assistant chat only the chat, full backup (all conversations) and log are offered, see [Assistant mode](#assistant-mode).
+
+"Load world card / backup" accepts world cards and both kinds of full backup (also from an assistant chat):
 
 - **Loading a world card** creates a new conversation with the card's System Prompt, world, opening and artwork, and an empty user's character; existing conversations are not affected
 - **Loading a full backup (this conversation)** creates a new conversation exactly as it was backed up; existing conversations are not affected (loading the same backup twice gives two conversations)
