@@ -101,7 +101,32 @@ body.resizing iframe { pointer-events: none; }
   border-bottom: 1px solid var(--border);
   background: var(--panel);
 }
-.chat-header select { flex: 1; min-width: 0; }
+/* 对话列表：外观和下拉框一样，列表样式和“模型名称”的下拉列表一样 */
+.conv-picker { position: relative; flex: 1; min-width: 0; }
+.conv-current {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: #121317;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-family: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.conv-current > span:first-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.conv-current .caret { color: var(--muted); }
+.conv-current:focus-visible, .conv-current[aria-expanded="true"] { outline: 1px solid var(--accent); border-color: var(--accent); }
+.conv-menu { max-height: min(60vh, 480px); user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.conv-menu .combo-item { line-height: 26px; }
+.combo-item.current { font-weight: 600; }
+/* 右键菜单：出现在光标右下方（位置由 JS 设置） */
+.split-menu.ctx-menu { position: fixed; right: auto; top: 0; left: 0; min-width: 120px; z-index: 40; }
+.split-item.danger { color: var(--danger); }
 /* “＋ 新对话”和右边的 ▾ 看起来是一个按钮，▾ 打开新建另一种模式的菜单 */
 .split-btn { position: relative; display: flex; flex: none; }
 .split-btn > .btn:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }
@@ -114,7 +139,7 @@ body.resizing iframe { pointer-events: none; }
   color: var(--muted);
 }
 /* 向下的小三角（不用 ▾ 字符：有的系统字体里没有它） */
-.split-toggle .caret {
+.caret {
   display: inline-block;
   vertical-align: middle;
   border-left: 4px solid transparent;
@@ -677,7 +702,8 @@ textarea:focus, input:focus, select:focus { outline: 1px solid var(--accent); bo
   }
 
   .modal-box, .dialog-box { width: 94vw; }
-  input[type=text], input[type=password], input[type=number], select, textarea { font-size: 16px; }
+  input[type=text], input[type=password], input[type=number], select, textarea, .conv-current { font-size: 16px; }
+  .conv-menu .combo-item { line-height: 36px; font-size: 15px; }
 }
 
 /* 触屏没有“鼠标悬停”，消息下方的按钮一直显示 */
