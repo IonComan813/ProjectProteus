@@ -290,10 +290,9 @@ body.resizing iframe { pointer-events: none; }
 }
 .msg-edit .row { justify-content: flex-end; }
 
-.jump-bottom {
+.jump-btn {
   position: absolute;
   left: 50%;
-  bottom: 14px;
   transform: translateX(-50%);
   background: var(--panel-2);
   border: 1px solid var(--border);
@@ -303,6 +302,8 @@ body.resizing iframe { pointer-events: none; }
   cursor: pointer;
   box-shadow: 0 4px 14px rgba(0,0,0,.4);
 }
+.jump-top { top: 14px; }
+.jump-bottom { bottom: 14px; }
 
 .composer {
   border-top: 1px solid var(--border);

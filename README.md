@@ -69,7 +69,7 @@ Switching computers, reinstalling your system or (for the web version) clearing 
 
 ### Each conversation has its own settings
 
-**The System Prompt, world, user's character, opening and artwork belong to each conversation.** "＋ New chat" copies these from the current conversation (with an empty story); after that the two are independent. Switching back to an older conversation shows that conversation's own settings.
+**The System Prompt, world, user's character, opening (all versions) and artwork belong to each conversation.** "＋ New chat" copies these from the current conversation (with an empty story); after that the two are independent. Switching back to an older conversation shows that conversation's own settings.
 
 Memory length, Model & API, API keys, interface language and layout are app settings shared by all conversations.
 
@@ -95,7 +95,9 @@ The saved opening is shown at the top of the conversation. Before you send your 
   Once the story has moved on far enough that the first message falls outside the memory length, the opening is no longer sent either.
 - **Unchecked**: the opening is only shown in the chat and the model never sees it; your first message is the first message.
 
-The opening is kept in story exports, world cards and full backups.
+**Several openings**: once an opening is saved, the buttons below it include "Add", which lets you write another opening as a new version (edited in the input box in the same way: "Reload" to preview, "Confirm" to save; you are not asked again whether to send it to the model, the existing setting is kept). With several versions, switch between them with `‹ 2/3 ›`; "Edit" and "Delete this version" only affect the version shown, and with a single version left it becomes "Delete opening". **The version shown when you send your first message is the one that is kept**; after that you can no longer switch.
+
+The opening (all versions) is kept in world cards and full backups; story exports include only the current version.
 
 ### Markdown / HTML styling
 
@@ -119,7 +121,9 @@ Each message is shown in its own isolated "sandbox" frame. Its styles and script
 - **Roll back to here**: only on model replies. Keeps this reply and deletes every message after it (not available on the last reply). To go back to the opening, just start a new chat
 - **Copy**
 
-While the model is writing you can scroll up and read; the page won't be pulled back to the bottom. To jump to the latest text, click "↓ Back to bottom".
+When you scroll up, "↑ Back to top" appears at the top of the chat; when you scroll down, "↓ Back to bottom" appears at the bottom. Which one appears depends on the direction you scroll, and they are never shown together; neither appears when you are already at the top (or bottom).
+
+While the model is writing you can scroll up and read; the page won't be pulled back to the bottom. To jump to the latest text, scroll down a little and click "↓ Back to bottom".
 
 ## Assistant mode
 
@@ -229,8 +233,8 @@ You can type the memory length directly or adjust it with − / ＋. Below it is
 |---|---|---|
 | Story (TXT / Markdown) | The current conversation's opening and all messages | System Prompt, world, character, artwork |
 | Chat (TXT / Markdown) (assistant mode) | All messages in the current conversation | System Prompt |
-| World card (JSON, can be encrypted) | The current conversation's System Prompt, world, opening (and whether it is sent to the model), artwork | User's character, story |
-| Full backup (this conversation) (JSON, can be encrypted) | Everything in the current conversation: System Prompt, world, user's character, opening (and whether it is sent to the model), story (including every version of every reply), artwork | App settings |
+| World card (JSON, can be encrypted) | The current conversation's System Prompt, world, opening (all versions, and whether it is sent to the model), artwork | User's character, story |
+| Full backup (this conversation) (JSON, can be encrypted) | Everything in the current conversation: System Prompt, world, user's character, opening (all versions, and whether it is sent to the model), story (including every version of every reply), artwork | App settings |
 | Full backup (all conversations) (JSON, can be encrypted) | Every conversation (with all its content) and the app settings (memory length, Model & API, interface language, layout, etc.) | API keys |
 | Log (last request) (TXT) | The request actually sent to the model the last time (API address, headers, JSON body) and the raw response received, for troubleshooting. Only the last request since the app was opened; not saved | API keys; locked settings from encrypted world cards (shown as "(protected content)") |
 
@@ -249,7 +253,7 @@ Images are stored in the JSON as text (base64), so world cards and backups with 
 When exporting a world card or full backup you can choose to **encrypt** it with a 4–16 character password (in an encrypted full backup, the story and user's character stay in plain text; only the items below are encrypted):
 
 - Opening the file directly shows only gibberish
-- After loading it in Proteus, the System Prompt, world, opening and artwork are **locked**: they can be used normally but not viewed, edited, copied or downloaded; the opening is displayed as usual but cannot be edited, and whether it is sent to the model cannot be changed. The user's character and story are not affected
+- After loading it in Proteus, the System Prompt, world, opening and artwork are **locked**: they can be used normally but not viewed, edited, copied or downloaded; the opening is displayed as usual, but versions cannot be edited, added or deleted, and whether it is sent to the model cannot be changed (with several versions you can still switch between them before the conversation starts). The user's character and story are not affected
 - Entering the password unlocks it, turning it back into a normal conversation
 - A new conversation created from a locked one, and world cards or full backups exported from it, stay encrypted with the original password. You are reminded before exporting that the original password is still needed to unlock it (you are not asked whether to encrypt in this case; normal conversations in a "Full backup (all conversations)" can still be encrypted)
 - **A forgotten password cannot be recovered**

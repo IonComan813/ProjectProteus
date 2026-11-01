@@ -85,7 +85,7 @@ const I18N = {
     'msg.edit': '编辑',
     'msg.editUserTitle': '修改后存为这条消息的新版本，并按新内容生成回复；旧版本和它的回复都保留，可用 ‹ › 切换',
     'msg.editStoryTitle': '直接改写这段剧情，不会重新生成',
-    'msg.greetingStarted': '对话已开始，开场白不能修改（想换开场白请新建对话）',
+    'msg.greetingStarted': "对话已开始，开场白不能修改或切换（想换开场白请新建对话）",
     'msg.regenerate': '重新生成',
     'msg.regenerateTitle': '生成一个新版本，旧版本会保留，可用 ‹ › 切换',
     'msg.deleteVersion': '删除此版本',
@@ -310,6 +310,12 @@ const I18N = {
     'set.clearAllConfirm': "将删除这个浏览器里 Proteus 保存的所有对话、设定、艺术图和 API Key，无法恢复。建议先做完整备份。确定吗？",
     'set.download': "下载",
     'art.none': "还没有艺术图",
+    // 多个开场白、回到顶部
+    'msg.jumpTop': "↑ 回到顶部",
+    'msg.addGreetingVersion': "新增",
+    'msg.addGreetingVersionTitle': "再写一个开场白作为新的版本。对话开始前可以用 ‹ › 切换，发出第一条消息时用的是当前显示的那个",
+    'msg.deleteGreetingVersionConfirm': "删除当前显示的这个开场白版本？",
+    'msg.emptyGreetingVersionConfirm': "开场白为空，要删除这个开场白版本吗？",
   },
 
   'zh-TW': {
@@ -378,7 +384,7 @@ const I18N = {
     'msg.edit': '編輯',
     'msg.editUserTitle': '修改後存為這則訊息的新版本，並依新內容生成回覆；舊版本和它的回覆都保留，可用 ‹ › 切換',
     'msg.editStoryTitle': '直接改寫這段劇情，不會重新生成',
-    'msg.greetingStarted': '對話已開始，開場白不能修改（想換開場白請新增對話）',
+    'msg.greetingStarted': "對話已開始，開場白不能修改或切換（想換開場白請新增對話）",
     'msg.regenerate': '重新生成',
     'msg.regenerateTitle': '生成一個新版本，舊版本會保留，可用 ‹ › 切換',
     'msg.deleteVersion': '刪除此版本',
@@ -593,6 +599,12 @@ const I18N = {
     'set.clearAllConfirm': "將刪除這個瀏覽器裡 Proteus 儲存的所有對話、設定、藝術圖和 API Key，無法復原。建議先做完整備份。確定嗎？",
     'set.download': "下載",
     'art.none': "還沒有藝術圖",
+    // 多个开场白、回到顶部
+    'msg.jumpTop': "↑ 回到頂部",
+    'msg.addGreetingVersion': "新增",
+    'msg.addGreetingVersionTitle': "再寫一個開場白作為新的版本。對話開始前可以用 ‹ › 切換，送出第一則訊息時用的是目前顯示的那個",
+    'msg.deleteGreetingVersionConfirm': "刪除目前顯示的這個開場白版本？",
+    'msg.emptyGreetingVersionConfirm': "開場白為空，要刪除這個開場白版本嗎？",
   },
 
   en: {
@@ -661,7 +673,7 @@ const I18N = {
     'msg.edit': 'Edit',
     'msg.editUserTitle': 'Saves the edit as a new version of this message and generates a reply to it; the old version and its replies are kept and can be browsed with ‹ ›',
     'msg.editStoryTitle': 'Rewrite this part of the story directly; nothing is regenerated',
-    'msg.greetingStarted': 'The conversation has started, so the opening can no longer be changed (start a new chat for a different opening)',
+    'msg.greetingStarted': "The conversation has started, so the opening can no longer be changed or switched (start a new chat for a different opening)",
     'msg.regenerate': 'Regenerate',
     'msg.regenerateTitle': 'Generate a new version; old versions are kept and can be browsed with ‹ ›',
     'msg.deleteVersion': 'Delete this version',
@@ -876,6 +888,12 @@ const I18N = {
     'set.clearAllConfirm': "This deletes every conversation, setting, artwork and API key Proteus has stored in this browser, and cannot be undone. Consider making a full backup first. Continue?",
     'set.download': "Download",
     'art.none': "No artwork yet",
+    // 多个开场白、回到顶部
+    'msg.jumpTop': "↑ Back to top",
+    'msg.addGreetingVersion': "Add",
+    'msg.addGreetingVersionTitle': "Write another opening as a new version. Before the conversation starts you can switch between them with ‹ ›; the one shown when you send your first message is used",
+    'msg.deleteGreetingVersionConfirm': "Delete the version of the opening shown now?",
+    'msg.emptyGreetingVersionConfirm': "The opening is empty. Delete this version of the opening?",
   },
 
   ja: {
@@ -944,7 +962,7 @@ const I18N = {
     'msg.edit': '編集',
     'msg.editUserTitle': '編集内容をこのメッセージの新しいバージョンとして保存し、それに対する返信を生成します。古いバージョンとその返信は残り、‹ › で切り替えられます',
     'msg.editStoryTitle': 'この部分の物語を直接書き換えます。再生成はしません',
-    'msg.greetingStarted': '会話が始まったため、オープニングは変更できません（別のオープニングにするには新しい会話を作成してください）',
+    'msg.greetingStarted': "会話が始まったため、オープニングは変更・切り替えできません（別のオープニングにするには新しい会話を作成してください）",
     'msg.regenerate': '再生成',
     'msg.regenerateTitle': '新しいバージョンを生成します。古いバージョンは残り、‹ › で切り替えられます',
     'msg.deleteVersion': 'このバージョンを削除',
@@ -1159,6 +1177,12 @@ const I18N = {
     'set.clearAllConfirm': "このブラウザに Proteus が保存したすべての会話、設定、アート、API キーを削除します。元に戻せません。先に完全バックアップを取ることをおすすめします。よろしいですか？",
     'set.download': "ダウンロード",
     'art.none': "まだアートがありません",
+    // 多个开场白、回到顶部
+    'msg.jumpTop': "↑ 先頭へ",
+    'msg.addGreetingVersion': "追加",
+    'msg.addGreetingVersionTitle': "別のオープニングを新しいバージョンとして書きます。会話が始まる前は ‹ › で切り替えられ、最初のメッセージを送ったときに表示されているものが使われます",
+    'msg.deleteGreetingVersionConfirm': "表示中のオープニングのバージョンを削除しますか？",
+    'msg.emptyGreetingVersionConfirm': "オープニングが空です。このバージョンを削除しますか？",
   },
 };
 
