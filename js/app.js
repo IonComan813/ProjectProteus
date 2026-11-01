@@ -434,7 +434,8 @@ function highlightConv(i, scroll) {
 
 function pickConv(c) {
   closeConvMenu();
-  if (c !== state.conv) switchConv(c.id);
+  // 不用等切换完成：switchConv 自己处理“生成中不能切换”等情况
+  if (c !== state.conv) void switchConv(c.id);
 }
 
 // 右键菜单：只有“删除”，删除的是右键点中的那个对话（不一定是当前对话）
@@ -2110,7 +2111,7 @@ function bindChat() {
   els.btnCtxDelete.addEventListener('click', () => {
     const c = ctxConv;
     closeConvMenu();
-    if (c) deleteConv(c);
+    if (c) void deleteConv(c); // 不用等：确认框和删除由 deleteConv 自己完成
   });
   // 点在列表和右键菜单以外：都收起；点在列表里（右键菜单以外）：只收起右键菜单
   document.addEventListener('mousedown', (e) => {
