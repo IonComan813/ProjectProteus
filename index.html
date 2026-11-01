@@ -43,7 +43,9 @@
 
       <div class="messages-wrap">
         <div class="messages" id="messages"></div>
-        <button class="jump-bottom" id="btnJumpBottom" data-i18n="msg.jumpBottom" hidden></button>
+        <!-- 往上滚时显示“回到顶部”，往下滚时显示“回到底部”，两个不同时出现 -->
+        <button class="jump-btn jump-top" id="btnJumpTop" data-i18n="msg.jumpTop" hidden></button>
+        <button class="jump-btn jump-bottom" id="btnJumpBottom" data-i18n="msg.jumpBottom" hidden></button>
       </div>
 
       <footer class="composer" id="composer">
