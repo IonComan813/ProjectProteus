@@ -333,9 +333,6 @@ body.resizing iframe { pointer-events: none; }
 .lock-tag { font-size: 12px; color: var(--muted); padding: 3px 0; }
 .art-pane.locked { cursor: default; }
 .art-pane.locked img { user-select: none; -webkit-user-drag: none; pointer-events: none; }
-/* 助理模式的对话：不使用世界观、用户人设、开场白和艺术图 */
-.art-pane.assistant { cursor: default; }
-.art-pane.assistant .roleplay-only, .art-pane:not(.assistant) .assistant-only { display: none; }
 .remember-keys { margin-top: -2px; }
 
 /* 模型选择：输入框 + 自己画的下拉列表（能列出“获取列表”拉到的模型，也能边输入边筛选） */

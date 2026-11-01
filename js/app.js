@@ -6,7 +6,7 @@
 //   - 来自加密世界卡的对话带有 conv.lock：System Prompt、世界观、开场白和艺术图只以密文保存，
 //     在内存里解密后使用，界面上不能查看或修改，输入密码解锁后变回普通对话。
 //   - 助理模式的对话（conv.mode === 'assistant'）：普通的 LLM 对话，只发送 System Prompt 和对话记录。
-//     世界观、用户人设、开场白、艺术图都不使用（保持为空），也不加密。没有 mode 的就是角色扮演对话，
+//     世界观、用户人设、开场白都不使用（保持为空），也不加密；艺术图照常可用。没有 mode 的就是角色扮演对话，
 //     所以存储和备份格式与角色扮演对话相同。
 //   - 软件设置（所有对话共用）：界面语言、记忆长度、模型与接口、API Key、布局。
 
@@ -258,7 +258,7 @@ const isAssistant = (conv) => !!conv && conv.mode === 'assistant';
 const defaultPromptOf = (conv) => t(isAssistant(conv) ? 'defaultAssistantPrompt' : 'defaultSystemPrompt');
 
 // 新建对话。from 是要复制设定和开场白的对话（不复制剧情）；锁定状态也一起复制。
-// assistant = true 时新建助理模式的对话：只复制助理模式对话的 System Prompt，其他全部为空
+// assistant = true 时新建助理模式的对话：只复制助理模式对话的 System Prompt，其他全部为空（艺术图由调用方复制）
 function newConversation(from, assistant = isAssistant(from)) {
   const now = Date.now();
   if (assistant) {
@@ -344,7 +344,7 @@ async function switchConv(id) {
 
 // 新建一个对话。assistant 是要新建的模式，默认和当前对话相同。
 // 设定、开场白和艺术图复制自这种模式最近使用的对话（就是当前对话时复制当前对话）；还没有这种对话时用默认值。
-// 助理模式只复制 System Prompt
+// 助理模式只复制 System Prompt 和艺术图
 async function createConversation(assistant = isAssistant(state.conv)) {
   closeNewConvMenu();
   if (state.generating) return toast(t('conv.stopFirst'));
@@ -354,7 +354,7 @@ async function createConversation(assistant = isAssistant(state.conv)) {
   const c = newConversation(from, assistant);
   state.conversations.push(c);
   await DB.putConversation(storable(c));
-  const art = from && !assistant && (await DB.get(artKey(from.id)));
+  const art = from && (await DB.get(artKey(from.id)));
   if (art) await DB.set(artKey(c.id), art);
   await switchConv(c.id);
   els.input.focus();
@@ -1042,7 +1042,7 @@ async function artBlobOf(conv) {
 
 async function loadArt() {
   const conv = state.conv;
-  const blob = isAssistant(conv) ? null : await artBlobOf(conv);
+  const blob = await artBlobOf(conv);
   if (conv !== state.conv) return;
   if (state.artUrl) URL.revokeObjectURL(state.artUrl);
   state.artUrl = blob ? URL.createObjectURL(blob) : null;
@@ -1054,7 +1054,6 @@ async function loadArt() {
 }
 
 async function setArt(file) {
-  if (isAssistant(state.conv)) return toast(t('art.assistant'));
   if (state.conv.lock) return toast(t('lock.artLocked'));
   if (!file || !file.type.startsWith('image/')) return toast(t('art.notImage'));
   await DB.set(artKey(state.conv.id), file);
@@ -1329,9 +1328,9 @@ async function backup() {
   const conversations = [];
   const arts = {};
   for (const c of state.conversations) {
-    if (isAssistant(c)) { conversations.push(storable(c)); continue; } // 没有艺术图
-    const encrypt = !!c.lock || password !== null;
-    if (c.lock || password === null) conversations.push(storable(c));
+    // 助理模式的对话（和它的艺术图）不加密
+    const encrypt = !isAssistant(c) && (!!c.lock || password !== null);
+    if (!encrypt || c.lock) conversations.push(storable(c));
     else conversations.push(storable({ ...c, lock: await Locker.lock(lockedFields(c), password) }));
     const art = await artForExport(c.id, encrypt);
     if (art) arts[c.id] = art;
@@ -1624,18 +1623,16 @@ function fillConvFields() {
   els.systemPrompt.value = locked ? '' : c.systemPrompt;
   els.worldText.value = locked ? '' : c.worldText;
   els.persona.value = c.persona;
-  // 助理模式：世界观和用户人设空白、不能编辑（不是受保护，是这个模式不用）；艺术图也不用
+  // 助理模式：世界观和用户人设空白、不能编辑（不是受保护，是这个模式不用）；艺术图照常可用
   els.worldText.disabled = assistant;
   els.persona.disabled = assistant;
   els.worldText.placeholder = t(assistant ? 'assistant.worldUnused' : 'set.worldPlaceholder');
   els.persona.placeholder = t(assistant ? 'assistant.personaUnused' : 'set.personaPlaceholder');
   els.btnUploadWorld.disabled = assistant;
   els.btnClearWorld.disabled = assistant;
-  els.btnUploadArt.disabled = locked || assistant;
-  els.btnRemoveArt.disabled = locked || assistant;
+  els.btnUploadArt.disabled = locked;
+  els.btnRemoveArt.disabled = locked;
   els.artPane.classList.toggle('locked', locked);
-  els.artPane.classList.toggle('assistant', assistant);
-  els.artPane.title = assistant ? '' : t('art.title');
   updateWorldCount();
   updateEstimate();
 }
@@ -1922,7 +1919,7 @@ function bindSettings() {
   });
 
 
-  const pickArt = () => { if (!state.conv.lock && !isAssistant(state.conv)) els.fileArt.click(); };
+  const pickArt = () => { if (!state.conv.lock) els.fileArt.click(); };
   // 手机布局里艺术图是背景，点它不打开上传
   els.artPane.addEventListener('click', () => { if (!isMobileLayout()) pickArt(); });
   els.artPane.addEventListener('contextmenu', (e) => { if (state.conv.lock) e.preventDefault(); });
@@ -1935,7 +1932,7 @@ function bindSettings() {
     if (f) await setArt(f);
   });
   els.btnRemoveArt.addEventListener('click', async () => {
-    if (state.conv.lock || isAssistant(state.conv)) return;
+    if (state.conv.lock) return;
     await DB.del(artKey(state.conv.id));
     await loadArt();
   });
