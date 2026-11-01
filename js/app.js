@@ -382,7 +382,7 @@ function renderConvSelect() {
   for (const c of sorted) {
     const o = document.createElement('option');
     o.value = c.id;
-    o.textContent = (c.lock ? '🔒 ' : isAssistant(c) ? '💬 ' : '') + t('conv.option', { title: convTitle(c), rounds: roundsText(roundsOf(c)), time: fmtTime(c.activeAt) });
+    o.textContent = (c.lock ? '🔒 ' : isAssistant(c) ? '🕵️ ' : '') + t('conv.option', { title: convTitle(c), rounds: roundsText(roundsOf(c)), time: fmtTime(c.activeAt) });
     if (state.conv && c.id === state.conv.id) o.selected = true;
     els.convSelect.appendChild(o);
   }
