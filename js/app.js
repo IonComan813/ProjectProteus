@@ -1,12 +1,13 @@
 // 主程序：界面、对话管理、上下文拼装。
 //
 // 数据分两类：
-//   - 每个对话各自保存：System Prompt、世界观、用户人设、开场白、剧情，以及艺术图（存在 art:<对话id>）。
-//     新建对话时复制当前对话的设定和开场白，之后互不影响。
-//   - 来自加密世界卡的对话带有 conv.lock：System Prompt、世界观、开场白和艺术图只以密文保存，
+//   - 每个对话各自保存：System Prompt、世界观、用户人设、{{user}} 的值（userName）、重点指令（postHistory）、
+//     开场白（可以有多个版本：greetings 和当前版本的序号 greetingCur，greeting 是当前版本）、剧情，
+//     以及艺术图（存在 art:<对话id>）。新建对话时复制当前对话的设定和开场白，之后互不影响。
+//   - 来自加密世界卡的对话带有 conv.lock：System Prompt、世界观、重点指令、开场白和艺术图只以密文保存，
 //     在内存里解密后使用，界面上不能查看或修改，输入密码解锁后变回普通对话。
 //   - 助理模式的对话（conv.mode === 'assistant'）：普通的 LLM 对话，只发送 System Prompt 和对话记录。
-//     世界观、用户人设、开场白都不使用（保持为空），也不加密；艺术图照常可用。没有 mode 的就是角色扮演对话，
+//     世界观、用户人设、{{user}} 的值、重点指令、开场白都不使用（保持为空），也不加密；艺术图照常可用。没有 mode 的就是角色扮演对话，
 //     所以存储和备份格式与角色扮演对话相同。
 //   - 软件设置（所有对话共用）：界面语言、记忆长度、模型与接口、API Key、布局。
 
@@ -145,15 +146,19 @@ function saveSettingsSoon() {
   saveTimer = setTimeout(() => DB.set('settings', storableSettings()), 300);
 }
 
-// 要写入本机存储（和备份）的对话：锁定的对话不保存明文，那几项只在 conv.lock 里以密文存在
-const LOCKED_FIELDS = ['systemPrompt', 'worldText', 'greeting', 'greetingSend'];
+// 要写入本机存储（和备份）的对话：锁定的对话不保存明文，那几项只在 conv.lock 里以密文存在。
+// 开场白当前是第几个版本（greetingCur）不是受保护的内容，保存在锁外面：锁定的对话在开始前也可以切换开场白
+const LOCKED_FIELDS = ['systemPrompt', 'worldText', 'postHistory', 'greeting', 'greetings', 'greetingSend'];
 function storable(conv) {
   if (!conv.lock) return conv;
   const out = { ...conv };
   for (const k of LOCKED_FIELDS) delete out[k];
   return out;
 }
-const lockedFields = (c) => ({ systemPrompt: c.systemPrompt, worldText: c.worldText, greeting: c.greeting, greetingSend: c.greetingSend !== false });
+const lockedFields = (c) => ({
+  systemPrompt: c.systemPrompt, worldText: c.worldText, postHistory: c.postHistory,
+  greeting: c.greeting, greetings: c.greetings.slice(), greetingSend: c.greetingSend !== false,
+});
 
 // 锁定的对话在读取后解密到内存
 async function openLock(conv) {
@@ -212,7 +217,8 @@ function providerCfg() {
 }
 
 // ---------------- 上下文拼装 ----------------
-// 顺序：System Prompt → 世界观 → 用户角色人设（都取自当前对话）
+// 顺序：System Prompt → 世界观 → 用户角色人设（都取自当前对话）。重点指令加在这一次的用户消息末尾。
+// 最后把所有内容里的 {{user}} 换成 {{user}} 的值（没填时原样保留）
 
 function buildSystem(conv = state.conv) {
   // 助理模式只发送 System Prompt，不带世界观、人设和它们的标签
@@ -222,6 +228,32 @@ function buildSystem(conv = state.conv) {
   if (conv.worldText.trim()) parts.push(t('sys.world') + '\n' + conv.worldText.trim());
   if (conv.persona.trim()) parts.push(t('sys.persona') + '\n' + conv.persona.trim());
   return parts.join('\n\n');
+}
+
+// {{user}} 的值：显示和发送时，内容里的 {{user}}（不区分大小写）换成它；没填时原样保留。存着的内容不变
+const USER_MACRO = /\{\{user\}\}/gi;
+function withUser(text, conv = state.conv) {
+  const v = conv && !isAssistant(conv) ? (conv.userName || '').trim() : '';
+  return v && text ? text.replace(USER_MACRO, () => v) : text;
+}
+
+// 加在这一次的用户消息末尾的重点指令（带标签）；没有内容时为空
+function postHistoryBlock(conv) {
+  const text = !isAssistant(conv) && conv.postHistory ? conv.postHistory.trim() : '';
+  return text ? `${t('sys.postHistory')}\n${text}` : '';
+}
+
+// 真正发给模型的内容：system 部分和记忆范围内的消息（context 的最后一条是这一次的用户消息）
+function requestOf(conv, context) {
+  const messages = windowOf(context, sentGreeting(conv));
+  const block = postHistoryBlock(conv);
+  const last = messages[messages.length - 1];
+  if (block && last && last.role === 'user') last.content += '\n\n' + block;
+  return {
+    system: withUser(buildSystem(conv), conv),
+    messages: messages.map((m) => ({ role: m.role, content: withUser(m.content, conv) })),
+    postHistory: withUser(block, conv),
+  };
 }
 
 // 开场白和用户第一条消息合在一起，作为发给模型的第一条消息
@@ -273,7 +305,11 @@ function newConversation(from, assistant = isAssistant(from)) {
       systemPrompt: isAssistant(from) ? from.systemPrompt : t('defaultAssistantPrompt'),
       worldText: '',
       persona: '',
+      userName: '',
+      postHistory: '',
       greeting: null,
+      greetings: [],
+      greetingCur: 0,
       greetingSend: true,
       createdAt: now,
       updatedAt: now,
@@ -288,7 +324,11 @@ function newConversation(from, assistant = isAssistant(from)) {
     systemPrompt: from ? from.systemPrompt : t('defaultSystemPrompt'),
     worldText: from ? from.worldText : '',
     persona: from ? from.persona : '',
+    userName: from ? from.userName : '',
+    postHistory: from ? from.postHistory : '',
     greeting: from ? from.greeting : null,
+    greetings: from ? from.greetings.slice() : [],
+    greetingCur: from ? from.greetingCur : 0,
     greetingSend: from ? from.greetingSend !== false : true,
     createdAt: now,
     updatedAt: now,
@@ -308,7 +348,11 @@ function normalizeConv(c, legacy) {
     if (typeof c.systemPrompt !== 'string') c.systemPrompt = t('defaultAssistantPrompt');
     c.worldText = '';
     c.persona = '';
+    c.userName = '';
+    c.postHistory = '';
     c.greeting = null;
+    c.greetings = [];
+    c.greetingCur = 0;
     c.greetingSend = true;
     if (!Array.isArray(c.messages)) c.messages = [];
     if (typeof c.activeAt !== 'number') c.activeAt = c.updatedAt || c.createdAt || Date.now();
@@ -320,12 +364,41 @@ function normalizeConv(c, legacy) {
   if (!c.lock && isPreviousDefaultSystemPrompt(c.systemPrompt)) c.systemPrompt = t('defaultSystemPrompt');
   if (typeof c.worldText !== 'string') c.worldText = (legacy && legacy.worldText) || '';
   if (typeof c.persona !== 'string') c.persona = (legacy && legacy.persona) || '';
-  if (c.greeting === undefined) c.greeting = null;
+  if (typeof c.userName !== 'string') c.userName = '';
+  if (typeof c.postHistory !== 'string') c.postHistory = '';
+  normalizeGreetings(c);
   if (c.greetingSend === undefined) c.greetingSend = true;
   if (!Array.isArray(c.messages)) c.messages = [];
   // 旧版本没有 activeAt：用最后一次保存的时间代替
   if (typeof c.activeAt !== 'number') c.activeAt = c.updatedAt || c.createdAt || Date.now();
   return c;
+}
+
+// 开场白的多个版本：greetings 是全部版本，greetingCur 是当前版本的序号，greeting 是当前版本（没有开场白时为 null）。
+// 保留 greeting 是为了兼容旧版本：旧版本只认 greeting，读到新文件时也能拿到当前的开场白。
+function syncGreeting(c) {
+  const n = c.greetings.length;
+  c.greetingCur = n ? Math.min(Math.max(0, c.greetingCur), n - 1) : 0;
+  c.greeting = n ? c.greetings[c.greetingCur] : null;
+}
+
+function normalizeGreetings(c) {
+  const list = Array.isArray(c.greetings) && c.greetings.length && c.greetings.every((x) => typeof x === 'string');
+  if (!Number.isInteger(c.greetingCur)) c.greetingCur = 0;
+  if (c.lock) {
+    // 锁定的对话：版本都在锁里；旧版本做的锁里只有 greeting
+    if (!list) c.greetings = typeof c.greeting === 'string' ? [c.greeting] : [];
+  } else if (typeof c.greeting !== 'string') {
+    c.greetings = []; // 没有开场白（也可能是旧版本删掉了它）
+  } else if (!list) {
+    c.greetings = [c.greeting];
+    c.greetingCur = 0;
+  } else {
+    // 旧版本改过开场白时，greeting 和当前版本对不上：以 greeting 为准
+    c.greetingCur = Math.min(Math.max(0, c.greetingCur), c.greetings.length - 1);
+    if (c.greetings[c.greetingCur] !== c.greeting) c.greetings[c.greetingCur] = c.greeting;
+  }
+  syncGreeting(c);
 }
 
 async function switchConv(id) {
@@ -489,8 +562,9 @@ function renderMessages() {
 
   const items = [];
   const gm = state.greetingMode;
-  if (conv.greeting != null) items.push({ id: GREETING_ID, greeting: true });
-  else if (gm && gm.preview != null) items.push({ id: PREVIEW_ID, preview: true });
+  // 新增开场白版本时，预览代替当前的开场白显示
+  if (gm && gm.preview != null) items.push({ id: PREVIEW_ID, preview: true });
+  else if (conv.greeting != null) items.push({ id: GREETING_ID, greeting: true });
   conv.messages.forEach((m, i) => items.push({ id: m.id, m, i }));
 
   box.querySelectorAll('.empty-hint, .memory-divider').forEach((el) => el.remove());
@@ -578,7 +652,8 @@ function updateView(v, it) {
   const role = it.greeting || it.preview ? 'greeting' : m.role;
   const busy = !!state.generating;
   const isGen = busy && m && state.generating.msgId === m.id;
-  const text = it.greeting ? conv.greeting : it.preview ? state.greetingMode.preview : msgText(m);
+  // 显示的内容：{{user}} 换成 {{user}} 的值（存着的内容不变，编辑框里也是原文）
+  const text = withUser(it.greeting ? conv.greeting : it.preview ? state.greetingMode.preview : msgText(m), conv);
 
   v.el.className = 'msg ' + role + (it.preview ? ' preview' : '');
   v.el.dataset.id = it.id;
@@ -623,20 +698,26 @@ function updateView(v, it) {
   // 操作按钮
   v.actions.innerHTML = '';
   if (editing || it.preview) return;
-  if (locked) {
-    const tag = document.createElement('span');
-    tag.className = 'lock-tag';
-    tag.textContent = t('lock.greetingTag');
-    v.actions.appendChild(tag);
-    return;
-  }
   if (it.greeting) {
-    v.actions.append(button(t('msg.copy'), () => copyText(conv.greeting)));
+    const open = !conv.messages.length; // 对话还没开始
+    const frozen = busy || !!state.greetingMode;
+    const n = conv.greetings.length;
+    // 多个版本：对话开始前可以切换（锁定的对话也可以）；开始后当前版本定下来
+    if (open && n > 1) v.actions.appendChild(swipe(conv.greetingCur, n, (d) => switchGreeting(d), frozen));
+    if (locked) {
+      const tag = document.createElement('span');
+      tag.className = 'lock-tag';
+      tag.textContent = t('lock.greetingTag');
+      v.actions.appendChild(tag);
+      return;
+    }
+    v.actions.append(button(t('msg.copy'), () => copyText(withUser(conv.greeting, conv))));
     // 对话开始后开场白锁定：要换开场白请新建对话
-    if (!conv.messages.length) {
+    if (open) {
       v.actions.append(
-        disabled(button(t('msg.edit'), () => startEdit(GREETING_ID, conv.greeting)), busy),
-        disabled(button(t('msg.deleteGreeting'), deleteGreeting), busy),
+        disabled(button(t('msg.edit'), () => startEdit(GREETING_ID, conv.greeting)), frozen),
+        disabled(button(t('msg.addGreetingVersion'), () => enterGreetingMode(true)), frozen, t('msg.addGreetingVersionTitle')),
+        disabled(button(t(n > 1 ? 'msg.deleteVersion' : 'msg.deleteGreeting'), deleteGreeting), frozen),
       );
     } else {
       const tag = document.createElement('span');
@@ -653,18 +734,9 @@ function updateView(v, it) {
   // 更早消息的其他版本仍然保存着，回退到那里后又可以切换
   const tail = m.role === 'user' ? latestOfRole : isLast;
   if (tail && m.versions.length > 1) {
-    const sw = document.createElement('span');
-    sw.className = 'swipe';
-    const n = document.createElement('span');
-    n.textContent = `${m.cur + 1}/${m.versions.length}`;
-    sw.append(
-      disabled(button('‹', () => switchVersion(m, -1)), busy, t('msg.prevVersion')),
-      n,
-      disabled(button('›', () => switchVersion(m, 1)), busy, t('msg.nextVersion')),
-    );
-    v.actions.appendChild(sw);
+    v.actions.appendChild(swipe(m.cur, m.versions.length, (d) => switchVersion(m, d), busy));
   }
-  v.actions.appendChild(button(t('msg.copy'), () => copyText(msgText(m))));
+  v.actions.appendChild(button(t('msg.copy'), () => copyText(withUser(msgText(m), conv))));
   if (latestOfRole) {
     v.actions.appendChild(disabled(button(t('msg.edit'), () => startEdit(m.id, msgText(m))), busy,
       m.role === 'user' ? t('msg.editUserTitle') : t('msg.editStoryTitle')));
@@ -697,6 +769,20 @@ function buildEditor(id) {
   wrap.append(ta, row);
   setTimeout(() => { ta.focus(); ta.style.height = Math.min(ta.scrollHeight + 4, window.innerHeight * 0.6) + 'px'; }, 0);
   return wrap;
+}
+
+// 版本切换：‹ 2/3 ›
+function swipe(cur, n, onSwitch, isDisabled) {
+  const sw = document.createElement('span');
+  sw.className = 'swipe';
+  const label = document.createElement('span');
+  label.textContent = `${cur + 1}/${n}`;
+  sw.append(
+    disabled(button('‹', () => onSwitch(-1)), isDisabled, t('msg.prevVersion')),
+    label,
+    disabled(button('›', () => onSwitch(1)), isDisabled, t('msg.nextVersion')),
+  );
+  return sw;
 }
 
 function button(text, onClick, cls) {
@@ -735,19 +821,17 @@ function updateComposer() {
 }
 
 // 记忆长度下方：下一次请求大约多少 token
+// 粗略估计下一次请求的 token 数：总数（固定设定 + 记忆范围内的消息，不含你还没写的下一条回复），
+// 和其中固定设定（system 部分和重点指令）的部分
 function updateEstimate() {
-  els.tokenEstimate.textContent = t('set.tokenEstimate', {
-    tokens: estimateNextRequest().toLocaleString(),
-    sys: estimateTokens(buildSystem()).toLocaleString(),
-  });
-}
-
-// 粗略估计下一次请求的总 token 数（固定设定 + 记忆范围内的消息，不含你还没写的下一条回复）
-function estimateNextRequest() {
   const msgs = state.conv.messages;
   const last = msgs[msgs.length - 1];
   const list = last && last.role === 'user' ? msgs : msgs.concat([{ role: 'user', versions: [''], cur: 0 }]);
-  return estimateTokens(buildSystem()) + windowOf(list).reduce((a, x) => a + estimateTokens(x.content), 0);
+  const req = requestOf(state.conv, list);
+  els.tokenEstimate.textContent = t('set.tokenEstimate', {
+    tokens: (estimateTokens(req.system) + req.messages.reduce((a, x) => a + estimateTokens(x.content), 0)).toLocaleString(),
+    sys: (estimateTokens(req.system) + estimateTokens(req.postHistory)).toLocaleString(),
+  });
 }
 
 // ---------------- 滚动 ----------------
@@ -757,10 +841,39 @@ function nearBottom() {
   return b.scrollHeight - b.scrollTop - b.clientHeight < 60;
 }
 
+function nearTop() {
+  return els.messages.scrollTop < 60;
+}
+
 function scrollToBottom() {
   els.messages.scrollTop = els.messages.scrollHeight;
   state.follow = true;
   els.btnJumpBottom.hidden = true;
+  els.btnJumpTop.hidden = true;
+}
+
+function scrollToTop() {
+  els.messages.scrollTop = 0;
+  state.follow = nearBottom();
+  els.btnJumpTop.hidden = true;
+  els.btnJumpBottom.hidden = true;
+}
+
+// 滚动时按方向显示快捷按钮：往下滚显示“回到底部”，往上滚显示“回到顶部”，两个不同时出现；
+// 已经在底部（顶部）时不显示
+let lastScrollTop = 0;
+function onMessagesScroll() {
+  const top = els.messages.scrollTop;
+  const delta = top - lastScrollTop;
+  lastScrollTop = top;
+  state.follow = nearBottom();
+  if (delta > 0) {
+    els.btnJumpTop.hidden = true;
+    els.btnJumpBottom.hidden = state.follow;
+  } else if (delta < 0) {
+    els.btnJumpBottom.hidden = true;
+    els.btnJumpTop.hidden = nearTop();
+  }
 }
 
 // ---------------- 消息操作 ----------------
@@ -798,15 +911,18 @@ async function saveEdit() {
   const id = state.editingId;
   const draft = state.editDraft;
   if (id === GREETING_ID) {
+    const conv = state.conv;
     if (!draft.trim()) {
-      const conv = state.conv;
-      if (!(await ask(t('msg.emptyGreetingConfirm'), { ok: t('conv.delete'), danger: true }))) return;
+      // 只删掉当前这个版本；只剩一个版本时就是删掉开场白
+      const several = conv.greetings.length > 1;
+      if (!(await ask(t(several ? 'msg.emptyGreetingVersionConfirm' : 'msg.emptyGreetingConfirm'), { ok: t('conv.delete'), danger: true }))) return;
       if (conv !== state.conv || state.editingId !== id || state.generating) return;
-      state.conv.greeting = null;
-      touchConv(state.conv);
+      removeGreetingVersion(conv);
+      touchConv(conv);
     } else {
-      if (draft !== state.conv.greeting) touchConv(state.conv);
-      state.conv.greeting = draft;
+      if (draft !== conv.greeting) touchConv(conv);
+      conv.greetings[conv.greetingCur] = draft;
+      syncGreeting(conv);
     }
   } else {
     const m = state.conv.messages.find((x) => x.id === id);
@@ -837,15 +953,34 @@ async function saveEdit() {
   toast(t('msg.saved'));
 }
 
+// 删掉当前显示的开场白版本（只剩一个版本时就是删掉开场白）
+function removeGreetingVersion(conv) {
+  conv.greetings.splice(conv.greetingCur, 1);
+  syncGreeting(conv);
+}
+
 async function deleteGreeting() {
   const conv = state.conv;
-  if (!(await ask(t('msg.deleteGreetingConfirm'), { ok: t('conv.delete'), danger: true }))) return;
-  if (conv !== state.conv || state.generating || conv.messages.length) return;
-  state.conv.greeting = null;
-  touchConv(state.conv);
+  const several = conv.greetings.length > 1;
+  if (!(await ask(t(several ? 'msg.deleteGreetingVersionConfirm' : 'msg.deleteGreetingConfirm'), { ok: t('conv.delete'), danger: true }))) return;
+  if (conv !== state.conv || state.generating || conv.messages.length || conv.lock || state.greetingMode) return;
+  removeGreetingVersion(conv);
+  touchConv(conv);
   if (state.editingId === GREETING_ID) state.editingId = null;
   renderMessages();
   await saveConv();
+}
+
+// 切换开场白版本：只在对话开始前（锁定的对话也可以）
+async function switchGreeting(delta) {
+  const conv = state.conv;
+  const n = conv.greetings.length;
+  if (n < 2 || conv.messages.length || state.generating || state.greetingMode) return;
+  if (state.editingId === GREETING_ID) state.editingId = null;
+  conv.greetingCur = (conv.greetingCur + delta + n) % n;
+  syncGreeting(conv);
+  renderMessages();
+  await saveConv(conv);
 }
 
 async function switchVersion(m, delta) {
@@ -942,9 +1077,13 @@ async function ask(message, { ok = t('btn.ok'), danger = false } = {}) {
 
 // ---- 开场白编辑模式（借用下方的输入框） ----
 
-function enterGreetingMode() {
-  if (state.generating || isAssistant(state.conv)) return;
-  state.greetingMode = { preview: null };
+// adding = true：已经有开场白，再写一个新版本
+function enterGreetingMode(adding = false) {
+  const conv = state.conv;
+  if (state.generating || isAssistant(conv)) return;
+  if (adding && (conv.lock || conv.messages.length || conv.greeting == null)) return;
+  state.editingId = null;
+  state.greetingMode = { preview: null, adding: !!adding };
   renderMessages();
   els.input.focus();
 }
@@ -967,20 +1106,30 @@ function reloadGreetingPreview() {
   els.messages.scrollTop = 0;
 }
 
-// 确认：保存开场白、清空输入框，再询问是否发送给模型
+// 确认：保存开场白、清空输入框，再询问是否发送给模型。
+// 新增版本时不再询问：是否发送给模型对所有版本都一样，沿用原来的设置
 async function confirmGreeting() {
   const conv = state.conv;
   const text = els.input.value.trim();
-  if (!state.greetingMode) return;
+  const gm = state.greetingMode;
+  if (!gm) return;
   if (!text) return toast(t('greeting.empty'));
-  const send = await choose(t('greeting.dialogTitle'), t('greeting.dialogMessage'), [
-    { label: t('btn.cancel'), value: null, ghost: true },
-    { label: t('greeting.noSend'), value: 'no' },
-    { label: t('greeting.send'), value: 'yes', primary: true },
-  ]);
-  if (!send || conv !== state.conv || !state.greetingMode) return;
-  conv.greeting = text;
-  conv.greetingSend = send === 'yes';
+  if (gm.adding) {
+    if (conv.lock || conv.messages.length) return;
+    conv.greetings.push(text);
+    conv.greetingCur = conv.greetings.length - 1;
+  } else {
+    const send = await choose(t('greeting.dialogTitle'), t('greeting.dialogMessage'), [
+      { label: t('btn.cancel'), value: null, ghost: true },
+      { label: t('greeting.noSend'), value: 'no' },
+      { label: t('greeting.send'), value: 'yes', primary: true },
+    ]);
+    if (!send || conv !== state.conv || state.greetingMode !== gm) return;
+    conv.greetings = [text];
+    conv.greetingCur = 0;
+    conv.greetingSend = send === 'yes';
+  }
+  syncGreeting(conv);
   touchConv(conv);
   // 标题不取自开场白（开场白可能被加密保护，标题是明文），等第一条消息再定
   state.greetingMode = null;
@@ -1044,12 +1193,13 @@ async function runGeneration(m, context) {
   const paint = () => {
     pendingPaint = false;
     const f = frame();
-    if (f) Render.stream(f, m.versions[ver]);
+    if (f) Render.stream(f, withUser(m.versions[ver], conv));
   };
 
   logConv = conv;
   try {
-    result = await streamChat(providerCfg(), buildSystem(conv), windowOf(context, sentGreeting(conv)), {
+    const req = requestOf(conv, context);
+    result = await streamChat(providerCfg(), req.system, req.messages, {
       signal: controller.signal,
       onText: (text) => {
         m.versions[ver] += text;
@@ -1241,9 +1391,10 @@ function exportText(markdown) {
     out.push(text);
     out.push('');
   };
-  if (conv.greeting != null) section(t('msg.greeting'), conv.lock ? t('lock.protected') : conv.greeting);
+  // 和聊天区显示的一样：{{user}} 换成 {{user}} 的值
+  if (conv.greeting != null) section(t('msg.greeting'), conv.lock ? t('lock.protected') : withUser(conv.greeting, conv));
   const replyLabel = t(isAssistant(conv) ? 'msg.assistant' : 'msg.story');
-  for (const m of conv.messages) section(m.role === 'user' ? t('msg.you') : replyLabel, msgText(m));
+  for (const m of conv.messages) section(m.role === 'user' ? t('msg.you') : replyLabel, withUser(msgText(m), conv));
   download(`${safeFilename(convTitle(conv))}.${markdown ? 'md' : 'txt'}`, out.join('\n'));
 }
 
@@ -1322,7 +1473,7 @@ async function confirmLockedExport(title, message) {
   ])) === 'ok';
 }
 
-// 世界卡：当前对话的 System Prompt、世界观、开场白和艺术图，不含用户人设和剧情。
+// 世界卡：当前对话的 System Prompt、世界观、重点指令、开场白（全部版本）和艺术图，不含用户人设、{{user}} 的值和剧情。
 // 可以加密：直接打开文件只能看到乱码，在 Proteus 里读取后这些内容被锁定。
 async function exportWorldCard() {
   const conv = state.conv;
@@ -1340,9 +1491,10 @@ async function exportWorldCard() {
   const data = {
     app: 'proteus',
     type: 'worldcard',
-    version: 2,
+    version: 3,
     exportedAt: new Date().toISOString(),
     name: name.trim() || t('export.unnamedWorld'),
+    greetingCur: conv.greetingCur, // 当前是第几个开场白（不是受保护的内容，不加密）
   };
   if (conv.lock) {
     // 本来就是锁定的：原样导出密文，沿用原来的密码
@@ -1431,8 +1583,10 @@ function exportLog() {
   if (headers.authorization) headers.authorization = 'Bearer ***';
   let body = x.request.body;
   if (logConv && logConv.lock) {
-    const secrets = [...new Set([logConv.systemPrompt, logConv.worldText, logConv.greeting]
-      .filter((v) => v && v.trim()).flatMap((v) => [v, v.trim()]))].sort((a, b) => b.length - a.length);
+    // 发出去的内容里 {{user}} 已经换成了它的值，换之前和换之后的都要隐藏
+    const secrets = [...new Set([logConv.systemPrompt, logConv.worldText, logConv.postHistory, ...logConv.greetings]
+      .filter((v) => v && v.trim()).flatMap((v) => [v, v.trim()]).flatMap((v) => [v, withUser(v, logConv)]))]
+      .sort((a, b) => b.length - a.length);
     const hide = (v) => secrets.reduce((out, sec) => out.split(sec).join(t('lock.protected')), v);
     body = JSON.parse(JSON.stringify(body, (k, v) => (typeof v === 'string' ? hide(v) : v)));
   }
@@ -1484,12 +1638,107 @@ async function exportMenu() {
   else if (choice === 'log') exportLog();
 }
 
-// 读取世界卡或完整备份（当前对话 / 全部对话）。剧情导出是 TXT/Markdown，不能读回
+// ---- 读取酒馆（SillyTavern）的角色卡和世界书（解析见 js/stcard.js） ----
+
+const baseName = (filename) => String(filename || '').replace(/\.[^.]*$/, '');
+
+// 角色卡的字段拼成世界观：先世界书（全文），再角色的描述、性格、场景、对话示例。小标题跟随界面语言
+function stWorldText(bookText, name, card, fix) {
+  const parts = [];
+  if (bookText) parts.push(`## ${t('st.lorebook')}\n\n${bookText}`);
+  const sections = [
+    ['st.description', card.description],
+    ['st.personality', card.personality],
+    ['st.scenario', card.scenario],
+    ['st.examples', card.mes_example],
+  ].map(([k, v]) => [k, fix(v).trim()]).filter(([, v]) => v).map(([k, v]) => `### ${t(k)}\n${v}`);
+  if (sections.length) parts.push(`## ${t('st.character', { name })}\n\n${sections.join('\n\n')}`);
+  return parts.join('\n\n');
+}
+
+// 新建一个对话放读取的内容，切换过去
+async function addImportedConv(c, artBlob) {
+  await flushConvSave();
+  state.conversations.push(c);
+  await DB.putConversation(storable(c));
+  if (artBlob) await DB.set(artKey(c.id), artBlob);
+  await switchConv(c.id);
+  els.messages.scrollTop = 0;
+}
+
+// 角色卡：新建一个对话。{{char}} 换成卡的名字；{{user}} 保留（显示和发送时换成 {{user}} 的值）。
+// 内嵌的世界书全文放在世界观的最前面（Proteus 不按关键词触发条目）
+async function importSTCard(card, artBlob, filename) {
+  const name = card.name.trim() || baseName(filename) || t('export.unnamedWorld');
+  const fix = (s) => STCard.cardMacros(s, name);
+  const entries = card.character_book ? STCard.lorebookEntries(card.character_book) : [];
+  const bookText = fix(STCard.lorebookText(entries)).trim();
+  const greetings = [card.first_mes, ...card.alternate_greetings].map((g) => fix(g).trim()).filter(Boolean);
+  // 卡的 System Prompt：空的用默认值；{{original}} 换成默认值（作者在默认值的基础上追加内容）
+  const defaultPrompt = t('defaultSystemPrompt');
+  const sp = fix(card.system_prompt).trim();
+  const systemPrompt = sp ? STCard.replaceOriginal(sp, defaultPrompt).trim() : defaultPrompt;
+  // 重点指令里的 {{original}} 指用户自己的全局重点指令，Proteus 没有，直接去掉
+  const postHistory = STCard.replaceOriginal(fix(card.post_history_instructions), '').trim();
+  const notes = fix(card.creator_notes).trim();
+
+  let message = t('restore.stCardConfirm', { name, greetings: greetings.length, art: artBlob ? t('restore.stCardArt') : '' });
+  if (entries.length) message += '\n\n' + t('restore.stBookNote', { n: entries.length, tokens: estimateTokens(bookText).toLocaleString() });
+  if (!(await ask(message + '\n\n' + t('restore.continue')))) return;
+  if (state.generating) return toast(t('conv.stopFirst'));
+
+  const c = newConversation();
+  c.title = name;
+  c.systemPrompt = systemPrompt;
+  c.worldText = stWorldText(bookText, name, card, fix);
+  c.postHistory = postHistory;
+  c.greetings = greetings;
+  c.greetingCur = 0;
+  c.greetingSend = true;
+  syncGreeting(c);
+  await addImportedConv(c, artBlob);
+  toast(t('restore.stCardDone'));
+  // 作者备注不发给模型，读取后给用户看一下
+  if (notes) showModal(t('restore.stNotesTitle', { name }), t('restore.stNotesIntro') + '\n\n' + notes);
+}
+
+// 单独的世界书：新建一个对话，全文放进世界观。{{char}} 不处理（没有角色卡，不知道是谁）
+async function importSTBook(book, filename) {
+  const entries = STCard.lorebookEntries(book);
+  if (!entries.length) return toast(t('restore.stBookEmpty'));
+  const name = (typeof book.name === 'string' && book.name.trim()) || baseName(filename) || t('export.unnamedWorld');
+  const text = STCard.commonMacros(STCard.lorebookText(entries)).trim();
+  const message = t('restore.stBookConfirm', { name, n: entries.length, tokens: estimateTokens(text).toLocaleString() });
+  if (!(await ask(message))) return;
+  if (state.generating) return toast(t('conv.stopFirst'));
+  const c = newConversation();
+  c.title = name;
+  c.worldText = `## ${t('st.lorebook')}\n\n${text}`;
+  await addImportedConv(c, null);
+  toast(t('restore.stBookDone'));
+}
+
+async function importST(st, artBlob, filename) {
+  if (st.kind === 'card') await importSTCard(st.card, artBlob, filename);
+  else await importSTBook(st.book, filename);
+}
+
+// 读取世界卡、完整备份（当前对话 / 全部对话），或者酒馆的角色卡（PNG / JSON）、世界书（JSON）。
+// 剧情导出是 TXT/Markdown，不能读回
 async function restore(file) {
   if (state.generating) return toast(t('conv.stopFirst'));
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  if (STCard.isPng(bytes)) {
+    const obj = STCard.fromPng(bytes);
+    if (!obj) return toast(t('restore.pngNoCard'));
+    return importST(STCard.detect(obj), new Blob([bytes], { type: 'image/png' }), file.name);
+  }
   let data;
-  try { data = JSON.parse(await file.text()); } catch (_) { return toast(t('restore.notJson')); }
-  if (!data || data.app !== 'proteus') return toast(t('restore.invalid'));
+  try { data = JSON.parse(new TextDecoder().decode(bytes)); } catch (_) { return toast(t('restore.notJson')); }
+  if (!data || data.app !== 'proteus') {
+    const st = STCard.detect(data);
+    return st ? importST(st, null, file.name) : toast(t('restore.invalid'));
+  }
 
   if (data.type === 'worldcard') {
     const name = data.name || t('export.unnamedWorld');
@@ -1505,11 +1754,14 @@ async function restore(file) {
     }
     if (typeof fields.systemPrompt === 'string') c.systemPrompt = fields.systemPrompt;
     c.worldText = typeof fields.worldText === 'string' ? fields.worldText : '';
+    c.postHistory = typeof fields.postHistory === 'string' ? fields.postHistory : '';
     c.persona = '';
-    if (typeof fields.greeting === 'string') {
-      c.greeting = fields.greeting;
-      c.greetingSend = fields.greetingSend !== false;
-    }
+    c.userName = '';
+    c.greeting = typeof fields.greeting === 'string' ? fields.greeting : null;
+    c.greetings = fields.greetings;
+    c.greetingCur = data.greetingCur;
+    c.greetingSend = fields.greetingSend !== false;
+    normalizeGreetings(c);
     c.title = name;
     state.conversations.push(c);
     await DB.putConversation(storable(c));
@@ -1695,11 +1947,17 @@ function fillConvFields() {
   els.systemPrompt.value = locked ? '' : c.systemPrompt;
   els.worldText.value = locked ? '' : c.worldText;
   els.persona.value = c.persona;
-  // 助理模式：世界观和用户人设空白、不能编辑（不是受保护，是这个模式不用）；艺术图照常可用
+  els.userName.value = c.userName;
+  els.postHistory.value = locked ? '' : c.postHistory;
+  // 助理模式：世界观、用户人设、{{user}} 的值和重点指令空白、不能编辑（不是受保护，是这个模式不用）；艺术图照常可用
   els.worldText.disabled = assistant;
   els.persona.disabled = assistant;
+  els.userName.disabled = assistant;
+  els.postHistory.disabled = assistant;
   els.worldText.placeholder = t(assistant ? 'assistant.worldUnused' : 'set.worldPlaceholder');
   els.persona.placeholder = t(assistant ? 'assistant.personaUnused' : 'set.personaPlaceholder');
+  els.userName.placeholder = t(assistant ? 'assistant.userNameUnused' : 'set.userNamePlaceholder');
+  els.postHistory.placeholder = t(assistant ? 'assistant.postHistoryUnused' : 'set.postHistoryPlaceholder');
   els.btnUploadWorld.disabled = assistant;
   els.btnClearWorld.disabled = assistant;
   els.btnUploadArt.disabled = locked;
@@ -1887,6 +2145,15 @@ function bindSettings() {
   onConv(els.systemPrompt, (el) => { if (!c().lock) c().systemPrompt = el.value; });
   onConv(els.worldText, (el) => { if (!c().lock && !isAssistant(c())) { c().worldText = el.value; updateWorldCount(); } });
   onConv(els.persona, (el) => { if (!isAssistant(c())) c().persona = el.value; });
+  onConv(els.postHistory, (el) => { if (!c().lock && !isAssistant(c())) c().postHistory = el.value; });
+  // {{user}} 的值改了：聊天区里显示的内容跟着变（稍等一下再重画，开场白的窗口重画时会重新载入）
+  let userNameTimer = null;
+  onConv(els.userName, (el) => {
+    if (isAssistant(c())) return;
+    c().userName = el.value;
+    clearTimeout(userNameTimer);
+    userNameTimer = setTimeout(() => { if (state.conv) renderMessages(); }, 300);
+  });
 
   // 记忆轮数：可以直接输入，也可以点 − / +，范围 1–40
   const setRounds = (n) => {
@@ -2082,11 +2349,9 @@ function bindChat() {
     }
   });
 
-  els.messages.addEventListener('scroll', () => {
-    state.follow = nearBottom();
-    els.btnJumpBottom.hidden = state.follow;
-  });
+  els.messages.addEventListener('scroll', onMessagesScroll);
   els.btnJumpBottom.addEventListener('click', scrollToBottom);
+  els.btnJumpTop.addEventListener('click', scrollToTop);
 
   // 对话列表：点击展开；键盘 ↑ ↓ 选择、Enter 切换、Esc 收起，菜单键或 Shift + F10 打开右键菜单
   els.convSelect.addEventListener('click', () => { if (els.convMenu.hidden) openConvMenu(); else closeConvMenu(); });
@@ -2185,7 +2450,8 @@ async function boot() {
   for (const c of await DB.listConversations()) {
     try { await openLock(c); } catch (e) { console.error('无法解密对话', c.id, e); continue; }
     state.conversations.push(c);
-    const fields = () => JSON.stringify([c.title, c.mode, c.systemPrompt, c.worldText, c.persona, c.greeting, c.greetingSend, c.activeAt, !!c.lock]);
+    const fields = () => JSON.stringify([c.title, c.mode, c.systemPrompt, c.worldText, c.persona, c.userName, c.postHistory,
+      c.greeting, c.greetings, c.greetingCur, c.greetingSend, c.activeAt, !!c.lock]);
     const before = fields();
     normalizeConv(c, legacy);
     if (fields() !== before) await DB.putConversation(storable(c));

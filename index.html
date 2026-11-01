@@ -43,7 +43,9 @@
 
       <div class="messages-wrap">
         <div class="messages" id="messages"></div>
-        <button class="jump-bottom" id="btnJumpBottom" data-i18n="msg.jumpBottom" hidden></button>
+        <!-- 往上滚时显示“回到顶部”，往下滚时显示“回到底部”，两个不同时出现 -->
+        <button class="jump-btn jump-top" id="btnJumpTop" data-i18n="msg.jumpTop" hidden></button>
+        <button class="jump-btn jump-bottom" id="btnJumpBottom" data-i18n="msg.jumpBottom" hidden></button>
       </div>
 
       <footer class="composer" id="composer">
@@ -113,7 +115,16 @@
       <section class="card">
         <h3 data-i18n="set.persona"></h3>
         <p class="hint" data-i18n="set.personaHint"></p>
+        <!-- {{user}} 的值：显示和发送时，内容里的 {{user}} 换成这里填的值 -->
+        <input type="text" id="userName" class="user-name" spellcheck="false" autocomplete="off" data-i18n-ph="set.userNamePlaceholder" data-i18n-title="set.userNameTitle">
         <textarea id="persona" class="scroll-box" rows="5" data-i18n-ph="set.personaPlaceholder"></textarea>
+      </section>
+
+      <section class="card">
+        <h3 data-i18n="set.postHistory"></h3>
+        <textarea id="postHistory" class="scroll-box unlockable" rows="4" data-i18n-ph="set.postHistoryPlaceholder"></textarea>
+        <div class="lock-box lock-only" data-i18n="lock.protected"></div>
+        <p class="hint post-history-hint" data-i18n="set.postHistoryHint"></p>
         <p class="hint per-conv" data-i18n="set.perConvHint"></p>
       </section>
 
@@ -215,7 +226,7 @@
   <!-- 隐藏的文件选择器 -->
   <input type="file" id="fileWorld" accept=".txt,.md,text/plain,text/markdown" hidden>
   <input type="file" id="fileArt" accept="image/*" hidden>
-  <input type="file" id="fileRestore" accept=".json,application/json" hidden>
+  <input type="file" id="fileRestore" accept=".json,.png,application/json,image/png" hidden>
 
   <!-- 弹窗 -->
   <div class="modal" id="modal" hidden>
@@ -284,6 +295,7 @@
   <script src="js/crypto.js"></script>
   <script src="js/providers.js"></script>
   <script src="js/render.js"></script>
+  <script src="js/stcard.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
