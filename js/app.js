@@ -154,6 +154,20 @@ async function openLock(conv) {
   return conv;
 }
 
+// 对话列表里显示的时间，也按它排序。只在重要变化时更新：新建对话、保存开场白（新增、修改、删除）、
+// 向模型发出请求（发送、重新生成、编辑用户消息后重新生成、补一条回复），不论回复是否成功。
+// 其他改动（右侧设定和人设、改写模型回复、切换或删除版本、回退、重命名……）照常保存，不更新这个时间。
+// updatedAt 仍是最后一次保存的时间
+function touchConv(conv) {
+  conv.activeAt = Date.now();
+}
+
+// 轮数：用户的一条消息加上它的模型回复算一轮，所以就是用户消息的条数。
+// 开场白不单独计数；回复失败、还没有回复的也算一轮，之后生成出回复不再加；重新生成、编辑用户消息不增加
+function roundsOf(conv) {
+  return conv.messages.filter((m) => m.role === 'user').length;
+}
+
 async function saveConv(conv = state.conv) {
   conv.updatedAt = Date.now();
   await DB.putConversation(storable(conv));
@@ -246,6 +260,7 @@ function newConversation(from) {
     greetingSend: from ? from.greetingSend !== false : true,
     createdAt: now,
     updatedAt: now,
+    activeAt: now,
     messages: [],
   };
   if (from && from.lock) c.lock = from.lock;
@@ -263,6 +278,8 @@ function normalizeConv(c, legacy) {
   if (c.greeting === undefined) c.greeting = null;
   if (c.greetingSend === undefined) c.greetingSend = true;
   if (!Array.isArray(c.messages)) c.messages = [];
+  // 旧版本没有 activeAt：用最后一次保存的时间代替
+  if (typeof c.activeAt !== 'number') c.activeAt = c.updatedAt || c.createdAt || Date.now();
   return c;
 }
 
@@ -298,13 +315,15 @@ async function createConversation() {
   els.input.focus();
 }
 
+const roundsText = (n) => t(n === 1 ? 'conv.round1' : 'conv.rounds', { n });
+
 function renderConvSelect() {
-  const sorted = [...state.conversations].sort((a, b) => b.updatedAt - a.updatedAt);
+  const sorted = [...state.conversations].sort((a, b) => b.activeAt - a.activeAt);
   els.convSelect.innerHTML = '';
   for (const c of sorted) {
     const o = document.createElement('option');
     o.value = c.id;
-    o.textContent = (c.lock ? '🔒 ' : '') + t('conv.option', { title: convTitle(c), n: c.messages.length, time: fmtTime(c.updatedAt) });
+    o.textContent = (c.lock ? '🔒 ' : '') + t('conv.option', { title: convTitle(c), rounds: roundsText(roundsOf(c)), time: fmtTime(c.activeAt) });
     if (state.conv && c.id === state.conv.id) o.selected = true;
     els.convSelect.appendChild(o);
   }
@@ -647,7 +666,9 @@ async function saveEdit() {
       if (!(await ask(t('msg.emptyGreetingConfirm'), { ok: t('conv.delete'), danger: true }))) return;
       if (conv !== state.conv || state.editingId !== id || state.generating) return;
       state.conv.greeting = null;
+      touchConv(state.conv);
     } else {
+      if (draft !== state.conv.greeting) touchConv(state.conv);
       state.conv.greeting = draft;
     }
   } else {
@@ -684,6 +705,7 @@ async function deleteGreeting() {
   if (!(await ask(t('msg.deleteGreetingConfirm'), { ok: t('conv.delete'), danger: true }))) return;
   if (conv !== state.conv || state.generating || conv.messages.length) return;
   state.conv.greeting = null;
+  touchConv(state.conv);
   if (state.editingId === GREETING_ID) state.editingId = null;
   renderMessages();
   await saveConv();
@@ -822,6 +844,7 @@ async function confirmGreeting() {
   if (!send || conv !== state.conv || !state.greetingMode) return;
   conv.greeting = text;
   conv.greetingSend = send === 'yes';
+  touchConv(conv);
   // 标题不取自开场白（开场白可能被加密保护，标题是明文），等第一条消息再定
   state.greetingMode = null;
   els.input.value = '';
@@ -863,6 +886,9 @@ async function runGeneration(m, context) {
   const conv = state.conv;
   const controller = new AbortController();
   state.generating = { controller, msgId: m.id };
+  // 发出请求的时间（回复结束后随对话一起保存）
+  touchConv(conv);
+  renderConvSelect();
   showError('');
   await flushConvSave();
   renderMessages();
@@ -1872,7 +1898,7 @@ async function deleteConv() {
   }
   await DB.deleteConversation(gone.id);
   await DB.del(artKey(gone.id));
-  const next = [...state.conversations].sort((a, b) => b.updatedAt - a.updatedAt)[0];
+  const next = [...state.conversations].sort((a, b) => b.activeAt - a.activeAt)[0];
   await switchConv(next.id);
 }
 
@@ -1946,9 +1972,10 @@ async function boot() {
   for (const c of await DB.listConversations()) {
     try { await openLock(c); } catch (e) { console.error('无法解密对话', c.id, e); continue; }
     state.conversations.push(c);
-    const before = JSON.stringify([c.title, c.systemPrompt, c.worldText, c.persona, c.greeting, c.greetingSend]);
+    const fields = () => JSON.stringify([c.title, c.systemPrompt, c.worldText, c.persona, c.greeting, c.greetingSend, c.activeAt]);
+    const before = fields();
     normalizeConv(c, legacy);
-    if (JSON.stringify([c.title, c.systemPrompt, c.worldText, c.persona, c.greeting, c.greetingSend]) !== before) await DB.putConversation(storable(c));
+    if (fields() !== before) await DB.putConversation(storable(c));
     if (legacyArt && !(await DB.get(artKey(c.id)))) await DB.set(artKey(c.id), legacyArt);
   }
   if (legacyArt) await DB.del('art');
@@ -1966,7 +1993,7 @@ async function boot() {
     await DB.putConversation(c);
   }
   state.conv = state.conversations.find((c) => c.id === state.settings.activeConvId)
-    || [...state.conversations].sort((a, b) => b.updatedAt - a.updatedAt)[0];
+    || [...state.conversations].sort((a, b) => b.activeAt - a.activeAt)[0];
   state.settings.activeConvId = state.conv.id;
   state.renderedConvId = null;
   state.editingId = null;
