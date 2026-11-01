@@ -4,6 +4,7 @@
 #   版本号直接取自标签（v0.2.0 → 0.2.0），不需要改 package.json。
 #   带后缀的标签（例如 v0.4.0-beta.1）是测试版：新建的 Release 标为预发布（Pre-release），
 #   不会成为“最新版本”，说明开头注明是测试版。标签可以打在任何分支的提交上，用的就是那次提交的代码。
+#   有 .github/release-notes/<标签>.md（例如 v0.4.0-beta.1.md）时，新建 Release 的说明以它开头。
 # - 在 Actions 页面手动运行（Run workflow）：
 #   · “上传到哪个 Release”留空：只打包不发布，安装包在本次运行页面的 Artifacts 里下载；
 #   · 填一个已有的版本标签（例如 v0.1.0）：用所选分支的最新代码重新打包，
@@ -219,12 +220,16 @@ jobs:
               echo "::error::Release $RELEASE_TAG does not exist. Create it on the Releases page first, or leave the field empty to only build."
               exit 1
             fi
-            # 带后缀的标签（v0.4.0-beta.1 之类）是测试版：标为预发布，不会成为“最新版本”
+            # 带后缀的标签（v0.4.0-beta.1 之类）是测试版：标为预发布，不会成为“最新版本”。
+            # 有 .github/release-notes/<标签>.md 时，把它放在说明最前面（这个版本专门的说明）；
+            # 没有时，测试版的说明开头加一句提示
             prerelease=()
-            if [[ "$RELEASE_TAG" == *-* ]]; then
-              prerelease=(--prerelease)
-              echo '> **Test version (pre-release).** It may contain bugs. Make a "Full backup (all conversations)" before installing: it uses the same data as the regular version.' > notes.md
-              echo >> notes.md
+            [[ "$RELEASE_TAG" == *-* ]] && prerelease=(--prerelease)
+            own=".github/release-notes/$RELEASE_TAG.md"
+            if [ -f "$own" ]; then
+              { cat "$own"; echo; echo '---'; echo; } > notes.md
+            elif [ ${#prerelease[@]} -gt 0 ]; then
+              { echo '> **Test version (pre-release).** It may contain bugs. Make a "Full backup (all conversations)" before installing: it uses the same data as the regular version.'; echo; } > notes.md
             else
               : > notes.md
             fi
