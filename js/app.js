@@ -2337,7 +2337,7 @@ function bindChat() {
   els.btnSend.addEventListener('click', send);
   els.btnStop.addEventListener('click', stop);
   els.btnReply.addEventListener('click', () => { if (!state.generating) void generateReply(); });
-  els.btnAddGreeting.addEventListener('click', enterGreetingMode);
+  els.btnAddGreeting.addEventListener('click', () => enterGreetingMode());
   els.btnGreetingReload.addEventListener('click', reloadGreetingPreview);
   els.btnGreetingConfirm.addEventListener('click', confirmGreeting);
   els.btnGreetingCancel.addEventListener('click', exitGreetingMode);
