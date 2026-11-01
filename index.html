@@ -23,7 +23,11 @@
     <!-- 中栏：剧情 -->
     <main class="chat-pane" id="chatPane">
       <header class="chat-header">
-        <select id="convSelect" data-i18n-title="conv.switch"></select>
+        <!-- 对话列表：自己画的下拉列表（原生下拉框的选项收不到右键）。左键切换对话，右键打开只有“删除”的菜单 -->
+        <div class="conv-picker" id="convPicker">
+          <button id="convSelect" class="conv-current" data-i18n-title="conv.switch" aria-haspopup="listbox" aria-expanded="false"><span id="convCurrent"></span><span class="caret"></span></button>
+          <div class="combo-menu conv-menu" id="convMenu" role="listbox" hidden></div>
+        </div>
         <!-- 新对话：主按钮新建同一种模式的对话；右边的 ▾ 打开菜单，新建另一种模式（角色扮演 / 助理模式）的对话 -->
         <div class="split-btn" id="newConvGroup">
           <button id="btnNewConv" class="btn" data-i18n="conv.new"></button><button id="btnNewConvMenu" class="btn split-toggle" data-i18n-title="conv.newMenu" aria-haspopup="menu"><span class="caret"></span></button>
@@ -265,6 +269,11 @@
         <button class="btn btn-primary" id="textOk" data-i18n="pw.ok"></button>
       </div>
     </div>
+  </div>
+
+  <!-- 对话列表里右键一个对话时出现在光标右下方的菜单 -->
+  <div class="split-menu ctx-menu" id="convCtxMenu" role="menu" hidden>
+    <button id="btnCtxDelete" class="split-item danger" role="menuitem" data-i18n="conv.delete"></button>
   </div>
 
   <div class="toast" id="toast" hidden></div>

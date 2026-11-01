@@ -362,6 +362,7 @@ async function createConversation(assistant = isAssistant(state.conv)) {
 
 // “＋ 新对话”右边的 ▾：菜单里是另一种模式的新对话
 function openNewConvMenu() {
+  closeConvMenu();
   els.btnNewConvOther.textContent = t(isAssistant(state.conv) ? 'conv.newRoleplay' : 'conv.newAssistant');
   els.newConvMenu.hidden = false;
   els.btnNewConvMenu.setAttribute('aria-expanded', 'true');
@@ -376,16 +377,82 @@ function closeNewConvMenu() {
 
 const roundsText = (n) => t(n === 1 ? 'conv.round1' : 'conv.rounds', { n });
 
+const convLabel = (c) => (c.lock ? '🔒 ' : '') + t('conv.option', { title: convTitle(c), rounds: roundsText(roundsOf(c)), time: fmtTime(c.activeAt) });
+
+// 对话列表（顶部）。按最近一次活动的时间排序
 function renderConvSelect() {
-  const sorted = [...state.conversations].sort((a, b) => b.activeAt - a.activeAt);
-  els.convSelect.innerHTML = '';
-  for (const c of sorted) {
-    const o = document.createElement('option');
-    o.value = c.id;
-    o.textContent = (c.lock ? '🔒 ' : isAssistant(c) ? '🕵️ ' : '') + t('conv.option', { title: convTitle(c), rounds: roundsText(roundsOf(c)), time: fmtTime(c.activeAt) });
-    if (state.conv && c.id === state.conv.id) o.selected = true;
-    els.convSelect.appendChild(o);
-  }
+  els.convCurrent.textContent = state.conv ? convLabel(state.conv) : '';
+  if (!els.convMenu.hidden) fillConvMenu();
+}
+
+const convMenu = { items: [], active: -1 };
+
+function fillConvMenu() {
+  convMenu.items = [...state.conversations].sort((a, b) => b.activeAt - a.activeAt);
+  els.convMenu.innerHTML = '';
+  convMenu.items.forEach((c, i) => {
+    const item = document.createElement('div');
+    item.className = 'combo-item' + (c === state.conv ? ' current' : '');
+    item.setAttribute('role', 'option');
+    item.setAttribute('aria-selected', String(c === state.conv));
+    item.textContent = item.title = convLabel(c);
+    item.addEventListener('click', () => pickConv(c));
+    item.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      highlightConv(i, false);
+      openConvCtxMenu(c, e.clientX, e.clientY);
+    });
+    item.addEventListener('mousemove', () => highlightConv(i, false));
+    els.convMenu.appendChild(item);
+  });
+  if (convMenu.active >= convMenu.items.length) convMenu.active = convMenu.items.length - 1;
+  highlightConv(convMenu.active, false);
+}
+
+function openConvMenu() {
+  closeNewConvMenu();
+  convMenu.active = -1;
+  fillConvMenu();
+  els.convMenu.hidden = false;
+  els.convSelect.setAttribute('aria-expanded', 'true');
+  highlightConv(convMenu.items.indexOf(state.conv), true);
+}
+
+function closeConvMenu() {
+  closeConvCtxMenu();
+  if (els.convMenu.hidden) return;
+  els.convMenu.hidden = true;
+  els.convSelect.setAttribute('aria-expanded', 'false');
+}
+
+function highlightConv(i, scroll) {
+  convMenu.active = i;
+  const items = els.convMenu.querySelectorAll('.combo-item');
+  items.forEach((el, j) => el.classList.toggle('active', j === i));
+  if (items[i] && scroll) items[i].scrollIntoView({ block: 'nearest' });
+}
+
+function pickConv(c) {
+  closeConvMenu();
+  if (c !== state.conv) switchConv(c.id);
+}
+
+// 右键菜单：只有“删除”，删除的是右键点中的那个对话（不一定是当前对话）
+let ctxConv = null;
+
+function openConvCtxMenu(conv, x, y) {
+  ctxConv = conv;
+  const m = els.convCtxMenu;
+  m.hidden = false;
+  // 出现在光标右下方；靠近窗口边缘时往回收，不超出窗口
+  m.style.left = Math.max(4, Math.min(x, window.innerWidth - m.offsetWidth - 4)) + 'px';
+  m.style.top = Math.max(4, Math.min(y, window.innerHeight - m.offsetHeight - 4)) + 'px';
+  els.btnCtxDelete.focus();
+}
+
+function closeConvCtxMenu() {
+  els.convCtxMenu.hidden = true;
+  ctxConv = null;
 }
 
 // 从一段可能含 Markdown/HTML 的文字里提取对话标题
@@ -1971,11 +2038,12 @@ async function renameConv() {
   await saveConv();
 }
 
-async function deleteConv() {
-  if (state.generating) return toast(t('conv.stopFirst'));
-  const gone = state.conv;
+// 删除对话：默认是当前对话，也可以是对话列表里右键点中的对话。
+// 生成回复时不能删除当前对话（其他对话可以）
+async function deleteConv(gone = state.conv) {
+  if (state.generating && gone === state.conv) return toast(t('conv.stopFirst'));
   if (!(await ask(t('conv.deleteConfirm', { title: convTitle(gone) }), { ok: t('conv.delete'), danger: true }))) return;
-  if (gone !== state.conv || state.generating) return;
+  if (!state.conversations.includes(gone) || (state.generating && gone === state.conv)) return;
   if (convSavePending === gone) convSavePending = null;
   state.conversations = state.conversations.filter((c) => c !== gone);
   if (!state.conversations.length) {
@@ -1988,6 +2056,7 @@ async function deleteConv() {
   }
   await DB.deleteConversation(gone.id);
   await DB.del(artKey(gone.id));
+  if (gone !== state.conv) return renderConvSelect();
   const next = [...state.conversations].sort((a, b) => b.activeAt - a.activeAt)[0];
   await switchConv(next.id);
 }
@@ -2014,7 +2083,47 @@ function bindChat() {
   });
   els.btnJumpBottom.addEventListener('click', scrollToBottom);
 
-  els.convSelect.addEventListener('change', () => switchConv(els.convSelect.value));
+  // 对话列表：点击展开；键盘 ↑ ↓ 选择、Enter 切换、Esc 收起，菜单键或 Shift + F10 打开右键菜单
+  els.convSelect.addEventListener('click', () => { if (els.convMenu.hidden) openConvMenu(); else closeConvMenu(); });
+  els.convSelect.addEventListener('keydown', (e) => {
+    const open = !els.convMenu.hidden;
+    const n = convMenu.items.length;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!open) return openConvMenu();
+      closeConvCtxMenu();
+      const d = e.key === 'ArrowDown' ? 1 : -1;
+      highlightConv(convMenu.active < 0 ? 0 : (convMenu.active + d + n) % n, true);
+    } else if (open && (e.key === 'Enter' || e.key === ' ')) {
+      e.preventDefault();
+      if (convMenu.items[convMenu.active]) pickConv(convMenu.items[convMenu.active]);
+    } else if (open && (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey))) {
+      e.preventDefault();
+      const el = els.convMenu.querySelectorAll('.combo-item')[convMenu.active];
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      openConvCtxMenu(convMenu.items[convMenu.active], r.left + 24, r.bottom);
+    } else if (open && e.key === 'Tab') {
+      closeConvMenu();
+    }
+  });
+  els.btnCtxDelete.addEventListener('click', () => {
+    const c = ctxConv;
+    closeConvMenu();
+    if (c) deleteConv(c);
+  });
+  // 点在列表和右键菜单以外：都收起；点在列表里（右键菜单以外）：只收起右键菜单
+  document.addEventListener('mousedown', (e) => {
+    if (els.convCtxMenu.contains(e.target)) return;
+    closeConvCtxMenu();
+    if (!els.convPicker.contains(e.target)) closeConvMenu();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (!els.convCtxMenu.hidden) { e.stopPropagation(); closeConvCtxMenu(); els.convSelect.focus(); }
+    else if (!els.convMenu.hidden) { e.stopPropagation(); closeConvMenu(); els.convSelect.focus(); }
+  }, true);
+  window.addEventListener('resize', closeConvMenu);
   els.btnNewConv.addEventListener('click', () => createConversation());
   els.btnNewConvMenu.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -2027,8 +2136,8 @@ function bindChat() {
   }, true);
   els.btnRenameConv.addEventListener('click', renameConv);
   els.btnRenameConv2.addEventListener('click', renameConv);
-  els.btnDeleteConv.addEventListener('click', deleteConv);
-  els.btnDeleteConv2.addEventListener('click', deleteConv);
+  els.btnDeleteConv.addEventListener('click', () => deleteConv());
+  els.btnDeleteConv2.addEventListener('click', () => deleteConv());
 
   els.btnModalClose.addEventListener('click', () => { els.modal.hidden = true; });
   els.modal.addEventListener('click', (e) => { if (e.target === els.modal) els.modal.hidden = true; });
