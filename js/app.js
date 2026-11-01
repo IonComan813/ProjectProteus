@@ -443,6 +443,7 @@ async function switchConv(id) {
   if (!conv) return;
   await flushConvSave();
   closeExpand();
+  closePreview();
   state.conv = conv;
   state.editingId = null;
   state.greetingMode = null;
@@ -1623,6 +1624,16 @@ async function backup() {
 // API Key 隐藏；请求来自还没解锁的加密世界卡时，受保护的设定也隐藏
 let logConv = null;
 
+// 锁定的对话：把一段文字里受保护的设定换成“受保护的内容”（日志、下一轮预览里用）。
+// 发出去的内容里 {{user}} {{char}} 已经换成了它们的值，换之前和换之后的都要隐藏
+function hideProtected(text, conv) {
+  if (!conv.lock || !text) return text;
+  const secrets = [...new Set([conv.systemPrompt, conv.worldText, conv.npcText, conv.postHistory, ...conv.greetings]
+    .filter((v) => v && v.trim()).flatMap((v) => [v, v.trim()]).flatMap((v) => [v, withMacros(v, conv)]))]
+    .sort((a, b) => b.length - a.length);
+  return secrets.reduce((out, sec) => out.split(sec).join(t('lock.protected')), text);
+}
+
 function exportLog() {
   const x = lastExchange;
   if (!x) return toast(t('export.noLog'));
@@ -1630,14 +1641,7 @@ function exportLog() {
   if (headers['x-api-key']) headers['x-api-key'] = '***';
   if (headers.authorization) headers.authorization = 'Bearer ***';
   let body = x.request.body;
-  if (logConv && logConv.lock) {
-    // 发出去的内容里 {{user}} 已经换成了它的值，换之前和换之后的都要隐藏
-    const secrets = [...new Set([logConv.systemPrompt, logConv.worldText, logConv.npcText, logConv.postHistory, ...logConv.greetings]
-      .filter((v) => v && v.trim()).flatMap((v) => [v, v.trim()]).flatMap((v) => [v, withMacros(v, logConv)]))]
-      .sort((a, b) => b.length - a.length);
-    const hide = (v) => secrets.reduce((out, sec) => out.split(sec).join(t('lock.protected')), v);
-    body = JSON.parse(JSON.stringify(body, (k, v) => (typeof v === 'string' ? hide(v) : v)));
-  }
+  if (logConv && logConv.lock) body = JSON.parse(JSON.stringify(body, (k, v) => (typeof v === 'string' ? hideProtected(v, logConv) : v)));
   const out = [
     `Proteus log · ${x.time.toLocaleString()}`,
     '',
@@ -2108,6 +2112,7 @@ function bindBackButton() {
     // 信息弹窗直接关掉：它没有自己的 Escape 处理，派发 Escape 会连设置面板一起关掉
     if (!els.modal.hidden) { els.modal.hidden = true; return; }
     if (expandSource) return closeExpand();
+    if (!els.previewBox.hidden) return closePreview();
     if (document.body.classList.contains('settings-open')) return closeSettings();
     if (state.editingId) return cancelEdit();
     if (state.greetingMode) return exitGreetingMode();
@@ -2190,6 +2195,7 @@ function fillConvFields() {
 function fillSettingsForm() {
   const s = state.settings;
   els.rounds.value = s.rounds;
+  sizeRoundsInput();
   els.provider.value = s.provider;
   els.effort.value = s.effort;
   els.useTemperature.checked = s.useTemperature;
@@ -2302,14 +2308,111 @@ function bindModelMenu() {
   });
 }
 
+// ---- 查看下一轮将发送的内容 ----
+// 逻辑上的内容（不是接口请求的原始格式）：按发送的顺序列出每一块，带标签的原文全文和预估 token。
+// 输入框里有文字时当作你这一次要发送的消息；锁定的对话里受保护的设定显示为“受保护的内容”
+
+function nextRequestBlocks() {
+  const conv = state.conv;
+  const msgs = conv.messages;
+  const last = msgs[msgs.length - 1];
+  const typed = state.greetingMode ? '' : els.input.value.trim(); // 正在编辑开场白时，输入框里的不是消息
+  let pending = false; // 输入框是空的，最后一条用户消息还没写
+  let list = msgs;
+  if (typed) list = msgs.concat([{ role: 'user', versions: [typed], cur: 0 }]);
+  else if (!last || last.role !== 'user') {
+    list = msgs.concat([{ role: 'user', versions: [''], cur: 0 }]);
+    pending = true;
+  }
+  const req = requestOf(conv, list);
+
+  // system 部分：和 buildSystem 的顺序、标签相同，拆成一块一块
+  const system = [];
+  const add = (title, text) => { if (text) system.push({ title, text: withMacros(text, conv) }); };
+  add('System Prompt', conv.systemPrompt.trim());
+  if (!isAssistant(conv)) {
+    if (conv.worldText.trim()) add(t('set.world'), t('sys.world') + '\n' + conv.worldText.trim());
+    if (conv.npcText.trim()) add(t('set.npc'), t('sys.npc') + '\n' + conv.npcText.trim());
+    if (conv.persona.trim()) add(t('set.persona'), t('sys.persona') + '\n' + conv.persona.trim());
+  }
+
+  // 消息：和真正发出时一样合并连续同一角色的消息，Anthropic 格式开头补“前情省略”
+  const messages = mergeSameRole(req.messages);
+  if (PROVIDERS[state.settings.provider].format === 'anthropic' && messages.length && messages[0].role !== 'user') {
+    messages.unshift({ role: 'user', content: t('greet.omitted') });
+  }
+  return { system, messages, pending };
+}
+
+function openPreview() {
+  const conv = state.conv;
+  const { system, messages, pending } = nextRequestBlocks();
+  const body = els.previewBody;
+  body.replaceChildren();
+  let total = 0;
+  const group = (title) => {
+    const g = document.createElement('div');
+    g.className = 'preview-group';
+    g.textContent = title;
+    body.appendChild(g);
+  };
+  const block = (title, text, note) => {
+    const tokens = estimateTokens(text);
+    total += tokens;
+    const b = document.createElement('div');
+    b.className = 'preview-block';
+    const head = document.createElement('div');
+    head.className = 'preview-block-head';
+    const name = document.createElement('span');
+    name.textContent = title;
+    const count = document.createElement('span');
+    count.textContent = t('preview.tokens', { tokens: tokens.toLocaleString() });
+    head.append(name, count);
+    b.appendChild(head);
+    if (note) {
+      const n = document.createElement('div');
+      n.className = 'preview-note';
+      n.textContent = note;
+      b.appendChild(n);
+    }
+    const pre = document.createElement('pre');
+    pre.textContent = hideProtected(text, conv);
+    b.appendChild(pre);
+    body.appendChild(b);
+  };
+  if (system.length) {
+    group(t('preview.system'));
+    for (const x of system) block(x.title, x.text);
+  }
+  group(t(isAssistant(conv) ? 'preview.chat' : 'preview.story'));
+  const reply = t(isAssistant(conv) ? 'msg.assistant' : 'msg.story');
+  messages.forEach((m, i) => {
+    const lastOne = i === messages.length - 1;
+    block(m.role === 'user' ? t('msg.you') : reply, m.content, lastOne && pending ? t('preview.emptyInput') : '');
+  });
+  els.previewTotal.textContent = t('preview.total', { tokens: total.toLocaleString() });
+  els.previewBox.hidden = false;
+  placeExpand(els.previewBox);
+  body.scrollTop = 0;
+}
+
+function closePreview() {
+  els.previewBox.hidden = true;
+}
+
+// 记忆长度的数字框按位数调整宽度，让“数字 + 轮”整体在外框里居中
+function sizeRoundsInput() {
+  els.rounds.style.width = Math.max(1, String(els.rounds.value).length) + 0.3 + 'ch';
+}
+
 // ---- 放大窗口：盖一个大的输入框编辑 System Prompt、世界观或 NPC角色，内容和右侧的输入框同步 ----
 
 let expandSource = null; // 正在放大编辑的那个右侧输入框
 
 // 放大窗口的位置：电脑布局盖在聊天区上（标题栏以下，占大半个聊天区）；
 // 手机布局盖在设置面板上（手机上是点 ⚙ 打开设置面板来编辑，聊天区被它盖住）
-function placeExpand() {
-  const box = els.expandBox.style;
+function placeExpand(el = els.expandBox) {
+  const box = el.style;
   let top, left, width, bottom;
   if (isMobileLayout()) {
     const r = els.settingsPane.getBoundingClientRect();
@@ -2438,6 +2541,7 @@ function bindSettings() {
     if (!Number.isFinite(n)) n = s().rounds;
     n = Math.min(ROUNDS_MAX, Math.max(ROUNDS_MIN, n));
     els.rounds.value = n;
+    sizeRoundsInput();
     if (n === s().rounds) return;
     s().rounds = n;
     saveSettingsSoon();
@@ -2445,6 +2549,7 @@ function bindSettings() {
     renderMessages();
   };
   els.rounds.addEventListener('change', () => setRounds(els.rounds.value));
+  els.rounds.addEventListener('input', sizeRoundsInput);
   els.rounds.addEventListener('keydown', (e) => { if (e.key === 'Enter') setRounds(els.rounds.value); });
   els.btnRoundsMinus.addEventListener('click', () => setRounds(s().rounds - 1));
   els.btnRoundsPlus.addEventListener('click', () => setRounds(s().rounds + 1));
@@ -2581,7 +2686,17 @@ function bindSettings() {
   els.btnExpandSystem.addEventListener('click', () => openExpand(els.systemPrompt, 'set.systemPrompt'));
   els.btnExpandWorld.addEventListener('click', () => openExpand(els.worldText, 'set.world'));
   els.btnExpandNpc.addEventListener('click', () => openExpand(els.npcText, 'set.npc'));
-  window.addEventListener('resize', () => { if (expandSource) placeExpand(); });
+  window.addEventListener('resize', () => {
+    if (expandSource) placeExpand();
+    if (!els.previewBox.hidden) placeExpand(els.previewBox);
+  });
+
+  // 查看下一轮将发送的内容
+  els.btnPreviewNext.addEventListener('click', openPreview);
+  document.addEventListener('mousedown', (e) => { if (!els.previewBox.hidden && !els.previewBox.contains(e.target)) closePreview(); }, true);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !els.previewBox.hidden) { e.stopPropagation(); closePreview(); }
+  }, true);
   els.expandText.addEventListener('input', () => {
     if (!expandSource) return;
     expandSource.value = els.expandText.value;

@@ -164,7 +164,7 @@ Besides roleplay, Proteus can be used as an ordinary LLM chat tool (a personal a
 
 ## What is sent to the model each time
 
-Each request has two parts: the **system settings** and the **story so far**. This is exactly what goes out; you can check it with "Export / Backup…" → "Log (last request)".
+Each request has two parts: the **system settings** and the **story so far**. This is exactly what goes out. Before sending, you can preview it with "View what the next request will send" below the memory length; afterwards, you can check it with "Export / Backup…" → "Log (last request)".
 
 ### System settings
 
@@ -259,7 +259,13 @@ Range, versions and merging of same-side messages work as above; there is no ope
 ### Memory range
 
 Older messages are not sent, so the model can't "see" them. A dashed line in the story marks the edge of the memory range; messages above it are still shown, the model just can't see them.
-You can type the memory length directly or adjust it with − / ＋. Below it is a rough estimate of how many tokens the next request will use.
+You can edit the number in the memory length box directly or adjust it with − / ＋. Below it is a rough estimate of how many tokens the next request will use.
+
+Further down, "View what the next request will send" opens a large window (over the chat on a computer, over the settings panel on a phone) listing each part of the next request in the order it is sent: the System Prompt, world, NPC characters and user's character in the system settings, then every message within the memory range. It shows the text actually sent, labels included and nothing shortened, with `{{user}}` and `{{char}}` already replaced; each part has its estimated tokens on the right of its title, and the total is at the top. This is the logical content, not the raw API request (address, headers, JSON).
+
+- If there is text in the input box, it appears last as your current message (with the key instructions after it); if the input box is empty, the last part is the message you are about to send, marked as such
+- In a locked conversation, protected settings are shown as "(protected content)"
+- Click outside the window (or press Esc) to close it
 
 ## Export and backup
 

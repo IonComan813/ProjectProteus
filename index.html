@@ -152,11 +152,15 @@
         <p class="hint" data-i18n="set.memoryHint"></p>
         <div class="row nowrap stepper">
           <button class="btn btn-small" id="btnRoundsMinus" data-i18n-title="set.roundsMinus">−</button>
-          <input type="number" id="rounds" min="1" max="40" step="1">
+          <!-- “轮”字在框里、不能选中，只有数字可以修改；数字和“轮”一起在框里居中 -->
+          <label class="unit-input" for="rounds">
+            <input type="number" id="rounds" min="1" max="40" step="1">
+            <span class="unit" data-i18n="set.roundsUnit" aria-hidden="true"></span>
+          </label>
           <button class="btn btn-small" id="btnRoundsPlus" data-i18n-title="set.roundsPlus">＋</button>
-          <span data-i18n="set.roundsUnit"></span>
         </div>
         <p class="hint" id="tokenEstimate"></p>
+        <button class="btn btn-small" id="btnPreviewNext" data-i18n="set.previewNext"></button>
       </section>
 
       <section class="card">
@@ -313,6 +317,13 @@
   <div class="expand-box" id="expandBox" hidden>
     <div class="expand-head"><strong id="expandTitle"></strong><span class="muted small" data-i18n="expand.hint"></span></div>
     <textarea id="expandText"></textarea>
+  </div>
+
+  <!-- 查看下一轮将发送的内容：按发送的顺序列出每一块（带标签的原文和预估 token），点窗口以外的地方关闭 -->
+  <div class="expand-box preview-box" id="previewBox" hidden>
+    <div class="expand-head"><strong data-i18n="preview.title"></strong><span class="muted small" data-i18n="expand.hint"></span></div>
+    <div class="muted small" id="previewTotal"></div>
+    <div class="preview-body" id="previewBody"></div>
   </div>
 
   <div class="toast" id="toast" hidden></div>

@@ -374,6 +374,15 @@ const I18N = {
     'set.charNamePlaceholder': "{{char}}值",
     'set.charNameTitle': "内容里的 {{char}} 在显示和发送时换成这里填的值；留空则原样保留。读取酒馆角色卡时自动填上角色名",
     'assistant.charNameUnused': "助理模式不使用 {{char}}值",
+    // 查看下一轮将发送的内容
+    'set.previewNext': "查看下一轮将发送的内容",
+    'preview.title': "下一轮将发送的内容",
+    'preview.total': "共约 {tokens} token（粗略估计）。下面按发送的顺序列出每一块，是实际发送的文字（包括标签）",
+    'preview.tokens': "约 {tokens} token",
+    'preview.system': "系统设定",
+    'preview.story': "剧情记录",
+    'preview.chat': "对话记录",
+    'preview.emptyInput': "（输入框是空的：这里会是你接下来发送的消息）",
   },
 
   'zh-TW': {
@@ -721,6 +730,15 @@ const I18N = {
     'set.charNamePlaceholder': "{{char}}值",
     'set.charNameTitle': "內容中的 {{char}} 在顯示和傳送時換成這裡填的值；留空則原樣保留。讀取酒館角色卡時自動填上角色名",
     'assistant.charNameUnused': "助理模式不使用 {{char}}值",
+    // 查看下一轮将发送的内容
+    'set.previewNext': "查看下一輪將傳送的內容",
+    'preview.title': "下一輪將傳送的內容",
+    'preview.total': "共約 {tokens} token（粗略估計）。下面按傳送的順序列出每一塊，是實際傳送的文字（包括標籤）",
+    'preview.tokens': "約 {tokens} token",
+    'preview.system': "系統設定",
+    'preview.story': "劇情記錄",
+    'preview.chat': "對話記錄",
+    'preview.emptyInput': "（輸入框是空的：這裡會是你接下來傳送的訊息）",
   },
 
   en: {
@@ -1068,6 +1086,15 @@ const I18N = {
     'set.charNamePlaceholder': "{{char}} value",
     'set.charNameTitle': "{{char}} in the content is shown and sent as this value; leave it empty to keep {{char}} as is. Loading a SillyTavern character card fills in the character's name",
     'assistant.charNameUnused': "Assistant mode does not use the {{char}} value",
+    // 查看下一轮将发送的内容
+    'set.previewNext': "View what the next request will send",
+    'preview.title': "What the next request will send",
+    'preview.total': "About {tokens} tokens in all (rough estimate). Below, each part in the order it is sent, as the text actually sent (labels included)",
+    'preview.tokens': "about {tokens} tokens",
+    'preview.system': "System settings",
+    'preview.story': "The story so far",
+    'preview.chat': "The conversation",
+    'preview.emptyInput': "(The input box is empty: your next message goes here)",
   },
 
   ja: {
@@ -1415,6 +1442,15 @@ const I18N = {
     'set.charNamePlaceholder': "{{char}}の値",
     'set.charNameTitle': "内容中の {{char}} は、表示と送信のときにここに入力した値に置き換えられます。空欄なら {{char}} のままです。SillyTavern のキャラクターカードを読み込むとキャラクター名が入ります",
     'assistant.charNameUnused': "アシスタントモードでは {{char}}の値を使いません",
+    // 查看下一轮将发送的内容
+    'set.previewNext': "次に送信する内容を見る",
+    'preview.title': "次に送信する内容",
+    'preview.total': "合計 約 {tokens} トークン（おおよその見積もり）。以下は送信する順に並べた各部分で、実際に送られる文字（ラベルを含む）です",
+    'preview.tokens': "約 {tokens} トークン",
+    'preview.system': "システム設定",
+    'preview.story': "これまでの物語",
+    'preview.chat': "会話",
+    'preview.emptyInput': "（入力欄は空です。ここに次に送るメッセージが入ります）",
   },
 };
 
