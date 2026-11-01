@@ -42,7 +42,10 @@ const ANTHROPIC_VERSION = '2026-10-21';
 const ANTHROPIC_FALLBACK_MODELS = ['claude-opus-5-5', 'claude-opus-5', 'claude-fable-5-1', 'claude-sonnet-5-5'];
 
 function trimSlash(url) {
-  return (url || '').trim().replace(/\/+$/, '');
+  // 不用正则 /\/+$/：很多个 / 后面不是结尾时，它会反复回溯
+  let s = (url || '').trim();
+  while (s.endsWith('/')) s = s.slice(0, -1);
+  return s;
 }
 
 // 把可能出现的“连续两条同一角色”的消息合并，避免接口报错。

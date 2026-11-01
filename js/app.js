@@ -109,7 +109,11 @@ async function shareFile(filename, blob) {
 
 function download(filename, content, type) {
   const blob = content instanceof Blob ? content : new Blob([content], { type: type || 'text/plain;charset=utf-8' });
-  if (NATIVE) return shareFile(filename, blob);
+  // 安卓版：用系统分享菜单。不用等它完成，出错和取消都由 shareFile 自己处理
+  if (NATIVE) {
+    void shareFile(filename, blob);
+    return;
+  }
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = filename;
@@ -460,7 +464,7 @@ function closeConvCtxMenu() {
 function titleFrom(text) {
   const plain = text
     .replace(/<(script|style)[\s\S]*?<\/\1>/gi, ' ')
-    .replace(/<[^>]*>/g, ' ')
+    .replace(/<[^<>]*>/g, ' ') // 不跨过下一个 <：避免很多 < 却没有 > 时反复扫描到结尾
     .replace(/[#*_`>~|-]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -684,7 +688,7 @@ function buildEditor(id) {
   ta.value = state.editDraft;
   ta.addEventListener('input', () => { state.editDraft = ta.value; });
   ta.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.isComposing) { e.preventDefault(); saveEdit(); }
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.isComposing) { e.preventDefault(); void saveEdit(); }
     if (e.key === 'Escape') cancelEdit();
   });
   const row = document.createElement('div');
@@ -2065,7 +2069,7 @@ async function deleteConv(gone = state.conv) {
 function bindChat() {
   els.btnSend.addEventListener('click', send);
   els.btnStop.addEventListener('click', stop);
-  els.btnReply.addEventListener('click', () => { if (!state.generating) generateReply(); });
+  els.btnReply.addEventListener('click', () => { if (!state.generating) void generateReply(); });
   els.btnAddGreeting.addEventListener('click', enterGreetingMode);
   els.btnGreetingReload.addEventListener('click', reloadGreetingPreview);
   els.btnGreetingConfirm.addEventListener('click', confirmGreeting);
@@ -2074,7 +2078,7 @@ function bindChat() {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.isComposing) {
       e.preventDefault();
       if (state.greetingMode) reloadGreetingPreview();
-      else send();
+      else void send();
     }
   });
 
@@ -2145,7 +2149,7 @@ function bindChat() {
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') els.modal.hidden = true; });
 
   window.addEventListener('beforeunload', (e) => {
-    if (convSavePending) flushConvSave();
+    if (convSavePending) void flushConvSave(); // 页面正在关闭，等不了；尽量写入
     if (state.generating) { e.preventDefault(); e.returnValue = ''; }
   });
 }
@@ -2228,7 +2232,7 @@ function init() {
   bindBackButton();
   // 消息高度变化时（内容载入、图片加载、展开 <details> 等），如果停留在底部就继续贴底
   Render.onResize(() => { if (state.follow) els.messages.scrollTop = els.messages.scrollHeight; });
-  detectVersion().then((v) => { state.version = v; renderFooter(); });
+  void detectVersion().then((v) => { state.version = v; renderFooter(); }); // detectVersion 自己处理出错
   boot().catch((e) => {
     console.error(e);
     showError(t('boot.failed', { msg: e.message }));

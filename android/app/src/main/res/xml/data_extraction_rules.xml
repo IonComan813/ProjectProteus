@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Proteus 的数据（对话、设定、艺术图、API Key）只保存在这台设备上：
+  不备份到云端，换机时也不随“设备间传输”带走。要转移数据，请用应用里的“完整备份（全部对话）”。
+  安卓 12 及以上看这个文件；更早的版本由 AndroidManifest.xml 里的 allowBackup="false" 关闭备份。
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" path="." />
+        <exclude domain="device_root" path="." />
+        <exclude domain="external" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" path="." />
+        <exclude domain="device_root" path="." />
+        <exclude domain="external" path="." />
+    </device-transfer>
+</data-extraction-rules>

@@ -41,7 +41,8 @@ Download `Proteus-<version>-android.apk` on your phone and tap it to install. Th
 - The interface uses a mobile layout: the artwork becomes a dimmed background behind the chat; tap ⚙ at the top right to open the settings
 - Exporting a story, world card or backup opens the system share menu, so you can save it to Files, a cloud drive, or send it to someone
 - Relay endpoints that block direct browser access (CORS) work too: when a request can't get through, the app resends it through Android's own network connection and remembers that endpoint. For those endpoints the reply appears all at once when it is finished instead of as it is written. The official Claude, OpenAI and Gemini APIs and OpenRouter are not affected and still show replies as they are written
-- Data on your phone and on your computer are separate; use "Full backup (all conversations)" to move it
+- Only `https://` API addresses work, not plain `http://` (for example a local model server on your network)
+- Data on your phone and on your computer are separate; use "Full backup (all conversations)" to move it. The Android app's data is not backed up to your Google account and is not carried over automatically to a new phone; use a full backup to move it
 
 ### Web version
 

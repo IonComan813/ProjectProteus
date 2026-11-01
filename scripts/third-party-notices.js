@@ -51,8 +51,15 @@ const problems = [];
 const read = (p) => fs.readFileSync(p, 'utf8');
 
 // SPDX 表达式里只要有一个可选的许可证在允许清单里就行（例如 "(MIT OR CC0-1.0)"）
+// 按空白切成单词，再以 OR 分组（不用 /\s+OR\s+/：空白很多时会反复回溯）
 function allowed(spdx) {
-  return String(spdx || '').replace(/[()]/g, ' ').split(/\s+OR\s+/i).some((x) => ALLOWED.has(x.trim()));
+  const groups = [[]];
+  for (const word of String(spdx || '').replace(/[()]/g, ' ').split(/\s/)) {
+    if (!word) continue;
+    if (word.toUpperCase() === 'OR') groups.push([]);
+    else groups[groups.length - 1].push(word);
+  }
+  return groups.some((g) => ALLOWED.has(g.join(' ')));
 }
 
 // ---------- 内置在网页里的第三方代码 ----------
