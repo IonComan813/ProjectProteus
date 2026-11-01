@@ -64,12 +64,14 @@ Switching computers, reinstalling your system or (for the web version) clearing 
 | Area | What it does |
 |---|---|
 | Left | Artwork. Click to upload; portrait images work best. The image is shown at the width of the left column without stretching: if it is taller than the column, the top and bottom are cropped; if it is shorter, black bars are added above and below. Drag the right edge of the column to resize it (up to about 45% of the window, always leaving enough room for the chat); double-click the edge to reset |
-| Middle | The story. At the top you can switch, create, rename and delete conversations (the small arrow to the right of "＋ New chat" starts an assistant-mode chat, see [Assistant mode](#assistant-mode); the list shows each conversation's number of rounds and the time of its latest activity — creating it, saving the opening, or sending a request to the model — and is sorted by that time; in the open list, left-click switches to a conversation and right-click lets you delete it); at the bottom is the input box, press **Ctrl + Enter** to send. Drag the edge above the input box to change its height |
+| Middle | The story. At the top you can switch, create, rename and delete conversations ("＋ New chat" opens a menu where you choose a "🎭 roleplay", "🤖 assistant" (see [Assistant mode](#assistant-mode)) or "🍺 SillyTavern" chat (see [Loading SillyTavern character cards](#loading-sillytavern-character-cards)); in the list, the emoji before each conversation's name shows its type, followed by its number of rounds and the time of its latest activity — creating it, saving the opening, or sending a request to the model — and the list is sorted by that time; in the open list, left-click switches to a conversation and right-click lets you rename or delete it); at the bottom is the input box, press **Ctrl + Enter** to send. Drag the edge above the input box to change its height |
 | Right | Settings, from top to bottom: System Prompt → World → User's character (with the `{{user}}` value) → Key Instructions → Memory length → Model & API → Artwork → Export & backup → Local data → Language |
+
+Below the System Prompt and world boxes, "Enlarge" opens a large editing window over the chat for easier writing; it stays in sync with the box on the right. Click outside it (or press Esc) to close it.
 
 ### Each conversation has its own settings
 
-**The System Prompt, world, user's character, `{{user}}` value, key instructions, opening (all versions) and artwork belong to each conversation.** "＋ New chat" copies these from the current conversation (with an empty story); after that the two are independent. Switching back to an older conversation shows that conversation's own settings.
+**The System Prompt, world, user's character, `{{user}}` value, key instructions, opening (all versions) and artwork belong to each conversation.** A new chat of the same type copies these from the current conversation (with an empty story); after that the two are independent. Switching back to an older conversation shows that conversation's own settings.
 
 Memory length, Model & API, API keys, interface language and layout are app settings shared by all conversations.
 
@@ -149,10 +151,10 @@ While the model is writing you can scroll up and read; the page won't be pulled 
 
 Besides roleplay, Proteus can be used as an ordinary LLM chat tool (a personal assistant), sharing the same API and model settings.
 
-- **Start one**: click the small arrow to the right of "＋ New chat" above the chat and choose "＋ New assistant chat"
+- **Start one**: click "＋ New chat" above the chat and choose "🤖 New assistant chat"
 - **Settings**: nothing is carried over from the current conversation — not the opening, System Prompt, world, user's character or artwork. The System Prompt is replaced with a general personal-assistant prompt (one for each interface language; you can edit it). "Reset to default" depends on the conversation's mode: a roleplay chat gets the roleplay default, an assistant chat the assistant default. The world, user's character, `{{user}}` value and key instructions are empty and cannot be edited (not because they are protected, but because this mode doesn't use them); there is no "Add opening". Artwork can still be uploaded; it is only displayed, never sent to the model
 - **Sent to the model**: only the System Prompt, the conversation within the memory range and your current message — no world, character, key instructions or opening, and none of their labels (see the next section); `{{user}}` is not replaced. Memory length works as usual
-- **New chats**: in an assistant chat, "＋ New chat" starts another assistant chat (keeping the current System Prompt and artwork); "＋ New roleplay chat" in the arrow menu starts a roleplay chat with the settings, opening and artwork of the roleplay chat you used most recently (or the defaults if there is none). Likewise, "＋ New assistant chat" from a roleplay chat keeps the System Prompt and artwork of the most recent assistant chat, if there is one (a roleplay chat's artwork is not carried over)
+- **New chats**: every type of new chat is chosen in the "＋ New chat" menu. A new chat copies the most recently used conversation of the same type (the current one, if it is of that type): in an assistant chat, "🤖 New assistant chat" keeps the current System Prompt and artwork; "🎭 New roleplay chat" takes the settings, opening and artwork of the roleplay chat you used most recently (or the defaults if there is none). Likewise, a new assistant chat started from a roleplay chat keeps the System Prompt and artwork of the most recent assistant chat, if there is one (a roleplay chat's artwork is not carried over)
 - **Export**: only the chat (TXT / Markdown), full backup (all conversations) and log; world cards and single-conversation backups are not offered. "Load world card / backup / SillyTavern card" works as usual: world cards, single-conversation backups and SillyTavern cards are loaded as new conversations, and a full backup replaces all conversations, whatever mode the current chat is in
 - **Storage**: assistant chats use the same format as roleplay chats with one extra `mode: "assistant"` marker, so they are included in full backups (all conversations) and loaded back as usual. When a full backup is encrypted, assistant chats and their artwork are not encrypted (they have no settings to protect)
 
@@ -194,7 +196,7 @@ User messages and model replies, alternating:
 - **Earlier story omitted**: the Anthropic format requires the first message to be from the user. If the range happens to start with a model reply, a user message reading `(Earlier story omitted)` is added in front. This doesn't happen in a normally alternating story
 - If two messages in a row ever come from the same side, they are merged into one (separated by a blank line) so the API doesn't reject the request
 
-If a [`{{user}}` value](#user-value) is filled in, `{{user}}` is replaced with it in everything above, the system settings included.
+If a [`{{user}}` value](#user-value) is filled in, `{{user}}` is replaced with it in everything above, the system settings included; in a [SillyTavern chat](#loading-sillytavern-character-cards), `{{char}}` is replaced with the character card's name.
 
 ### Example
 
@@ -289,40 +291,60 @@ When exporting a world card or full backup you can choose to **encrypt** it with
 
 ## Loading SillyTavern character cards
 
-"Load world card / backup / SillyTavern card" on the right also loads SillyTavern character cards and lorebooks. Each one is loaded as a new conversation; existing conversations are not affected. Loading only: Proteus does not export to SillyTavern formats.
+Proteus can load SillyTavern character cards and lorebooks. What you load becomes a **SillyTavern chat** (🍺 before its name in the list). Loading only: Proteus does not export to SillyTavern formats.
+
+There are two ways to load them:
+
+- "Load world card / backup / SillyTavern card" on the right
+- "🍺 New SillyTavern chat" in the "＋ New chat" menu: in a SillyTavern chat it creates a new SillyTavern chat with a copy of all the current settings (not the story); in any other chat it asks you to load a SillyTavern file first and then lets you choose a character card or lorebook (only SillyTavern files are accepted there)
 
 Supported files:
 
 - **PNG character cards** (V1 / V2 / V3); the image itself becomes the artwork
 - **JSON character cards**
-- **Standalone lorebooks** (JSON, as exported by SillyTavern)
+- **Standalone lorebooks** (JSON, as exported by SillyTavern or Chub)
 - The V3 CHARX (zip) format is not supported
 
-A character card is put into the new conversation like this:
+### At most one lorebook and one character per conversation
+
+A character card may or may not include a lorebook; a standalone lorebook never contains a character. So a SillyTavern chat can be made of "lorebook + character card", loaded in either order. Where a file goes follows these rules:
+
+| Current conversation | Loading a lorebook | Loading a character card |
+|---|---|---|
+| Not a SillyTavern chat, already started, or locked | New conversation | New conversation |
+| Lorebook only | New conversation (two worlds cannot share one conversation) | **Added to this conversation** |
+| Character card only (without a lorebook) | **Added to this conversation** | No group chats: you are asked whether to create a new conversation, and then whether to copy the current lorebook into it |
+| Lorebook + character card (including a card's own lorebook) | New conversation | Same as above |
+
+A character card with its own lorebook cannot be added to a conversation that already has a lorebook; it gets a new conversation. A new conversation starts with an empty user's character and `{{user}}` value; existing conversations are not affected.
+
+### Where a character card's content goes
 
 | SillyTavern field | Proteus |
 |---|---|
-| Name (`name`) | Conversation title; every `{{char}}` in the card is replaced with this name when it is loaded |
-| Image | Artwork |
-| System Prompt (`system_prompt`) | System Prompt. If the card has none, the default is used; where the card says `{{original}}`, the default System Prompt is put in its place (the author adds to the default) |
+| Name (`name`) | The title of a new conversation; every `{{char}}` in the conversation is shown and sent as this name |
+| Image | Artwork (when added to a conversation, only if that conversation has no artwork yet) |
+| System Prompt (`system_prompt`) | System Prompt. Where the card says `{{original}}`, the existing System Prompt is put in its place (the author adds to it). In a new conversation, the default is used if the card has none. When added to a conversation, the card's prompt is used directly if the current one is still the default; if you have changed it, you are asked first, and the dialog shows what it would become |
 | Embedded lorebook (`character_book`) | The first part of the world (full text) |
-| Description, personality, scenario, example dialogue | The second part of the world, each with its own heading |
-| First message (`first_mes`) and alternate greetings (`alternate_greetings`) | Versions of the opening; the first one is shown, and "Send to the model" is checked |
-| `post_history_instructions` | Key instructions (with any `{{original}}` removed) |
+| Description, personality, scenario, example dialogue | The "Character: name" part of the world, each with its own heading. When added to a conversation, it goes after the current world |
+| First message (`first_mes`) and alternate greetings (`alternate_greetings`) | Versions of the opening, with "Send to the model" checked. When added to a conversation, they go after the existing versions |
+| `post_history_instructions` | Key instructions (with any `{{original}}` removed). When added to a conversation, they are used directly if the current key instructions are empty; otherwise you are asked first |
 | Creator's notes (`creator_notes`) | Not sent to the model; shown once after loading |
 | Tags, creator, version, extensions (regex scripts etc.) | Ignored |
 
-The new conversation's user character and `{{user}}` value are empty.
+A standalone lorebook goes at the start of the world, under the heading "Lorebook".
 
 **Lorebooks**: SillyTavern triggers lorebook entries by keyword and only sends the entries that match; **Proteus does not trigger them by keyword: it puts the full text into the world and sends it with every request**. When loading, you are told how many entries there are and roughly how many tokens they take. Disabled entries are skipped; constant entries come first and the rest follow in insertion order; entries with a name (or comment) get it as a heading.
 
-**Macros**:
+### Macros
 
-- `{{char}}`: replaced with the card's name when a character card is loaded; a standalone lorebook has no character, so it is left as is
+- `{{char}}`: kept in the content, and shown and sent as the name of the conversation's character card; left as is while there is no character card. So when you load a lorebook first and add a character card later, `{{char}}` in the lorebook works too
 - `{{user}}`: kept, and shown and sent as the [`{{user}}` value](#user-value)
 - `{{// …}}` (author's comments): removed when loading
-- In older cards, `<USER>` is treated as `{{user}}` and `<BOT>` as `{{char}}`
+- In older cards, `<USER>` is treated as `{{user}}`, and `<BOT>` and `<CHAR>` as `{{char}}`
 - Other macros (such as `{{random:…}}`) and `<START>` in example dialogue are left as is
+
+World cards and full backups exported from a SillyTavern chat keep this mark (with the character and lorebook names), so they load back as SillyTavern chats.
 
 Cards that rely on SillyTavern-only features (regex scripts, STscript, front-end extensions, etc.) lose those effects; HTML status bars written directly by the model are displayed as usual.
 

@@ -88,6 +88,7 @@ body.resizing iframe { pointer-events: none; }
 
 /* ---------- 中栏 ---------- */
 .chat-pane {
+  position: relative;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -127,8 +128,10 @@ body.resizing iframe { pointer-events: none; }
 /* 右键菜单：出现在光标右下方（位置由 JS 设置） */
 .split-menu.ctx-menu { position: fixed; right: auto; top: 0; left: 0; min-width: 120px; z-index: 40; }
 .split-item.danger { color: var(--danger); }
-/* “＋ 新对话”和右边的 ▾ 看起来是一个按钮，▾ 打开新建另一种模式的菜单 */
+/* “＋ 新对话 ▾”：只打开菜单，在菜单里选新建哪种对话 */
 .split-btn { position: relative; display: flex; flex: none; }
+.split-btn > .btn.new-conv { border-radius: 6px; }
+.new-conv .caret { margin-left: 2px; color: var(--muted); }
 .split-btn > .btn:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }
 .split-btn > .split-toggle {
   border-top-left-radius: 0;
@@ -174,6 +177,26 @@ body.resizing iframe { pointer-events: none; }
   cursor: pointer;
 }
 .split-item:hover, .split-item:focus-visible { background: rgba(201, 169, 110, .18); outline: none; }
+
+/* 放大的编辑窗口：盖在聊天区上，占大半个聊天区 */
+.expand-box {
+  position: absolute;
+  top: 64px;
+  left: 4%;
+  right: 4%;
+  bottom: 22%;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, .6);
+}
+.expand-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.expand-box textarea { flex: 1; min-height: 0; resize: none; font-size: 14px; line-height: 1.7; }
 
 .messages-wrap {
   position: relative;
@@ -555,6 +578,8 @@ textarea:focus, input:focus, select:focus { outline: 1px solid var(--accent); bo
   padding: 16px;
   white-space: pre-wrap;
   line-height: 1.7;
+  max-height: 60vh; /* 显示较长的内容（例如将要覆盖的 System Prompt）时可以滚动 */
+  overflow: auto;
 }
 .dialog-buttons {
   display: flex;

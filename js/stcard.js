@@ -146,14 +146,13 @@ const STCard = (() => {
 
   // ---- 宏 ----
 
-  // 导入时的处理：删掉作者注释 {{// …}}；老卡的 <USER> 改成 {{user}}（{{user}} 本身保留，显示和发送时再换）
-  function commonMacros(s) {
-    return str(s).replace(/\{\{\/\/[\s\S]*?\}\}/g, '').replace(/<user>/gi, '{{user}}');
-  }
-
-  // 角色卡：再把 {{char}}（以及老卡的 <BOT>、<CHAR>）换成卡的名字
-  function cardMacros(s, name) {
-    return commonMacros(s).replace(/\{\{char\}\}|\{\{charIfNotGroup\}\}|<bot>|<char>/gi, () => name);
+  // 导入时的处理：删掉作者注释 {{// …}}；老卡的 <USER> 改成 {{user}}，<BOT>、<CHAR>、{{charIfNotGroup}} 改成 {{char}}。
+  // {{user}} 和 {{char}} 本身保留，显示和发送时再换成 {{user}} 的值和角色卡的名字
+  function importMacros(s) {
+    return str(s)
+      .replace(/\{\{\/\/[\s\S]*?\}\}/g, '')
+      .replace(/<user>/gi, '{{user}}')
+      .replace(/\{\{charIfNotGroup\}\}|<bot>|<char>/gi, '{{char}}');
   }
 
   // {{original}}：卡的 System Prompt 里表示“用户原来的 System Prompt 放在这里”
@@ -161,5 +160,5 @@ const STCard = (() => {
     return str(s).replace(/\{\{original\}\}/gi, () => value);
   }
 
-  return { isPng, fromPng, detect, lorebookEntries, lorebookText, commonMacros, cardMacros, replaceOriginal };
+  return { isPng, fromPng, detect, lorebookEntries, lorebookText, importMacros, replaceOriginal };
 })();

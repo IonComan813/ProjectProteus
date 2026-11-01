@@ -6,6 +6,9 @@
 //     以及艺术图（存在 art:<对话id>）。新建对话时复制当前对话的设定和开场白，之后互不影响。
 //   - 来自加密世界卡的对话带有 conv.lock：System Prompt、世界观、重点指令、开场白和艺术图只以密文保存，
 //     在内存里解密后使用，界面上不能查看或修改，输入密码解锁后变回普通对话。
+//   - 酒馆兼容对话（带 conv.tavern = { char, book }）：导入酒馆（SillyTavern）的角色卡或世界书得到的角色扮演对话。
+//     char 是角色卡的名字（还没有角色卡时为 null），book 是世界书的名字（还没有世界书时为 null）。
+//     内容里的 {{char}} 在显示和发送时换成 char。
 //   - 助理模式的对话（conv.mode === 'assistant'）：普通的 LLM 对话，只发送 System Prompt 和对话记录。
 //     世界观、用户人设、{{user}} 的值、重点指令、开场白都不使用（保持为空），也不加密；艺术图照常可用。没有 mode 的就是角色扮演对话，
 //     所以存储和备份格式与角色扮演对话相同。
@@ -230,11 +233,18 @@ function buildSystem(conv = state.conv) {
   return parts.join('\n\n');
 }
 
-// {{user}} 的值：显示和发送时，内容里的 {{user}}（不区分大小写）换成它；没填时原样保留。存着的内容不变
+// 显示和发送时替换的宏（不区分大小写）。存着的内容不变；没有值时原样保留：
+//   {{user}} → {{user}} 的值；{{char}} → 酒馆兼容对话里角色卡的名字
 const USER_MACRO = /\{\{user\}\}/gi;
-function withUser(text, conv = state.conv) {
-  const v = conv && !isAssistant(conv) ? (conv.userName || '').trim() : '';
-  return v && text ? text.replace(USER_MACRO, () => v) : text;
+const CHAR_MACRO = /\{\{char\}\}/gi;
+function withMacros(text, conv = state.conv) {
+  if (!text || !conv || isAssistant(conv)) return text;
+  const user = (conv.userName || '').trim();
+  const char = conv.tavern && conv.tavern.char ? conv.tavern.char.trim() : '';
+  let out = text;
+  if (user) out = out.replace(USER_MACRO, () => user);
+  if (char) out = out.replace(CHAR_MACRO, () => char);
+  return out;
 }
 
 // 加在这一次的用户消息末尾的重点指令（带标签）；没有内容时为空
@@ -250,9 +260,9 @@ function requestOf(conv, context) {
   const last = messages[messages.length - 1];
   if (block && last && last.role === 'user') last.content += '\n\n' + block;
   return {
-    system: withUser(buildSystem(conv), conv),
-    messages: messages.map((m) => ({ role: m.role, content: withUser(m.content, conv) })),
-    postHistory: withUser(block, conv),
+    system: withMacros(buildSystem(conv), conv),
+    messages: messages.map((m) => ({ role: m.role, content: withMacros(m.content, conv) })),
+    postHistory: withMacros(block, conv),
   };
 }
 
@@ -289,6 +299,11 @@ function memoryCutoff() {
 // ---------------- 对话管理 ----------------
 
 const isAssistant = (conv) => !!conv && conv.mode === 'assistant';
+const isTavern = (conv) => !!conv && !isAssistant(conv) && !!conv.tavern;
+
+// 对话的类型：roleplay（角色扮演）、assistant（助理模式）、tavern（酒馆兼容）。对话列表里名称前的 emoji 也按它
+const kindOf = (conv) => (isAssistant(conv) ? 'assistant' : isTavern(conv) ? 'tavern' : 'roleplay');
+const KIND_EMOJI = { roleplay: '🎭', assistant: '🤖', tavern: '🍺' };
 
 // 这种模式的默认 System Prompt
 const defaultPromptOf = (conv) => t(isAssistant(conv) ? 'defaultAssistantPrompt' : 'defaultSystemPrompt');
@@ -336,6 +351,7 @@ function newConversation(from, assistant = isAssistant(from)) {
     messages: [],
   };
   if (from && from.lock) c.lock = from.lock;
+  if (isTavern(from)) c.tavern = { ...from.tavern };
   return c;
 }
 
@@ -345,6 +361,7 @@ function normalizeConv(c, legacy) {
   if (isAssistant(c)) {
     // 助理模式：只有 System Prompt 和对话记录，其他保持为空；不加密
     delete c.lock;
+    delete c.tavern;
     if (typeof c.systemPrompt !== 'string') c.systemPrompt = t('defaultAssistantPrompt');
     c.worldText = '';
     c.persona = '';
@@ -365,6 +382,7 @@ function normalizeConv(c, legacy) {
   if (typeof c.worldText !== 'string') c.worldText = (legacy && legacy.worldText) || '';
   if (typeof c.persona !== 'string') c.persona = (legacy && legacy.persona) || '';
   if (typeof c.userName !== 'string') c.userName = '';
+  normalizeTavern(c);
   if (typeof c.postHistory !== 'string') c.postHistory = '';
   normalizeGreetings(c);
   if (c.greetingSend === undefined) c.greetingSend = true;
@@ -372,6 +390,14 @@ function normalizeConv(c, legacy) {
   // 旧版本没有 activeAt：用最后一次保存的时间代替
   if (typeof c.activeAt !== 'number') c.activeAt = c.updatedAt || c.createdAt || Date.now();
   return c;
+}
+
+// 酒馆兼容对话的标签：{ char, book }，各自是字符串或 null
+function normalizeTavern(c) {
+  if (c.tavern === undefined) return;
+  const x = c.tavern;
+  if (!x || typeof x !== 'object') { delete c.tavern; return; }
+  c.tavern = { char: typeof x.char === 'string' ? x.char : null, book: typeof x.book === 'string' ? x.book : null };
 }
 
 // 开场白的多个版本：greetings 是全部版本，greetingCur 是当前版本的序号，greeting 是当前版本（没有开场白时为 null）。
@@ -406,6 +432,7 @@ async function switchConv(id) {
   const conv = state.conversations.find((c) => c.id === id);
   if (!conv) return;
   await flushConvSave();
+  closeExpand();
   state.conv = conv;
   state.editingId = null;
   state.greetingMode = null;
@@ -419,16 +446,25 @@ async function switchConv(id) {
   await loadArt();
 }
 
-// 新建一个对话。assistant 是要新建的模式，默认和当前对话相同。
-// 设定、开场白和艺术图复制自这种模式最近使用的对话（就是当前对话时复制当前对话）；还没有这种对话时用默认值。
-// 助理模式只复制 System Prompt 和艺术图
-async function createConversation(assistant = isAssistant(state.conv)) {
+// 新建一个对话。kind 是要新建的类型（roleplay / assistant / tavern），默认和当前对话相同。
+// 设定、开场白和艺术图复制自这种类型最近使用的对话（就是当前对话时复制当前对话）；还没有这种对话时用默认值。
+// 助理模式只复制 System Prompt 和艺术图。
+// 酒馆兼容对话：在酒馆兼容对话里新建时复制当前对话的全部设定（剧情除外）；在其他对话里新建时要先选择酒馆的文件读取
+async function createConversation(kind = kindOf(state.conv)) {
   closeNewConvMenu();
   if (state.generating) return toast(t('conv.stopFirst'));
+  if (kind === 'tavern' && !isTavern(state.conv)) {
+    const go = await choose(t('conv.newTavern'), t('conv.tavernNeedsImport'), [
+      { label: t('btn.cancel'), value: null, ghost: true },
+      { label: t('conv.pickTavernFile'), value: true, primary: true },
+    ]);
+    if (go) els.fileTavern.click();
+    return;
+  }
   await flushConvSave();
-  const from = isAssistant(state.conv) === assistant ? state.conv
-    : [...state.conversations].filter((x) => isAssistant(x) === assistant).sort((a, b) => b.activeAt - a.activeAt)[0];
-  const c = newConversation(from, assistant);
+  const from = kindOf(state.conv) === kind ? state.conv
+    : [...state.conversations].filter((x) => kindOf(x) === kind).sort((a, b) => b.activeAt - a.activeAt)[0];
+  const c = newConversation(from, kind === 'assistant');
   state.conversations.push(c);
   await DB.putConversation(storable(c));
   const art = from && (await DB.get(artKey(from.id)));
@@ -437,24 +473,25 @@ async function createConversation(assistant = isAssistant(state.conv)) {
   els.input.focus();
 }
 
-// “＋ 新对话”右边的 ▾：菜单里是另一种模式的新对话
+// “＋ 新对话”的菜单：🎭 角色扮演、🤖 助理模式、🍺 酒馆兼容
+const newConvItems = () => [els.btnNewRoleplay, els.btnNewAssistant, els.btnNewTavern];
+
 function openNewConvMenu() {
   closeConvMenu();
-  els.btnNewConvOther.textContent = t(isAssistant(state.conv) ? 'conv.newRoleplay' : 'conv.newAssistant');
   els.newConvMenu.hidden = false;
-  els.btnNewConvMenu.setAttribute('aria-expanded', 'true');
-  els.btnNewConvOther.focus();
+  els.btnNewConv.setAttribute('aria-expanded', 'true');
+  els.btnNewRoleplay.focus();
 }
 
 function closeNewConvMenu() {
   if (els.newConvMenu.hidden) return;
   els.newConvMenu.hidden = true;
-  els.btnNewConvMenu.setAttribute('aria-expanded', 'false');
+  els.btnNewConv.setAttribute('aria-expanded', 'false');
 }
 
 const roundsText = (n) => t(n === 1 ? 'conv.round1' : 'conv.rounds', { n });
 
-const convLabel = (c) => (c.lock ? '🔒 ' : '') + t('conv.option', { title: convTitle(c), rounds: roundsText(roundsOf(c)), time: fmtTime(c.activeAt) });
+const convLabel = (c) => KIND_EMOJI[kindOf(c)] + ' ' + (c.lock ? '🔒 ' : '') + t('conv.option', { title: convTitle(c), rounds: roundsText(roundsOf(c)), time: fmtTime(c.activeAt) });
 
 // 对话列表（顶部）。按最近一次活动的时间排序
 function renderConvSelect() {
@@ -525,7 +562,7 @@ function openConvCtxMenu(conv, x, y) {
   // 出现在光标右下方；靠近窗口边缘时往回收，不超出窗口
   m.style.left = Math.max(4, Math.min(x, window.innerWidth - m.offsetWidth - 4)) + 'px';
   m.style.top = Math.max(4, Math.min(y, window.innerHeight - m.offsetHeight - 4)) + 'px';
-  els.btnCtxDelete.focus();
+  els.btnCtxRename.focus();
 }
 
 function closeConvCtxMenu() {
@@ -653,7 +690,7 @@ function updateView(v, it) {
   const busy = !!state.generating;
   const isGen = busy && m && state.generating.msgId === m.id;
   // 显示的内容：{{user}} 换成 {{user}} 的值（存着的内容不变，编辑框里也是原文）
-  const text = withUser(it.greeting ? conv.greeting : it.preview ? state.greetingMode.preview : msgText(m), conv);
+  const text = withMacros(it.greeting ? conv.greeting : it.preview ? state.greetingMode.preview : msgText(m), conv);
 
   v.el.className = 'msg ' + role + (it.preview ? ' preview' : '');
   v.el.dataset.id = it.id;
@@ -711,7 +748,7 @@ function updateView(v, it) {
       v.actions.appendChild(tag);
       return;
     }
-    v.actions.append(button(t('msg.copy'), () => copyText(withUser(conv.greeting, conv))));
+    v.actions.append(button(t('msg.copy'), () => copyText(withMacros(conv.greeting, conv))));
     // 对话开始后开场白锁定：要换开场白请新建对话
     if (open) {
       v.actions.append(
@@ -736,7 +773,7 @@ function updateView(v, it) {
   if (tail && m.versions.length > 1) {
     v.actions.appendChild(swipe(m.cur, m.versions.length, (d) => switchVersion(m, d), busy));
   }
-  v.actions.appendChild(button(t('msg.copy'), () => copyText(withUser(msgText(m), conv))));
+  v.actions.appendChild(button(t('msg.copy'), () => copyText(withMacros(msgText(m), conv))));
   if (latestOfRole) {
     v.actions.appendChild(disabled(button(t('msg.edit'), () => startEdit(m.id, msgText(m))), busy,
       m.role === 'user' ? t('msg.editUserTitle') : t('msg.editStoryTitle')));
@@ -1193,7 +1230,7 @@ async function runGeneration(m, context) {
   const paint = () => {
     pendingPaint = false;
     const f = frame();
-    if (f) Render.stream(f, withUser(m.versions[ver], conv));
+    if (f) Render.stream(f, withMacros(m.versions[ver], conv));
   };
 
   logConv = conv;
@@ -1392,9 +1429,9 @@ function exportText(markdown) {
     out.push('');
   };
   // 和聊天区显示的一样：{{user}} 换成 {{user}} 的值
-  if (conv.greeting != null) section(t('msg.greeting'), conv.lock ? t('lock.protected') : withUser(conv.greeting, conv));
+  if (conv.greeting != null) section(t('msg.greeting'), conv.lock ? t('lock.protected') : withMacros(conv.greeting, conv));
   const replyLabel = t(isAssistant(conv) ? 'msg.assistant' : 'msg.story');
-  for (const m of conv.messages) section(m.role === 'user' ? t('msg.you') : replyLabel, withUser(msgText(m), conv));
+  for (const m of conv.messages) section(m.role === 'user' ? t('msg.you') : replyLabel, withMacros(msgText(m), conv));
   download(`${safeFilename(convTitle(conv))}.${markdown ? 'md' : 'txt'}`, out.join('\n'));
 }
 
@@ -1496,6 +1533,7 @@ async function exportWorldCard() {
     name: name.trim() || t('export.unnamedWorld'),
     greetingCur: conv.greetingCur, // 当前是第几个开场白（不是受保护的内容，不加密）
   };
+  if (isTavern(conv)) data.tavern = { ...conv.tavern }; // 酒馆兼容对话：读回来仍是酒馆兼容对话
   if (conv.lock) {
     // 本来就是锁定的：原样导出密文，沿用原来的密码
     data.locked = conv.lock;
@@ -1585,7 +1623,7 @@ function exportLog() {
   if (logConv && logConv.lock) {
     // 发出去的内容里 {{user}} 已经换成了它的值，换之前和换之后的都要隐藏
     const secrets = [...new Set([logConv.systemPrompt, logConv.worldText, logConv.postHistory, ...logConv.greetings]
-      .filter((v) => v && v.trim()).flatMap((v) => [v, v.trim()]).flatMap((v) => [v, withUser(v, logConv)]))]
+      .filter((v) => v && v.trim()).flatMap((v) => [v, v.trim()]).flatMap((v) => [v, withMacros(v, logConv)]))]
       .sort((a, b) => b.length - a.length);
     const hide = (v) => secrets.reduce((out, sec) => out.split(sec).join(t('lock.protected')), v);
     body = JSON.parse(JSON.stringify(body, (k, v) => (typeof v === 'string' ? hide(v) : v)));
@@ -1639,21 +1677,65 @@ async function exportMenu() {
 }
 
 // ---- 读取酒馆（SillyTavern）的角色卡和世界书（解析见 js/stcard.js） ----
+// 读取的结果是酒馆兼容对话（conv.tavern）。规则：
+//   - 当前不是酒馆兼容对话，或者是锁定的、已经开始聊天的酒馆兼容对话：新建一个对话
+//   - 当前是还没开始聊天的酒馆兼容对话：
+//       世界书：当前还没有世界书就加进来（放在世界观最前面）；已经有了就新建对话（两个世界观不能放在同一个对话里）
+//       角色卡：当前还没有角色就加进来（接在世界观后面）；已经有角色时 Proteus 不支持群聊，问是否新建对话，
+//               当前有世界书（而新卡没有自带世界书）时再问是否把世界书复制过去
+// {{char}} 和 {{user}} 保留在内容里，显示和发送时再换成角色卡的名字和 {{user}} 的值
 
 const baseName = (filename) => String(filename || '').replace(/\.[^.]*$/, '');
+const joinParts = (...parts) => parts.filter((x) => x && x.trim()).map((x) => x.trim()).join('\n\n');
 
-// 角色卡的字段拼成世界观：先世界书（全文），再角色的描述、性格、场景、对话示例。小标题跟随界面语言
-function stWorldText(bookText, name, card, fix) {
-  const parts = [];
-  if (bookText) parts.push(`## ${t('st.lorebook')}\n\n${bookText}`);
-  const sections = [
+// 世界观里世界书那一段的小标题（跟随读取时的界面语言）
+const bookSection = (text) => `## ${t('st.lorebook')}\n\n${text}`;
+
+// 角色卡的字段拼成世界观里角色那一段：描述、性格、场景、对话示例，各有一个小标题（跟随界面语言）
+function charSection(name, card) {
+  const parts = [
     ['st.description', card.description],
     ['st.personality', card.personality],
     ['st.scenario', card.scenario],
     ['st.examples', card.mes_example],
-  ].map(([k, v]) => [k, fix(v).trim()]).filter(([, v]) => v).map(([k, v]) => `### ${t(k)}\n${v}`);
-  if (sections.length) parts.push(`## ${t('st.character', { name })}\n\n${sections.join('\n\n')}`);
-  return parts.join('\n\n');
+  ].map(([k, v]) => [k, STCard.importMacros(v).trim()]).filter(([, v]) => v).map(([k, v]) => `### ${t(k)}\n${v}`);
+  return parts.length ? `## ${t('st.character', { name })}\n\n${parts.join('\n\n')}` : '';
+}
+
+// 当前世界观里世界书那一段：从世界书的小标题（任何一种界面语言的）到下一个二级标题之前。
+// 找不到小标题时（例如被删掉了）就是整个世界观
+function lorebookPart(worldText) {
+  const heads = Object.keys(I18N).map((l) => '## ' + I18N[l]['st.lorebook']);
+  const lines = worldText.split('\n');
+  const start = lines.findIndex((l) => heads.includes(l.trim()));
+  if (start < 0) return worldText.trim();
+  const end = lines.findIndex((l, i) => i > start && /^## /.test(l));
+  return lines.slice(start, end < 0 ? undefined : end).join('\n').trim();
+}
+
+// 角色卡里要读取的内容
+function cardContent(card, artBlob, filename) {
+  const name = card.name.trim() || baseName(filename) || t('export.unnamedWorld');
+  const book = card.character_book;
+  const entries = book ? STCard.lorebookEntries(book) : [];
+  return {
+    name,
+    entries,
+    bookText: STCard.importMacros(STCard.lorebookText(entries)).trim(),
+    bookName: entries.length ? ((typeof book.name === 'string' && book.name.trim()) || name) : null,
+    greetings: [card.first_mes, ...card.alternate_greetings].map((g) => STCard.importMacros(g).trim()).filter(Boolean),
+    systemPrompt: STCard.importMacros(card.system_prompt).trim(), // 可能含 {{original}}；空的就是卡里没有
+    // 重点指令里的 {{original}} 指用户自己的全局重点指令，Proteus 没有，直接去掉
+    postHistory: STCard.replaceOriginal(STCard.importMacros(card.post_history_instructions), '').trim(),
+    notes: STCard.importMacros(card.creator_notes).trim(),
+    section: charSection(name, card),
+    art: artBlob,
+  };
+}
+
+// 作者备注不发给模型，读取后给用户看一下
+function showCreatorNotes(x, conv) {
+  if (x.notes) showModal(t('restore.stNotesTitle', { name: x.name }), t('restore.stNotesIntro') + '\n\n' + withMacros(x.notes, conv));
 }
 
 // 新建一个对话放读取的内容，切换过去
@@ -1666,79 +1748,195 @@ async function addImportedConv(c, artBlob) {
   els.messages.scrollTop = 0;
 }
 
-// 角色卡：新建一个对话。{{char}} 换成卡的名字；{{user}} 保留（显示和发送时换成 {{user}} 的值）。
-// 内嵌的世界书全文放在世界观的最前面（Proteus 不按关键词触发条目）
-async function importSTCard(card, artBlob, filename) {
-  const name = card.name.trim() || baseName(filename) || t('export.unnamedWorld');
-  const fix = (s) => STCard.cardMacros(s, name);
-  const entries = card.character_book ? STCard.lorebookEntries(card.character_book) : [];
-  const bookText = fix(STCard.lorebookText(entries)).trim();
-  const greetings = [card.first_mes, ...card.alternate_greetings].map((g) => fix(g).trim()).filter(Boolean);
-  // 卡的 System Prompt：空的用默认值；{{original}} 换成默认值（作者在默认值的基础上追加内容）
-  const defaultPrompt = t('defaultSystemPrompt');
-  const sp = fix(card.system_prompt).trim();
-  const systemPrompt = sp ? STCard.replaceOriginal(sp, defaultPrompt).trim() : defaultPrompt;
-  // 重点指令里的 {{original}} 指用户自己的全局重点指令，Proteus 没有，直接去掉
-  const postHistory = STCard.replaceOriginal(fix(card.post_history_instructions), '').trim();
-  const notes = fix(card.creator_notes).trim();
+// 读取到当前对话后：保存并刷新界面
+async function refreshAfterMerge(conv) {
+  await saveConv(conv);
+  if (conv !== state.conv) return;
+  fillConvFields();
+  state.renderedConvId = null;
+  renderMessages();
+  els.messages.scrollTop = 0;
+  await loadArt();
+}
 
-  let message = t('restore.stCardConfirm', { name, greetings: greetings.length, art: artBlob ? t('restore.stCardArt') : '' });
-  if (entries.length) message += '\n\n' + t('restore.stBookNote', { n: entries.length, tokens: estimateTokens(bookText).toLocaleString() });
-  if (!(await ask(message + '\n\n' + t('restore.continue')))) return;
+// 用角色卡新建一个酒馆兼容对话。copied 是从当前对话复制过来的世界书 { book, text }（没有时为 null）
+async function createCardConv(x, copied) {
   if (state.generating) return toast(t('conv.stopFirst'));
-
   const c = newConversation();
-  c.title = name;
-  c.systemPrompt = systemPrompt;
-  c.worldText = stWorldText(bookText, name, card, fix);
-  c.postHistory = postHistory;
-  c.greetings = greetings;
+  const defaultPrompt = t('defaultSystemPrompt');
+  c.title = x.name;
+  c.tavern = { char: x.name, book: x.bookName != null ? x.bookName : copied ? copied.book : null };
+  // 卡的 System Prompt：空的用默认值；{{original}} 换成默认值（作者在默认值的基础上追加内容）
+  c.systemPrompt = x.systemPrompt ? STCard.replaceOriginal(x.systemPrompt, defaultPrompt).trim() : defaultPrompt;
+  c.worldText = joinParts(x.bookText ? bookSection(x.bookText) : copied ? copied.text : '', x.section);
+  c.postHistory = x.postHistory;
+  c.greetings = x.greetings.slice();
   c.greetingCur = 0;
   c.greetingSend = true;
   syncGreeting(c);
-  await addImportedConv(c, artBlob);
+  await addImportedConv(c, x.art);
   toast(t('restore.stCardDone'));
-  // 作者备注不发给模型，读取后给用户看一下
-  if (notes) showModal(t('restore.stNotesTitle', { name }), t('restore.stNotesIntro') + '\n\n' + notes);
+  showCreatorNotes(x, c);
 }
 
-// 单独的世界书：新建一个对话，全文放进世界观。{{char}} 不处理（没有角色卡，不知道是谁）
-async function importSTBook(book, filename) {
-  const entries = STCard.lorebookEntries(book);
-  if (!entries.length) return toast(t('restore.stBookEmpty'));
-  const name = (typeof book.name === 'string' && book.name.trim()) || baseName(filename) || t('export.unnamedWorld');
-  const text = STCard.commonMacros(STCard.lorebookText(entries)).trim();
-  const message = t('restore.stBookConfirm', { name, n: entries.length, tokens: estimateTokens(text).toLocaleString() });
+// 先确认，再用角色卡新建对话。reason 是为什么没有加入当前对话（i18n 键名，没有时为 null）
+async function importCardAsNew(x, reason) {
+  let message = t('restore.stCardConfirm', { name: x.name, greetings: x.greetings.length, art: x.art ? t('restore.stCardArt') : '' });
+  if (x.entries.length) message += '\n\n' + t('restore.stBookNote', { n: x.entries.length, tokens: estimateTokens(x.bookText).toLocaleString() });
+  if (reason) message = t(reason) + '\n\n' + message;
+  if (!(await ask(message + '\n\n' + t('restore.continue')))) return;
+  await createCardConv(x, null);
+}
+
+// 用世界书新建一个酒馆兼容对话
+async function importBookAsNew(b, reason) {
+  let message = t('restore.stBookConfirm', { name: b.name, n: b.n, tokens: estimateTokens(b.text).toLocaleString() });
+  if (reason) message = t(reason) + '\n\n' + message;
   if (!(await ask(message))) return;
   if (state.generating) return toast(t('conv.stopFirst'));
   const c = newConversation();
-  c.title = name;
-  c.worldText = `## ${t('st.lorebook')}\n\n${text}`;
+  c.title = b.name;
+  c.worldText = bookSection(b.text);
+  c.tavern = { char: null, book: b.name };
   await addImportedConv(c, null);
   toast(t('restore.stBookDone'));
 }
 
+// 当前对话还能加入酒馆的内容吗（确认框弹出期间可能已经变了）
+const canMergeInto = (conv) => conv === state.conv && isTavern(conv) && !conv.lock && !conv.messages.length && !state.generating;
+
+// 覆盖用户改过的设定之前先问一下，弹窗里显示将要改成的内容。确认覆盖返回 true
+async function askOverwrite(message, next) {
+  return (await choose(t('restore.stConflictTitle'), message + '\n\n' + next, [
+    { label: t('restore.keepMine'), value: 'keep' },
+    { label: t('restore.overwrite'), value: 'yes', primary: true },
+  ])) === 'yes';
+}
+
+// 世界书加入当前对话：放在世界观最前面
+async function mergeBook(conv, b) {
+  if (!(await ask(t('restore.stBookMerge', { name: b.name, n: b.n, tokens: estimateTokens(b.text).toLocaleString() })))) return;
+  if (!canMergeInto(conv) || conv.tavern.book != null) return;
+  conv.worldText = joinParts(bookSection(b.text), conv.worldText);
+  conv.tavern.book = b.name;
+  await refreshAfterMerge(conv);
+  toast(t('restore.stBookMergeDone'));
+}
+
+// 角色卡加入当前对话：角色设定接在世界观后面，开场白加进开场白的版本；
+// 卡里的 System Prompt、重点指令和你改过的内容冲突时，问是否覆盖
+async function mergeCard(conv, x) {
+  const hasArt = !!(await DB.get(artKey(conv.id)));
+  const art = x.art && !hasArt;
+  if (!(await ask(t('restore.stCardMerge', { name: x.name, greetings: x.greetings.length, art: art ? t('restore.stCardArt') : '' })
+    + '\n\n' + t('restore.continue')))) return;
+  if (!canMergeInto(conv) || conv.tavern.char != null) return;
+
+  // System Prompt：卡里的 {{original}} 换成当前的 System Prompt。当前还是默认内容就直接用卡里的，改过的先问
+  let systemPrompt = conv.systemPrompt;
+  if (x.systemPrompt) {
+    const next = STCard.replaceOriginal(x.systemPrompt, conv.systemPrompt.trim()).trim();
+    const isDefault = !conv.systemPrompt.trim() || isDefaultSystemPrompt(conv.systemPrompt) || isPreviousDefaultSystemPrompt(conv.systemPrompt);
+    if (isDefault || (next !== conv.systemPrompt.trim() && (await askOverwrite(t('restore.stSpConflict'), next)))) systemPrompt = next;
+  }
+  // 重点指令：当前是空的就直接用卡里的，有内容的先问
+  let postHistory = conv.postHistory;
+  if (x.postHistory) {
+    const cur = conv.postHistory.trim();
+    if (!cur || (x.postHistory !== cur && (await askOverwrite(t('restore.stPhConflict'), x.postHistory)))) postHistory = x.postHistory;
+  }
+  if (!canMergeInto(conv) || conv.tavern.char != null) return;
+
+  conv.systemPrompt = systemPrompt;
+  conv.postHistory = postHistory;
+  conv.worldText = joinParts(conv.worldText, x.section);
+  conv.tavern.char = x.name;
+  if (x.greetings.length) {
+    if (!conv.greetings.length) conv.greetingSend = true;
+    conv.greetingCur = conv.greetings.length;
+    conv.greetings = conv.greetings.concat(x.greetings);
+    syncGreeting(conv);
+  }
+  if (art) await DB.set(artKey(conv.id), x.art);
+  await refreshAfterMerge(conv);
+  toast(t('restore.stCardMergeDone'));
+  showCreatorNotes(x, conv);
+}
+
 async function importST(st, artBlob, filename) {
-  if (st.kind === 'card') await importSTCard(st.card, artBlob, filename);
-  else await importSTBook(st.book, filename);
+  const cur = state.conv;
+  const tavern = isTavern(cur) && !cur.lock;
+  const started = tavern && cur.messages.length > 0;
+  const open = tavern && !started; // 可以加入当前对话
+
+  if (st.kind === 'book') {
+    const entries = STCard.lorebookEntries(st.book);
+    if (!entries.length) return toast(t('restore.stBookEmpty'));
+    const b = {
+      name: (typeof st.book.name === 'string' && st.book.name.trim()) || baseName(filename) || t('export.unnamedWorld'),
+      text: STCard.importMacros(STCard.lorebookText(entries)).trim(),
+      n: entries.length,
+    };
+    if (open && cur.tavern.book == null) return mergeBook(cur, b);
+    return importBookAsNew(b, started ? 'restore.stStarted' : open ? 'restore.stHasBook' : null);
+  }
+
+  const x = cardContent(st.card, artBlob, filename);
+  if (!open) return importCardAsNew(x, started ? 'restore.stStarted' : null);
+  if (cur.tavern.char != null) {
+    // 已经有角色了：不支持群聊，问是否新建对话
+    const go = await choose(t('restore.stGroupTitle'), t('restore.stGroupChat', { char: cur.tavern.char, name: x.name }), [
+      { label: t('btn.cancel'), value: null, ghost: true },
+      { label: t('restore.stNewConv'), value: 'new', primary: true },
+    ]);
+    if (!go || cur !== state.conv) return;
+    let copied = null;
+    if (cur.tavern.book != null && x.bookName == null) {
+      const copy = await choose(t('restore.stGroupTitle'), t('restore.stCopyBook', { book: cur.tavern.book }), [
+        { label: t('btn.cancel'), value: null, ghost: true },
+        { label: t('restore.stNoCopy'), value: 'no' },
+        { label: t('restore.stCopy'), value: 'yes', primary: true },
+      ]);
+      if (!copy || cur !== state.conv) return;
+      if (copy === 'yes') copied = { book: cur.tavern.book, text: lorebookPart(cur.worldText) };
+    }
+    return createCardConv(x, copied);
+  }
+  // 卡自带世界书，当前对话也已经有世界书：两个世界观不能放在同一个对话里
+  if (cur.tavern.book != null && x.bookName != null) return importCardAsNew(x, 'restore.stHasBook');
+  return mergeCard(cur, x);
+}
+
+// 读取文件：Proteus 的世界卡或备份 → { proteus }；酒馆的角色卡或世界书 → { st, art }；不认识 → { error: i18n 键名 }
+async function readImportFile(file) {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  if (STCard.isPng(bytes)) {
+    const obj = STCard.fromPng(bytes);
+    return obj ? { st: STCard.detect(obj), art: new Blob([bytes], { type: 'image/png' }) } : { error: 'restore.pngNoCard' };
+  }
+  let data;
+  try { data = JSON.parse(new TextDecoder().decode(bytes)); } catch (_) { return { error: 'restore.notJson' }; }
+  if (data && data.app === 'proteus') return { proteus: data };
+  const st = STCard.detect(data);
+  return st ? { st, art: null } : { error: 'restore.invalid' };
+}
+
+// “🍺 新建酒馆兼容对话”选择的文件：只接受酒馆的角色卡和世界书
+async function importTavernFile(file) {
+  if (state.generating) return toast(t('conv.stopFirst'));
+  const r = await readImportFile(file);
+  if (r.st) return importST(r.st, r.art, file.name);
+  return toast(t(r.error === 'restore.pngNoCard' ? r.error : 'restore.notTavern'));
 }
 
 // 读取世界卡、完整备份（当前对话 / 全部对话），或者酒馆的角色卡（PNG / JSON）、世界书（JSON）。
 // 剧情导出是 TXT/Markdown，不能读回
 async function restore(file) {
   if (state.generating) return toast(t('conv.stopFirst'));
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  if (STCard.isPng(bytes)) {
-    const obj = STCard.fromPng(bytes);
-    if (!obj) return toast(t('restore.pngNoCard'));
-    return importST(STCard.detect(obj), new Blob([bytes], { type: 'image/png' }), file.name);
-  }
-  let data;
-  try { data = JSON.parse(new TextDecoder().decode(bytes)); } catch (_) { return toast(t('restore.notJson')); }
-  if (!data || data.app !== 'proteus') {
-    const st = STCard.detect(data);
-    return st ? importST(st, null, file.name) : toast(t('restore.invalid'));
-  }
+  const r = await readImportFile(file);
+  if (r.error) return toast(t(r.error));
+  if (r.st) return importST(r.st, r.art, file.name);
+  const data = r.proteus;
 
   if (data.type === 'worldcard') {
     const name = data.name || t('export.unnamedWorld');
@@ -1762,6 +1960,7 @@ async function restore(file) {
     c.greetingCur = data.greetingCur;
     c.greetingSend = fields.greetingSend !== false;
     normalizeGreetings(c);
+    if (data.tavern) { c.tavern = data.tavern; normalizeTavern(c); }
     c.title = name;
     state.conversations.push(c);
     await DB.putConversation(storable(c));
@@ -1897,6 +2096,7 @@ function bindBackButton() {
     }
     // 信息弹窗直接关掉：它没有自己的 Escape 处理，派发 Escape 会连设置面板一起关掉
     if (!els.modal.hidden) { els.modal.hidden = true; return; }
+    if (expandSource) return closeExpand();
     if (document.body.classList.contains('settings-open')) return closeSettings();
     if (state.editingId) return cancelEdit();
     if (state.greetingMode) return exitGreetingMode();
@@ -1960,6 +2160,7 @@ function fillConvFields() {
   els.postHistory.placeholder = t(assistant ? 'assistant.postHistoryUnused' : 'set.postHistoryPlaceholder');
   els.btnUploadWorld.disabled = assistant;
   els.btnClearWorld.disabled = assistant;
+  els.btnExpandWorld.disabled = assistant;
   els.btnUploadArt.disabled = locked;
   els.btnRemoveArt.disabled = locked;
   els.artPane.classList.toggle('locked', locked);
@@ -2081,6 +2282,29 @@ function bindModelMenu() {
       closeModelMenu();
     }
   });
+}
+
+// ---- 放大窗口：在聊天区上盖一个大的输入框编辑 System Prompt 或世界观，内容和右侧的输入框同步 ----
+
+let expandSource = null; // 正在放大编辑的那个右侧输入框
+
+function openExpand(source, titleKey) {
+  if (source.disabled || state.conv.lock) return;
+  if (isMobileLayout()) closeSettings(); // 手机布局：设置面板会盖住聊天区，先收起来
+  expandSource = source;
+  els.expandTitle.textContent = t(titleKey);
+  els.expandText.value = source.value;
+  els.expandText.placeholder = source.placeholder;
+  els.expandBox.hidden = false;
+  els.expandText.focus();
+  els.expandText.setSelectionRange(0, 0); // 从开头显示
+  els.expandText.scrollTop = 0;
+}
+
+function closeExpand() {
+  if (!expandSource) return;
+  expandSource = null;
+  els.expandBox.hidden = true;
 }
 
 function updateWorldCount() {
@@ -2294,6 +2518,26 @@ function bindSettings() {
     location.reload();
   });
 
+  els.fileTavern.addEventListener('change', async () => {
+    const f = els.fileTavern.files[0];
+    els.fileTavern.value = '';
+    if (f) await importTavernFile(f);
+  });
+
+  // 放大窗口：System Prompt 和世界观
+  els.btnExpandSystem.addEventListener('click', () => openExpand(els.systemPrompt, 'set.systemPrompt'));
+  els.btnExpandWorld.addEventListener('click', () => openExpand(els.worldText, 'set.world'));
+  els.expandText.addEventListener('input', () => {
+    if (!expandSource) return;
+    expandSource.value = els.expandText.value;
+    expandSource.dispatchEvent(new Event('input')); // 和直接在右侧输入一样保存、更新字数
+  });
+  // 点在放大窗口以外的地方就关闭（按 Esc 也可以）
+  document.addEventListener('mousedown', (e) => { if (expandSource && !els.expandBox.contains(e.target)) closeExpand(); }, true);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && expandSource) { e.stopPropagation(); closeExpand(); }
+  }, true);
+
   els.btnExport.addEventListener('click', exportMenu);
   els.btnRestore.addEventListener('click', () => els.fileRestore.click());
   els.fileRestore.addEventListener('change', async () => {
@@ -2303,11 +2547,12 @@ function bindSettings() {
   });
 }
 
-async function renameConv() {
-  const name = await askText(t('conv.rename'), t('conv.renamePrompt'), state.conv.title);
-  if (name === null || !name.trim()) return;
-  state.conv.title = name.trim();
-  await saveConv();
+// 重命名：默认是当前对话，也可以是对话列表里右键点中的对话
+async function renameConv(target = state.conv) {
+  const name = await askText(t('conv.rename'), t('conv.renamePrompt'), target.title);
+  if (name === null || !name.trim() || !state.conversations.includes(target)) return;
+  target.title = name.trim();
+  await saveConv(target);
 }
 
 // 删除对话：默认是当前对话，也可以是对话列表里右键点中的对话。
@@ -2377,6 +2622,11 @@ function bindChat() {
       closeConvMenu();
     }
   });
+  els.btnCtxRename.addEventListener('click', () => {
+    const c = ctxConv;
+    closeConvMenu();
+    if (c) void renameConv(c); // 不用等：输入框和保存由 renameConv 自己完成
+  });
   els.btnCtxDelete.addEventListener('click', () => {
     const c = ctxConv;
     closeConvMenu();
@@ -2394,18 +2644,27 @@ function bindChat() {
     else if (!els.convMenu.hidden) { e.stopPropagation(); closeConvMenu(); els.convSelect.focus(); }
   }, true);
   window.addEventListener('resize', closeConvMenu);
-  els.btnNewConv.addEventListener('click', () => createConversation());
-  els.btnNewConvMenu.addEventListener('click', (e) => {
+  els.btnNewConv.addEventListener('click', (e) => {
     e.stopPropagation();
     if (els.newConvMenu.hidden) openNewConvMenu(); else closeNewConvMenu();
   });
-  els.btnNewConvOther.addEventListener('click', () => createConversation(!isAssistant(state.conv)));
+  els.btnNewRoleplay.addEventListener('click', () => createConversation('roleplay'));
+  els.btnNewAssistant.addEventListener('click', () => createConversation('assistant'));
+  els.btnNewTavern.addEventListener('click', () => createConversation('tavern'));
+  // 菜单里用 ↑ ↓ 移动
+  els.newConvMenu.addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    e.preventDefault();
+    const items = newConvItems();
+    const i = items.indexOf(document.activeElement);
+    items[(i + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length].focus();
+  });
   document.addEventListener('click', (e) => { if (!els.newConvGroup.contains(e.target)) closeNewConvMenu(); });
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !els.newConvMenu.hidden) { e.stopPropagation(); closeNewConvMenu(); els.btnNewConvMenu.focus(); }
+    if (e.key === 'Escape' && !els.newConvMenu.hidden) { e.stopPropagation(); closeNewConvMenu(); els.btnNewConv.focus(); }
   }, true);
-  els.btnRenameConv.addEventListener('click', renameConv);
-  els.btnRenameConv2.addEventListener('click', renameConv);
+  els.btnRenameConv.addEventListener('click', () => renameConv());
+  els.btnRenameConv2.addEventListener('click', () => renameConv());
   els.btnDeleteConv.addEventListener('click', () => deleteConv());
   els.btnDeleteConv2.addEventListener('click', () => deleteConv());
 
@@ -2450,7 +2709,7 @@ async function boot() {
   for (const c of await DB.listConversations()) {
     try { await openLock(c); } catch (e) { console.error('无法解密对话', c.id, e); continue; }
     state.conversations.push(c);
-    const fields = () => JSON.stringify([c.title, c.mode, c.systemPrompt, c.worldText, c.persona, c.userName, c.postHistory,
+    const fields = () => JSON.stringify([c.title, c.mode, c.tavern, c.systemPrompt, c.worldText, c.persona, c.userName, c.postHistory,
       c.greeting, c.greetings, c.greetingCur, c.greetingSend, c.activeAt, !!c.lock]);
     const before = fields();
     normalizeConv(c, legacy);
