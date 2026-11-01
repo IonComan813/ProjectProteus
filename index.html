@@ -121,6 +121,8 @@
       <section class="card">
         <h3 data-i18n="set.npc"></h3>
         <p class="hint" data-i18n="set.npcHint"></p>
+        <!-- {{char}} 的值：显示和发送时，内容里的 {{char}} 换成这里填的值。读取酒馆角色卡时自动填上角色名 -->
+        <input type="text" id="charName" class="user-name unlockable" spellcheck="false" autocomplete="off" data-i18n-ph="set.charNamePlaceholder" data-i18n-title="set.charNameTitle">
         <textarea id="npcText" class="scroll-box unlockable" rows="5" data-i18n-ph="set.npcPlaceholder"></textarea>
         <div class="lock-box lock-only" data-i18n="lock.protected"></div>
         <div class="row">

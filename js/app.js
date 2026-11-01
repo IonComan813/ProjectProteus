@@ -1,14 +1,14 @@
 // 主程序：界面、对话管理、上下文拼装。
 //
 // 数据分两类：
-//   - 每个对话各自保存：System Prompt、世界观、NPC角色（npcText）、用户人设、{{user}} 的值（userName）、重点指令（postHistory）、
+//   - 每个对话各自保存：System Prompt、世界观、NPC角色（npcText）和 {{char}} 的值（charName）、用户人设、{{user}} 的值（userName）、重点指令（postHistory）、
 //     开场白（可以有多个版本：greetings 和当前版本的序号 greetingCur，greeting 是当前版本）、剧情，
 //     以及艺术图（存在 art:<对话id>）。新建对话时复制当前对话的设定和开场白，之后互不影响。
 //   - 来自加密世界卡的对话带有 conv.lock：System Prompt、世界观、重点指令、开场白和艺术图只以密文保存，
 //     在内存里解密后使用，界面上不能查看或修改，输入密码解锁后变回普通对话。
 //   - 酒馆兼容对话（带 conv.tavern = { char, book }）：导入酒馆（SillyTavern）的角色卡或世界书得到的角色扮演对话。
-//     char 是角色卡的名字（还没有角色卡时为 null），book 是世界书的名字（还没有世界书时为 null）。
-//     内容里的 {{char}} 在显示和发送时换成 char。
+//     char 是读取的角色卡的名字（还没有角色卡时为 null），book 是世界书的名字（还没有世界书时为 null），
+//     用来判断还能不能把酒馆的内容加入这个对话。读取角色卡时 {{char}} 的值（charName）也填上这个名字，之后可以改。
 //   - 助理模式的对话（conv.mode === 'assistant'）：普通的 LLM 对话，只发送 System Prompt 和对话记录。
 //     世界观、用户人设、{{user}} 的值、重点指令、开场白都不使用（保持为空），也不加密；艺术图照常可用。没有 mode 的就是角色扮演对话，
 //     所以存储和备份格式与角色扮演对话相同。
@@ -151,7 +151,7 @@ function saveSettingsSoon() {
 
 // 要写入本机存储（和备份）的对话：锁定的对话不保存明文，那几项只在 conv.lock 里以密文存在。
 // 开场白当前是第几个版本（greetingCur）不是受保护的内容，保存在锁外面：锁定的对话在开始前也可以切换开场白
-const LOCKED_FIELDS = ['systemPrompt', 'worldText', 'npcText', 'postHistory', 'greeting', 'greetings', 'greetingSend'];
+const LOCKED_FIELDS = ['systemPrompt', 'worldText', 'npcText', 'charName', 'postHistory', 'greeting', 'greetings', 'greetingSend'];
 function storable(conv) {
   if (!conv.lock) return conv;
   const out = { ...conv };
@@ -159,7 +159,7 @@ function storable(conv) {
   return out;
 }
 const lockedFields = (c) => ({
-  systemPrompt: c.systemPrompt, worldText: c.worldText, npcText: c.npcText, postHistory: c.postHistory,
+  systemPrompt: c.systemPrompt, worldText: c.worldText, npcText: c.npcText, charName: c.charName, postHistory: c.postHistory,
   greeting: c.greeting, greetings: c.greetings.slice(), greetingSend: c.greetingSend !== false,
 });
 
@@ -235,13 +235,13 @@ function buildSystem(conv = state.conv) {
 }
 
 // 显示和发送时替换的宏（不区分大小写）。存着的内容不变；没有值时原样保留：
-//   {{user}} → {{user}} 的值；{{char}} → 酒馆兼容对话里角色卡的名字
+//   {{user}} → {{user}} 的值（用户角色人设上方）；{{char}} → {{char}} 的值（NPC角色上方）
 const USER_MACRO = /\{\{user\}\}/gi;
 const CHAR_MACRO = /\{\{char\}\}/gi;
 function withMacros(text, conv = state.conv) {
   if (!text || !conv || isAssistant(conv)) return text;
   const user = (conv.userName || '').trim();
-  const char = conv.tavern && conv.tavern.char ? conv.tavern.char.trim() : '';
+  const char = (conv.charName || '').trim();
   let out = text;
   if (user) out = out.replace(USER_MACRO, () => user);
   if (char) out = out.replace(CHAR_MACRO, () => char);
@@ -321,6 +321,7 @@ function newConversation(from, assistant = isAssistant(from)) {
       systemPrompt: isAssistant(from) ? from.systemPrompt : t('defaultAssistantPrompt'),
       worldText: '',
       npcText: '',
+      charName: '',
       persona: '',
       userName: '',
       postHistory: '',
@@ -341,6 +342,7 @@ function newConversation(from, assistant = isAssistant(from)) {
     systemPrompt: from ? from.systemPrompt : t('defaultSystemPrompt'),
     worldText: from ? from.worldText : '',
     npcText: from ? from.npcText : '',
+    charName: from ? from.charName : '',
     persona: from ? from.persona : '',
     userName: from ? from.userName : '',
     postHistory: from ? from.postHistory : '',
@@ -368,6 +370,7 @@ function normalizeConv(c, legacy) {
     if (typeof c.systemPrompt !== 'string') c.systemPrompt = t('defaultAssistantPrompt');
     c.worldText = '';
     c.npcText = '';
+    c.charName = '';
     c.persona = '';
     c.userName = '';
     c.postHistory = '';
@@ -388,6 +391,8 @@ function normalizeConv(c, legacy) {
   if (typeof c.persona !== 'string') c.persona = (legacy && legacy.persona) || '';
   if (typeof c.userName !== 'string') c.userName = '';
   normalizeTavern(c);
+  // 这一版之前的酒馆兼容对话没有 charName：用读取的角色卡的名字
+  if (typeof c.charName !== 'string') c.charName = (c.tavern && c.tavern.char) || '';
   if (typeof c.postHistory !== 'string') c.postHistory = '';
   normalizeGreetings(c);
   if (c.greetingSend === undefined) c.greetingSend = true;
@@ -1761,6 +1766,7 @@ async function createCardConv(x) {
   c.systemPrompt = x.systemPrompt ? STCard.replaceOriginal(x.systemPrompt, defaultPrompt).trim() : defaultPrompt;
   c.worldText = x.bookText;
   c.npcText = x.npc;
+  c.charName = x.name;
   c.postHistory = x.postHistory;
   c.greetings = x.greetings.slice();
   c.greetingCur = 0;
@@ -1834,7 +1840,8 @@ async function mergeCard(conv, x) {
   if (!(await ask(t('restore.stCardMerge', { name: x.name, greetings: x.greetings.length, art: art ? t('restore.stCardArt') : '' })
     + '\n\n' + t('restore.continue')))) return;
   if (!canMergeInto(conv) || conv.tavern.char != null) return;
-  if (!(await confirmReplaceBlock(conv.npcText, 'restore.stReplaceNpc'))) return;
+  // 「NPC角色」（包括 {{char}} 的值）里已经有你自己写的内容：先问
+  if (!(await confirmReplaceBlock(conv.npcText + conv.charName, 'restore.stReplaceNpc'))) return;
   // 卡自带世界书（只有当前对话还没有世界书时才会走到这里）：一起放进「世界观」
   const withBook = x.bookName != null && conv.tavern.book == null;
   if (withBook && !(await confirmReplaceBlock(conv.worldText, 'restore.stReplaceWorld'))) return;
@@ -1857,6 +1864,7 @@ async function mergeCard(conv, x) {
   conv.systemPrompt = systemPrompt;
   conv.postHistory = postHistory;
   conv.npcText = x.npc;
+  conv.charName = x.name;
   conv.tavern.char = x.name;
   if (withBook) {
     conv.worldText = x.bookText;
@@ -1954,6 +1962,7 @@ async function restore(file) {
     if (typeof fields.systemPrompt === 'string') c.systemPrompt = fields.systemPrompt;
     c.worldText = typeof fields.worldText === 'string' ? fields.worldText : '';
     c.npcText = typeof fields.npcText === 'string' ? fields.npcText : '';
+    c.charName = typeof fields.charName === 'string' ? fields.charName : '';
     c.postHistory = typeof fields.postHistory === 'string' ? fields.postHistory : '';
     c.persona = '';
     c.userName = '';
@@ -2149,18 +2158,21 @@ function fillConvFields() {
   els.systemPrompt.value = locked ? '' : c.systemPrompt;
   els.worldText.value = locked ? '' : c.worldText;
   els.npcText.value = locked ? '' : c.npcText;
+  els.charName.value = locked ? '' : c.charName;
   els.persona.value = c.persona;
   els.userName.value = c.userName;
   els.postHistory.value = locked ? '' : c.postHistory;
   // 助理模式：世界观、用户人设、{{user}} 的值和重点指令空白、不能编辑（不是受保护，是这个模式不用）；艺术图照常可用
   els.worldText.disabled = assistant;
   els.npcText.disabled = assistant;
+  els.charName.disabled = assistant;
   els.btnExpandNpc.disabled = assistant;
   els.persona.disabled = assistant;
   els.userName.disabled = assistant;
   els.postHistory.disabled = assistant;
   els.worldText.placeholder = t(assistant ? 'assistant.worldUnused' : 'set.worldPlaceholder');
   els.npcText.placeholder = t(assistant ? 'assistant.npcUnused' : 'set.npcPlaceholder');
+  els.charName.placeholder = t(assistant ? 'assistant.charNameUnused' : 'set.charNamePlaceholder');
   els.persona.placeholder = t(assistant ? 'assistant.personaUnused' : 'set.personaPlaceholder');
   els.userName.placeholder = t(assistant ? 'assistant.userNameUnused' : 'set.userNamePlaceholder');
   els.postHistory.placeholder = t(assistant ? 'assistant.postHistoryUnused' : 'set.postHistoryPlaceholder');
@@ -2403,13 +2415,21 @@ function bindSettings() {
   onConv(els.npcText, (el) => { if (!c().lock && !isAssistant(c())) { c().npcText = el.value; updateWorldCount(); } });
   onConv(els.persona, (el) => { if (!isAssistant(c())) c().persona = el.value; });
   onConv(els.postHistory, (el) => { if (!c().lock && !isAssistant(c())) c().postHistory = el.value; });
-  // {{user}} 的值改了：聊天区里显示的内容跟着变（稍等一下再重画，开场白的窗口重画时会重新载入）
-  let userNameTimer = null;
+  // {{user}} 和 {{char}} 的值改了：聊天区里显示的内容跟着变（稍等一下再重画，开场白的窗口重画时会重新载入）
+  let macroTimer = null;
+  const redrawSoon = () => {
+    clearTimeout(macroTimer);
+    macroTimer = setTimeout(() => { if (state.conv) renderMessages(); }, 300);
+  };
   onConv(els.userName, (el) => {
     if (isAssistant(c())) return;
     c().userName = el.value;
-    clearTimeout(userNameTimer);
-    userNameTimer = setTimeout(() => { if (state.conv) renderMessages(); }, 300);
+    redrawSoon();
+  });
+  onConv(els.charName, (el) => {
+    if (isAssistant(c()) || c().lock) return;
+    c().charName = el.value;
+    redrawSoon();
   });
 
   // 记忆轮数：可以直接输入，也可以点 − / +，范围 1–40
@@ -2744,7 +2764,7 @@ async function boot() {
   for (const c of await DB.listConversations()) {
     try { await openLock(c); } catch (e) { console.error('无法解密对话', c.id, e); continue; }
     state.conversations.push(c);
-    const fields = () => JSON.stringify([c.title, c.mode, c.tavern, c.systemPrompt, c.worldText, c.npcText, c.persona, c.userName, c.postHistory,
+    const fields = () => JSON.stringify([c.title, c.mode, c.tavern, c.systemPrompt, c.worldText, c.npcText, c.charName, c.persona, c.userName, c.postHistory,
       c.greeting, c.greetings, c.greetingCur, c.greetingSend, c.activeAt, !!c.lock]);
     const before = fields();
     normalizeConv(c, legacy);

@@ -65,15 +65,15 @@ Switching computers, reinstalling your system or (for the web version) clearing 
 |---|---|
 | Left | Artwork. Click to upload; portrait images work best. The image is shown at the width of the left column without stretching: if it is taller than the column, the top and bottom are cropped; if it is shorter, black bars are added above and below. Drag the right edge of the column to resize it (up to about 45% of the window, always leaving enough room for the chat); double-click the edge to reset |
 | Middle | The story. At the top you can switch, create, rename and delete conversations ("＋ New chat" opens a menu where you choose a "🎭 roleplay", "🤖 assistant" (see [Assistant mode](#assistant-mode)) or "🍺 SillyTavern" chat (see [Loading SillyTavern character cards](#loading-sillytavern-character-cards)); in the list, the emoji before each conversation's name shows its type, followed by its number of rounds and the time of its latest activity — creating it, saving the opening, or sending a request to the model — and the list is sorted by that time; in the open list, left-click switches to a conversation and right-click lets you rename or delete it); at the bottom is the input box, press **Ctrl + Enter** to send. Drag the edge above the input box to change its height |
-| Right | Settings, from top to bottom: System Prompt → World → NPC characters → User's character (with the `{{user}}` value) → Key Instructions → Memory length → Model & API → Artwork → Export & backup → Local data → Language |
+| Right | Settings, from top to bottom: System Prompt → World → NPC characters (with the `{{char}}` value) → User's character (with the `{{user}}` value) → Key Instructions → Memory length → Model & API → Artwork → Export & backup → Local data → Language |
 
 Below the System Prompt, world and NPC characters boxes, "Enlarge" opens a large editing window for easier writing; it stays in sync with the box on the right. Click outside it (or press Esc) to close it. On a computer it covers the chat; in the mobile layout (the settings panel opened with ⚙) it covers the settings panel.
 
-"NPC characters" is for the other characters in the world, played by the model; keeping them apart from the world makes both clearer. When a SillyTavern character card is loaded, the character goes here.
+"NPC characters" is for the other characters in the world, played by the model; keeping them apart from the world makes both clearer. When a SillyTavern character card is loaded, the character goes here. The one-line box above it is the **`{{char}}` value** (its placeholder reads "{{char}} value") and works like the [`{{user}}` value](#user-value) below: `{{char}}` in the content is shown and sent as this value, and stays as is while it is empty; loading a SillyTavern character card fills in the character's name, which you can change. Like NPC characters, it counts as part of the setting: it is included in world cards and encrypted along with them.
 
 ### Each conversation has its own settings
 
-**The System Prompt, world, NPC characters, user's character, `{{user}}` value, key instructions, opening (all versions) and artwork belong to each conversation.** A new chat of the same type copies these from the current conversation (with an empty story); after that the two are independent. Switching back to an older conversation shows that conversation's own settings.
+**The System Prompt, world, NPC characters, `{{char}}` value, user's character, `{{user}}` value, key instructions, opening (all versions) and artwork belong to each conversation.** A new chat of the same type copies these from the current conversation (with an empty story); after that the two are independent. Switching back to an older conversation shows that conversation's own settings.
 
 Memory length, Model & API, API keys, interface language and layout are app settings shared by all conversations.
 
@@ -199,7 +199,7 @@ User messages and model replies, alternating:
 - **Earlier story omitted**: the Anthropic format requires the first message to be from the user. If the range happens to start with a model reply, a user message reading `(Earlier story omitted)` is added in front. This doesn't happen in a normally alternating story
 - If two messages in a row ever come from the same side, they are merged into one (separated by a blank line) so the API doesn't reject the request
 
-If a [`{{user}}` value](#user-value) is filled in, `{{user}}` is replaced with it in everything above, the system settings included; in a [SillyTavern chat](#loading-sillytavern-character-cards), `{{char}}` is replaced with the character card's name.
+In everything above, the system settings included, `{{user}}` is replaced with the [`{{user}}` value](#user-value) and `{{char}}` with the `{{char}}` value (above "NPC characters"); each stays as is while its value is empty.
 
 ### Example
 
@@ -331,7 +331,7 @@ A lorebook goes into "World" and a character into "NPC characters". When added t
 
 | SillyTavern field | Proteus |
 |---|---|
-| Name (`name`) | The title of a new conversation; every `{{char}}` in the conversation is shown and sent as this name |
+| Name (`name`) | The title of a new conversation; it fills in the `{{char}}` value (you can change it), and every `{{char}}` in the conversation is shown and sent as that value |
 | Image | Artwork (when added to a conversation, only if that conversation has no artwork yet) |
 | System Prompt (`system_prompt`) | System Prompt. Where the card says `{{original}}`, the existing System Prompt is put in its place (the author adds to it). In a new conversation, the default is used if the card has none. When added to a conversation, the card's prompt is used directly if the current one is still the default; if you have changed it, you are asked first, and the dialog shows what it would become |
 | Embedded lorebook (`character_book`) | "World" (full text) |
@@ -347,7 +347,7 @@ A standalone lorebook goes into "World" in full.
 
 ### Macros
 
-- `{{char}}`: kept in the content, and shown and sent as the name of the conversation's character card; left as is while there is no character card. So when you load a lorebook first and add a character card later, `{{char}}` in the lorebook works too
+- `{{char}}`: kept in the content, and shown and sent as the `{{char}}` value above "NPC characters"; loading a character card fills in the character's name, and it stays as is while the value is empty. So when you load a lorebook first and add a character card later, `{{char}}` in the lorebook works too
 - `{{user}}`: kept, and shown and sent as the [`{{user}}` value](#user-value)
 - `{{// …}}` (author's comments): removed when loading
 - In older cards, `<USER>` is treated as `{{user}}`, and `<BOT>` and `<CHAR>` as `{{char}}`
