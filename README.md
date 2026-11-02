@@ -67,7 +67,7 @@ Switching computers, reinstalling your system or (for the web version) clearing 
 |---|---|
 | Left | Artwork. Click to upload; portrait images work best. The image is shown at the width of the left column without stretching: if it is taller than the column, the top and bottom are cropped; if it is shorter, black bars are added above and below. Drag the right edge of the column to resize it (up to about 45% of the window, always leaving enough room for the chat); double-click the edge to reset |
 | Middle | The story. At the top you can switch, create, rename and delete conversations ("＋ New chat" opens a menu where you choose a "🎭 roleplay", "🤖 assistant" (see [Assistant mode](#assistant-mode)) or "🍺 SillyTavern" chat (see [Loading SillyTavern character cards](#loading-sillytavern-character-cards)); in the list, the emoji before each conversation's name shows its type, followed by its number of rounds and the time of its latest activity — creating it, saving the opening, or sending a request to the model — and the list is sorted by that time; in the open list, left-click switches to a conversation and right-click lets you rename or delete it); at the bottom is the input box, press **Ctrl + Enter** to send. Drag the edge above the input box to change its height |
-| Right | Settings, from top to bottom: System Prompt → World → NPC characters (with the `{{char}}` value) → User's character (with the `{{user}}` value) → Key Instructions → Memory length → Model & API → Artwork → Export & backup → Local data → Language |
+| Right | Settings, from top to bottom: System Prompt → World → NPC characters (with the `{{char}}` value) → User's character (with the `{{user}}` value) → Key Instructions → Memory length → Model & API → Artwork → Export & backup → App data → Language |
 
 Below the System Prompt, world and NPC characters boxes, "Enlarge" opens a large editing window for easier writing; it stays in sync with the box on the right. Click outside it (or press Esc) to close it. On a computer it covers the chat; in the mobile layout (the settings panel opened with ⚙) it covers the settings panel.
 
@@ -369,7 +369,7 @@ Cards that rely on SillyTavern-only features (regex scripts, STscript, front-end
 ## Shared devices
 
 - "Remember API keys on this device" under "Model & API": when unchecked, API keys only last until you close the page and are never written to this device
-- "Clear all local data" under "Local data" on the right: deletes every conversation, setting, artwork and API key Proteus has stored in this browser
+- "Clear app data" under "App data" on the right: deletes every conversation, setting, artwork and API key saved by this copy of Proteus. The web version keeps its data in the browser you open it with, separate from the native apps; clearing one does not affect the other
 
 ## API key security
 

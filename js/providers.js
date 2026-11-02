@@ -202,7 +202,7 @@ function rememberNativeOrigin(origin) {
   try { localStorage.setItem(NATIVE_ORIGINS_KEY, JSON.stringify([...nativeOrigins])); } catch (_) { /* 只在这次打开期间记住 */ }
 }
 
-// 忘掉记住的接口地址（“清除本机所有数据”时调用）
+// 忘掉记住的接口地址（“清除软件数据”时调用）
 function forgetNativeOrigins() {
   nativeOrigins.clear();
   try { localStorage.removeItem(NATIVE_ORIGINS_KEY); } catch (_) { /* 本来就没存 */ }
