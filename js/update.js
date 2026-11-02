@@ -8,7 +8,8 @@
 // files 里是安装包的文件名，和 version.json 放在同一个目录里。
 //
 // 软件启动后读取这两个文件：正式版比当前版本新就提示；测试版比当前版本新、也比正式版新才提示。
-// 两个都有时在同一个窗口里列出，由用户选择下载哪个，或者都不更新。选择后用浏览器下载对应平台的安装包。
+// 两个都有时在同一个窗口里列出，由用户选择下载哪个、稍后提醒、跳过这些版本，或者这次不更新。
+// 电脑版在软件里下载（可以选择保存位置，完成后问是否关闭软件并运行安装程序）；安卓版用系统浏览器下载。
 // 网页版不检查（没有安装包可更新）。
 
 // 更新服务器的地址（结尾不带 /）。仓库里是空的（不检查更新）；打包工作流用仓库变量 UPDATE_BASE_URL 填进来
@@ -76,16 +77,33 @@ function updateDialogFree() {
   return els.dialog.hidden && els.pwDialog.hidden && els.textDialog.hidden && els.modal.hidden && !state.generating;
 }
 
+// 稍后提醒和跳过的版本，保存在软件设置里：
+//   updateSnooze.until：这个时间之前不提示（「一天后提醒」「三天后提醒」），期间出了更新的版本也不提示
+//   updateSnooze.skip：{ stable, beta } 各频道跳过的版本（「跳过此版本」），只有更新的版本才再提示
+function updateSnooze() {
+  const z = state.settings.updateSnooze;
+  return z && typeof z === 'object' ? z : {};
+}
+function setUpdateSnooze(z) {
+  state.settings.updateSnooze = z;
+  saveSettingsSoon();
+}
+
 async function checkForUpdates() {
   if (!UPDATE_BASE_URL || !IN_NATIVE_APP || !state.version) return;
   const key = updateFileKey();
   if (!key) return;
+  const snooze = updateSnooze();
+  if (snooze.until && Date.now() < snooze.until) return;
+  const skip = snooze.skip || {};
   const current = state.version;
   const [stable, beta] = await Promise.all([fetchUpdateManifest('stable'), fetchUpdateManifest('beta')]);
+  const wanted = (m) => m && m.files[key] && compareVersions(m.version, current) > 0
+    && !(skip[m.channel] && !(compareVersions(m.version, skip[m.channel]) > 0));
   const offers = [];
-  if (stable && stable.files[key] && compareVersions(stable.version, current) > 0) offers.push(stable);
-  if (beta && beta.files[key] && compareVersions(beta.version, current) > 0
-    && (!stable || compareVersions(beta.version, stable.version) > 0)) offers.push(beta);
+  if (wanted(stable)) offers.push(stable);
+  // 测试版还要比最新的正式版新（不论正式版是否被跳过）
+  if (wanted(beta) && (!stable || compareVersions(beta.version, stable.version) > 0)) offers.push(beta);
   if (!offers.length) return;
 
   for (let waited = 0; !updateDialogFree(); waited += 2000) {
@@ -93,21 +111,104 @@ async function checkForUpdates() {
     await new Promise((r) => setTimeout(r, 2000));
   }
 
+  const choice = await showUpdateDialog(current, offers);
+  if (!choice) return;
+  if (choice.remindDays) {
+    setUpdateSnooze({ ...updateSnooze(), until: Date.now() + choice.remindDays * 24 * 3600 * 1000 });
+    toast(t('update.remindSet', { days: choice.remindDays }));
+  } else if (choice.skip) {
+    const skipNow = { ...(updateSnooze().skip || {}) };
+    for (const m of offers) skipNow[m.channel] = m.version;
+    setUpdateSnooze({ ...updateSnooze(), until: 0, skip: skipNow });
+    toast(t('update.skipped'));
+  } else if (choice.manifest) {
+    await downloadUpdate(`${UPDATE_BASE_URL}/${choice.manifest.channel}/${encodeURIComponent(choice.manifest.files[key])}`);
+  }
+}
+
+// 更新提示窗口。按钮：暂不更新 /「一天后提醒」（旁边的 ▾ 打开菜单：三天后提醒、跳过此版本）/ 下载测试版 / 下载正式版。
+// 返回 { manifest } / { remindDays } / { skip: true }，「暂不更新」或关闭返回 null（下次启动再提示）
+function showUpdateDialog(current, offers) {
   const lines = offers.map((m) => t(m.channel === 'beta' ? 'update.lineBeta' : 'update.lineStable', { version: m.version }));
   const message = t('update.message', { current, list: lines.join('\n') })
     + (offers.some((m) => m.channel === 'beta') ? '\n\n' + t('update.betaNote') : '');
-  const choice = await choose(t('update.title'), message, [
-    { label: t('update.later'), value: null, ghost: true },
-    ...offers.slice().reverse().map((m) => ({
-      label: t(m.channel === 'beta' ? 'update.getBeta' : 'update.getStable', { version: m.version }),
-      value: m,
-      primary: m.channel === 'stable',
-    })),
-  ]);
-  if (!choice) return;
-  // 用浏览器下载：电脑版由主进程交给系统浏览器，安卓版由 WebView 交给系统浏览器
+  return new Promise((resolve) => {
+    els.dialogTitle.textContent = t('update.title');
+    els.dialogMessage.textContent = message;
+    els.dialogButtons.innerHTML = '';
+    let menu = null;
+    const close = (value) => {
+      els.dialog.hidden = true;
+      document.removeEventListener('keydown', onKey, true);
+      document.removeEventListener('mousedown', onOutside, true);
+      resolve(value);
+    };
+    const closeMenu = () => { if (menu) { menu.hidden = true; toggle.setAttribute('aria-expanded', 'false'); } };
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return;
+      e.stopPropagation();
+      if (menu && !menu.hidden) { closeMenu(); toggle.focus(); } else close(null);
+    };
+    const onOutside = (e) => { if (menu && !menu.hidden && !split.contains(e.target)) closeMenu(); };
+
+    els.dialogButtons.appendChild(button(t('update.later'), () => close(null), 'btn btn-ghost'));
+
+    // 「一天后提醒 ▾」：左边直接选一天后提醒，右边的 ▾ 打开菜单
+    const split = document.createElement('div');
+    split.className = 'split-btn update-remind';
+    split.appendChild(button(t('update.remind1'), () => close({ remindDays: 1 }), 'btn'));
+    const toggle = button('', () => {
+      const open = menu.hidden;
+      menu.hidden = !open;
+      toggle.setAttribute('aria-expanded', String(open));
+      if (open) menu.querySelector('.split-item').focus();
+    }, 'btn split-toggle');
+    toggle.innerHTML = '<span class="caret"></span>';
+    toggle.title = t('update.remindMore');
+    toggle.setAttribute('aria-label', t('update.remindMore'));
+    toggle.setAttribute('aria-haspopup', 'menu');
+    toggle.setAttribute('aria-expanded', 'false');
+    split.appendChild(toggle);
+    menu = document.createElement('div');
+    menu.className = 'split-menu';
+    menu.setAttribute('role', 'menu');
+    menu.hidden = true;
+    for (const [label, value] of [[t('update.remind3'), { remindDays: 3 }], [t('update.skip'), { skip: true }]]) {
+      const item = button(label, () => close(value), 'split-item');
+      item.setAttribute('role', 'menuitem');
+      menu.appendChild(item);
+    }
+    split.appendChild(menu);
+    els.dialogButtons.appendChild(split);
+
+    for (const m of offers.slice().reverse()) {
+      const label = t(m.channel === 'beta' ? 'update.getBeta' : 'update.getStable', { version: m.version });
+      els.dialogButtons.appendChild(button(label, () => close({ manifest: m }), 'btn' + (m.channel === 'stable' ? ' btn-primary' : '')));
+    }
+    document.addEventListener('keydown', onKey, true);
+    document.addEventListener('mousedown', onOutside, true);
+    els.dialog.hidden = false;
+    (els.dialogButtons.querySelector('.btn-primary') || els.dialogButtons.lastElementChild).focus();
+  });
+}
+
+// 下载安装包。电脑版：在软件里下载，先选择保存位置，完成后问是否关闭软件并运行安装程序（electron/main.js）。
+// 安卓版：交给系统浏览器下载，下载完成后点通知安装
+let updateProgressBound = false;
+async function downloadUpdate(url) {
+  const desktop = window.proteusDesktop;
+  if (desktop && desktop.downloadUpdate) {
+    if (!updateProgressBound) {
+      updateProgressBound = true;
+      desktop.onUpdateDownload((info) => {
+        if (info.state === 'progress') toast(info.percent == null ? t('update.progressUnknown') : t('update.progress', { percent: info.percent }));
+        else if (info.state === 'done') toast(t('update.downloaded'));
+      });
+    }
+    if (await desktop.downloadUpdate(url)) return;
+  }
   const a = document.createElement('a');
-  a.href = `${UPDATE_BASE_URL}/${choice.channel}/${encodeURIComponent(choice.files[key])}`;
+  a.href = url;
   a.target = '_blank';
   a.rel = 'noopener';
   document.body.appendChild(a);

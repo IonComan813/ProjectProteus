@@ -628,6 +628,8 @@ textarea:focus, input:focus, select:focus { outline: 1px solid var(--accent); bo
   max-height: 60vh; /* 显示较长的内容（例如将要覆盖的 System Prompt）时可以滚动 */
   overflow: auto;
 }
+/* 更新提示里的「一天后提醒 ▾」：在弹窗底部，菜单往上展开 */
+.update-remind .split-menu { top: auto; bottom: calc(100% + 4px); left: 0; right: auto; }
 .dialog-buttons {
   display: flex;
   flex-wrap: wrap;

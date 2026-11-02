@@ -1,9 +1,10 @@
 // Windows / macOS / Linux 原生应用（Electron）的入口：用自带的 Chromium 内核打开 index.html。
 // 页面本身和浏览器版完全相同；这里只负责窗口、安全设置，以及去掉跨域限制。
 
-const { app, BrowserWindow, Menu, dialog, shell, session } = require('electron');
+const { app, BrowserWindow, Menu, dialog, shell, session, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { spawn } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
 
@@ -70,6 +71,7 @@ function createWindow() {
       nodeIntegration: false,
       sandbox: true,
       spellcheck: false,
+      preload: path.join(__dirname, 'preload.js'), // 只提供下载更新这一个原生功能
     },
   });
 
@@ -143,6 +145,114 @@ function allowCors() {
   });
 }
 
+// ---- 下载更新 ----
+// 页面（js/update.js）请求下载某个安装包时：让用户选择保存位置，任务栏显示进度，
+// 下载完成后按安装包的类型问用户：关闭软件并运行安装程序（Windows 安装版）、打开 dmg（macOS）、
+// 启动新的 AppImage（Linux），或者打开所在文件夹（Windows 免安装版的 zip，需要自己解压替换）。
+const UPDATE_TEXT = {
+  'zh-CN': {
+    save: '保存更新安装包', later: '稍后', failed: '更新下载失败：',
+    exe: ['安装程序已下载。现在关闭 Proteus 并运行安装程序吗？', '关闭并安装'],
+    dmg: ['安装包已下载。现在关闭 Proteus 并打开它吗？打开后把 Proteus 拖进「应用程序」文件夹，替换旧版本即可。', '关闭并打开'],
+    appimage: ['新版本已下载。现在关闭 Proteus 并启动新版本吗？之后可以删除旧的 AppImage 文件。', '关闭并启动新版本'],
+    zip: ['免安装版已下载。关闭 Proteus 后解压，用新的文件夹替换旧的即可，对话和设定不受影响。', '打开所在文件夹'],
+  },
+  'zh-TW': {
+    save: '儲存更新安裝檔', later: '稍後', failed: '更新下載失敗：',
+    exe: ['安裝程式已下載。現在關閉 Proteus 並執行安裝程式嗎？', '關閉並安裝'],
+    dmg: ['安裝檔已下載。現在關閉 Proteus 並開啟它嗎？開啟後把 Proteus 拖進「應用程式」檔案夾，取代舊版本即可。', '關閉並開啟'],
+    appimage: ['新版本已下載。現在關閉 Proteus 並啟動新版本嗎？之後可以刪除舊的 AppImage 檔案。', '關閉並啟動新版本'],
+    zip: ['免安裝版已下載。關閉 Proteus 後解壓縮，用新的資料夾取代舊的即可，對話和設定不受影響。', '開啟所在資料夾'],
+  },
+  en: {
+    save: 'Save the update', later: 'Later', failed: 'The update could not be downloaded: ',
+    exe: ['The installer has been downloaded. Close Proteus and run it now?', 'Close and install'],
+    dmg: ['The installer has been downloaded. Close Proteus and open it now? Then drag Proteus into the Applications folder to replace the old version.', 'Close and open'],
+    appimage: ['The new version has been downloaded. Close Proteus and start the new version now? You can delete the old AppImage afterwards.', 'Close and start'],
+    zip: ['The portable version has been downloaded. After closing Proteus, unzip it and replace the old folder with the new one; your conversations and settings are not affected.', 'Show in folder'],
+  },
+  ja: {
+    save: '更新ファイルを保存', later: 'あとで', failed: '更新をダウンロードできませんでした：',
+    exe: ['インストーラーをダウンロードしました。Proteus を閉じてインストーラーを実行しますか？', '閉じてインストール'],
+    dmg: ['インストーラーをダウンロードしました。Proteus を閉じて開きますか？開いたら Proteus を「アプリケーション」フォルダにドラッグして、古いバージョンと置き換えてください。', '閉じて開く'],
+    appimage: ['新しいバージョンをダウンロードしました。Proteus を閉じて新しいバージョンを起動しますか？古い AppImage はあとで削除できます。', '閉じて起動'],
+    zip: ['ポータブル版をダウンロードしました。Proteus を閉じてから展開し、古いフォルダを新しいフォルダに置き換えてください。会話と設定はそのまま残ります。', 'フォルダを表示'],
+  },
+};
+const updateText = () => UPDATE_TEXT[pageLang] || UPDATE_TEXT['zh-CN'];
+
+const pendingUpdates = new Set(); // 页面请求下载、还没开始的安装包地址
+
+function sendUpdateState(info) {
+  if (win) win.webContents.send('update-download', info);
+}
+
+async function afterUpdateDownload(file) {
+  const text = updateText();
+  const ext = path.extname(file).toLowerCase();
+  const kind = ext === '.exe' ? 'exe' : ext === '.dmg' ? 'dmg' : ext === '.appimage' ? 'appimage' : 'zip';
+  const [message, action] = text[kind];
+  const { response } = await dialog.showMessageBox(win, {
+    type: 'question', message, buttons: [action, text.later], defaultId: 0, cancelId: 1,
+  });
+  if (response !== 0) return;
+  if (kind === 'zip') {
+    shell.showItemInFolder(file);
+    return;
+  }
+  try {
+    if (kind === 'appimage') {
+      fs.chmodSync(file, 0o700); // 只给自己读、写、运行的权限：启动新版本不需要让其他用户也能运行
+      spawn(file, [], { detached: true, stdio: 'ignore' }).unref();
+    } else {
+      const error = await shell.openPath(file);
+      if (error) throw new Error(error);
+    }
+  } catch (e) {
+    dialog.showErrorBox('Proteus', text.failed + e.message);
+    return;
+  }
+  app.quit();
+}
+
+function setupUpdateDownloads() {
+  ipcMain.handle('download-update', (e, url) => {
+    // 只接受这个窗口的请求（preload 只在主页面里运行，消息显示用的沙箱小窗口调用不到），而且只下载 https 地址上的安装包
+    if (!win || e.sender.id !== win.webContents.id) return false;
+    if (typeof url !== 'string' || !/^https:\/\/[^\s]+\.(exe|zip|dmg|AppImage)$/i.test(url)) return false;
+    pendingUpdates.add(url);
+    win.webContents.downloadURL(url);
+    return true;
+  });
+
+  session.defaultSession.on('will-download', (_e, item) => {
+    const url = item.getURLChain()[0] || item.getURL();
+    if (!pendingUpdates.has(url)) return; // 其他下载（例如导出备份）照常处理
+    pendingUpdates.delete(url);
+    // 不设置保存路径：Electron 会弹出“另存为”，默认放在“下载”文件夹
+    item.setSaveDialogOptions({ title: updateText().save, defaultPath: path.join(app.getPath('downloads'), item.getFilename()) });
+    item.on('updated', (_ev, state) => {
+      if (state !== 'progressing') return;
+      const total = item.getTotalBytes();
+      const fraction = total ? item.getReceivedBytes() / total : -1;
+      if (win) win.setProgressBar(total ? fraction : 2); // 2 = 不确定进度
+      sendUpdateState({ state: 'progress', percent: total ? Math.floor(fraction * 100) : null });
+    });
+    item.once('done', (_ev, state) => {
+      if (win) win.setProgressBar(-1);
+      if (state === 'completed') {
+        sendUpdateState({ state: 'done' });
+        void afterUpdateDownload(item.getSavePath());
+      } else if (state === 'cancelled') {
+        sendUpdateState({ state: 'cancelled' });
+      } else {
+        sendUpdateState({ state: 'failed' });
+        dialog.showErrorBox('Proteus', updateText().failed + state);
+      }
+    });
+  });
+}
+
 // macOS 需要“编辑”菜单，复制粘贴快捷键才能用；其他系统不显示菜单栏
 function setupMenu() {
   if (process.platform !== 'darwin') {
@@ -167,6 +277,7 @@ if (gotLock) {
   app.whenReady().then(() => {
     setupMenu();
     allowCors();
+    setupUpdateDownloads();
     createWindow();
     app.on('activate', () => { if (!win) createWindow(); });
   });
