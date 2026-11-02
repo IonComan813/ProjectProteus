@@ -2954,11 +2954,14 @@ function init() {
   bindBackButton();
   // 消息高度变化时（内容载入、图片加载、展开 <details> 等），如果停留在底部就继续贴底
   Render.onResize(() => { if (state.follow) els.messages.scrollTop = els.messages.scrollHeight; });
-  void detectVersion().then((v) => { state.version = v; renderFooter(); }); // detectVersion 自己处理出错
-  boot().catch((e) => {
+  const version = detectVersion().then((v) => { state.version = v; renderFooter(); }); // detectVersion 自己处理出错
+  const booted = boot().catch((e) => {
     console.error(e);
     showError(t('boot.failed', { msg: e.message }));
+    throw e;
   });
+  // 读完数据、知道当前版本号以后，稍等一下再检查更新（只在原生应用里；读取数据失败时不检查）
+  Promise.all([version, booted]).then(() => setTimeout(() => void checkForUpdates(), 3000), () => {});
 }
 
 document.addEventListener('DOMContentLoaded', init);
