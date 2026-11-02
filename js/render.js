@@ -147,10 +147,9 @@ const Render = (() => {
     applySafe(f);
   }
 
-  // 开场白窗口里的脚本通过 postMessage 汇报高度。允许脚本的窗口没有 allow-same-origin，来源总是 "null"；
-  // 另外还要确认消息来自哪一个窗口（e.source）
+  // 开场白窗口里的脚本通过 postMessage 汇报高度
   window.addEventListener('message', (e) => {
-    if (e.origin !== 'null' || !e.data || e.data.proteus !== 'height') return;
+    if (!e.data || e.data.proteus !== 'height') return;
     for (const el of document.querySelectorAll('iframe.msg-frame')) {
       if (el._scripts && el.contentWindow === e.source) {
         if (e.data.gen === el._gen) setHeight(el, e.data.h);

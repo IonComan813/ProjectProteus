@@ -27,8 +27,7 @@ jobs:
           java-version: 21
           cache: gradle
 
-      # 不运行依赖包的安装脚本（打包用不到，也避免依赖包在构建机上执行代码）
-      - run: npm ci --ignore-scripts
+      - run: npm ci
 
       - name: Build a debug APK
         run: |
