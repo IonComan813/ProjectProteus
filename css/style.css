@@ -823,6 +823,7 @@ textarea:focus, input:focus, select:focus { outline: 1px solid var(--accent); bo
   .conv-menu .combo-item { line-height: 36px; font-size: 15px; }
   .conv-pager { font-size: 14px; }
   .conv-page-btn { width: 40px; height: 34px; }
+  .ctx-menu .split-item { padding: 11px 18px; font-size: 15px; } /* 长按弹出的菜单：方便手指点 */
 }
 
 /* 触屏没有“鼠标悬停”，消息下方的按钮一直显示 */

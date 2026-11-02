@@ -540,6 +540,10 @@ function fillConvMenu() {
       openConvCtxMenu(c, e.clientX, e.clientY);
     });
     item.addEventListener('mousemove', () => highlightConv(i, false));
+    addLongPress(item, (x, y) => {
+      highlightConv(i, false);
+      openConvCtxMenu(c, x, y);
+    });
     els.convMenu.appendChild(item);
   });
   if (convMenu.pages > 1) els.convMenu.appendChild(convPager());
@@ -613,7 +617,41 @@ function pickConv(c) {
   if (c !== state.conv) void switchConv(c.id);
 }
 
-// 右键菜单：只有“删除”，删除的是右键点中的那个对话（不一定是当前对话）
+// 触屏上长按（约半秒、手指没有移动）调用 onPress(x, y)，代替鼠标右键：安卓 WebView 不一定把长按当作右键。
+// 长按以后松手不算一次点击（不会切换对话）。手指移动超过 10 像素（在滚动）就取消
+function addLongPress(el, onPress) {
+  let timer = null;
+  let fired = false;
+  let x0 = 0;
+  let y0 = 0;
+  const cancel = () => { clearTimeout(timer); timer = null; };
+  el.addEventListener('touchstart', (e) => {
+    cancel();
+    fired = false;
+    if (e.touches.length !== 1) return;
+    x0 = e.touches[0].clientX;
+    y0 = e.touches[0].clientY;
+    timer = setTimeout(() => {
+      timer = null;
+      fired = true;
+      if (navigator.vibrate) navigator.vibrate(15);
+      onPress(x0, y0);
+    }, 500);
+  }, { passive: true });
+  el.addEventListener('touchmove', (e) => {
+    const p = e.touches[0];
+    if (timer && Math.hypot(p.clientX - x0, p.clientY - y0) > 10) cancel();
+  }, { passive: true });
+  el.addEventListener('touchend', (e) => {
+    cancel();
+    if (fired && e.cancelable) e.preventDefault(); // 不产生随后的点击
+  });
+  el.addEventListener('touchcancel', cancel);
+  // 长按时系统也可能发出右键（contextmenu）事件：已经由上面处理过，不再重复打开
+  el.addEventListener('contextmenu', (e) => { if (fired) { e.preventDefault(); e.stopImmediatePropagation(); } }, true);
+}
+
+// 右键菜单（触屏上长按）：重命名、删除，对象是右键点中的那个对话（不一定是当前对话）
 let ctxConv = null;
 
 function openConvCtxMenu(conv, x, y) {
@@ -2912,9 +2950,7 @@ function bindChat() {
     if (e.key === 'Escape' && !els.newConvMenu.hidden) { e.stopPropagation(); closeNewConvMenu(); els.btnNewConv.focus(); }
   }, true);
   els.btnRenameConv.addEventListener('click', () => renameConv());
-  els.btnRenameConv2.addEventListener('click', () => renameConv());
   els.btnDeleteConv.addEventListener('click', () => deleteConv());
-  els.btnDeleteConv2.addEventListener('click', () => deleteConv());
 
   els.btnModalClose.addEventListener('click', () => { els.modal.hidden = true; });
   els.modal.addEventListener('click', (e) => { if (e.target === els.modal) els.modal.hidden = true; });
