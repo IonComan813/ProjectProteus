@@ -55,8 +55,9 @@ const els = {};
 // ---------------- 工具函数 ----------------
 
 function uid() {
-  if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
-  return Date.now().toString(36) + Math.random().toString(36).slice(2);
+  if (crypto.randomUUID) return crypto.randomUUID();
+  // randomUUID 只在安全上下文（https、本机文件）里有；其他情况用同样来自安全随机数的 16 字节
+  return Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 function escapeHtml(s) {
@@ -1419,7 +1420,7 @@ async function unlockConv() {
   if (!conv.lock) return;
   const pw = await askPassword(t('lock.unlockTitle'), t('lock.unlockMessage'), false);
   if (pw === null) return;
-  if (!(await Locker.checkPassword(conv.lock, pw))) return toast(t('lock.wrongPassword'));
+  if (!(await Locker.checkPassword(conv.lock, pw))) return toast(t('lock.wrongPw'));
   const art = await artBlobOf(conv);
   delete conv.lock;
   if (art) await DB.set(artKey(conv.id), art);
@@ -2477,9 +2478,28 @@ async function detectVersion() {
   return null;
 }
 
+// 网页版：从 js/version.js 读出这份代码来自哪次提交（只有用「Download ZIP」下载的才有）。
+// 返回 { tag, commit, date }，tag 只在这次提交正好是某个版本标签时才有；没有替换过的占位符当作没有
+function sourceInfo() {
+  if (typeof SOURCE_INFO === 'undefined') return null;
+  const val = (s) => (typeof s === 'string' && s && !s.includes('$Format') ? s.trim() : '');
+  const commit = val(SOURCE_INFO.commit);
+  if (!/^[0-9a-f]{4,40}$/i.test(commit)) return null;
+  const date = val(SOURCE_INFO.date);
+  // git describe --tags：正好在标签上时就是标签本身（v0.4.0），之后的提交是 v0.4.0-3-gabc1234
+  const describe = val(SOURCE_INFO.describe);
+  const tag = /^v\d/.test(describe) && !/-\d+-g[0-9a-f]+$/i.test(describe) ? describe : '';
+  return { tag, commit, date: /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : '' };
+}
+
 // 输入框下方的开源与免责声明（网址做成链接，后面跟着当前版本）
 function renderFooter() {
-  const version = state.version ? t('footer.version', { version: state.version }) : t('footer.versionWeb');
+  const src = state.version ? null : sourceInfo();
+  const version = state.version ? t('footer.version', { version: state.version })
+    : src ? t(src.tag ? 'footer.versionWebTag' : 'footer.versionWebCommit', {
+      tag: src.tag, commit: src.commit, date: src.date ? t('footer.versionDate', { date: src.date }) : '',
+    })
+      : t('footer.versionWeb');
   const [before, after] = t('footer.license', { version }).split('{url}');
   const a = document.createElement('a');
   a.href = PROJECT_URL;

@@ -30,15 +30,15 @@
         </div>
         <!-- 新对话：按钮只打开菜单，在菜单里选新建哪种对话 -->
         <div class="split-btn" id="newConvGroup">
-          <button id="btnNewConv" class="btn new-conv" data-i18n-title="conv.newMenu" aria-haspopup="menu" aria-expanded="false"><span data-i18n="conv.new"></span> <span class="caret"></span></button>
+          <button id="btnNewConv" class="btn new-conv" data-i18n-title="conv.newMenu" aria-haspopup="menu" aria-expanded="false"><span data-i18n="conv.new">＋ 新对话</span> <span class="caret"></span></button>
           <div class="split-menu" id="newConvMenu" role="menu" hidden>
-            <button id="btnNewRoleplay" class="split-item" role="menuitem" data-i18n="conv.newRoleplay"></button>
-            <button id="btnNewAssistant" class="split-item" role="menuitem" data-i18n="conv.newAssistant"></button>
-            <button id="btnNewTavern" class="split-item" role="menuitem" data-i18n="conv.newTavern"></button>
+            <button id="btnNewRoleplay" class="split-item" role="menuitem" data-i18n="conv.newRoleplay">🎭 新建角色扮演对话</button>
+            <button id="btnNewAssistant" class="split-item" role="menuitem" data-i18n="conv.newAssistant">🤖 新建助理模式对话</button>
+            <button id="btnNewTavern" class="split-item" role="menuitem" data-i18n="conv.newTavern">🍺 新建酒馆兼容对话</button>
           </div>
         </div>
-        <button id="btnRenameConv" class="btn btn-ghost desktop-only" data-i18n="conv.rename" data-i18n-title="conv.renameTitle"></button>
-        <button id="btnDeleteConv" class="btn btn-ghost danger desktop-only" data-i18n="conv.delete" data-i18n-title="conv.deleteTitle"></button>
+        <button id="btnRenameConv" class="btn btn-ghost desktop-only" data-i18n="conv.rename" data-i18n-title="conv.renameTitle">重命名</button>
+        <button id="btnDeleteConv" class="btn btn-ghost danger desktop-only" data-i18n="conv.delete" data-i18n-title="conv.deleteTitle">删除</button>
         <!-- 手机布局：设置面板收起来，点齿轮打开 -->
         <button id="btnSettings" class="btn icon-btn mobile-only" data-i18n-title="set.open">⚙</button>
       </header>
@@ -46,23 +46,23 @@
       <div class="messages-wrap">
         <div class="messages" id="messages"></div>
         <!-- 往上滚时显示“回到顶部”，往下滚时显示“回到底部”，两个不同时出现 -->
-        <button class="jump-btn jump-top" id="btnJumpTop" data-i18n="msg.jumpTop" hidden></button>
-        <button class="jump-btn jump-bottom" id="btnJumpBottom" data-i18n="msg.jumpBottom" hidden></button>
+        <button class="jump-btn jump-top" id="btnJumpTop" data-i18n="msg.jumpTop" hidden>↑ 回到顶部</button>
+        <button class="jump-btn jump-bottom" id="btnJumpBottom" data-i18n="msg.jumpBottom" hidden>↓ 回到底部</button>
       </div>
 
       <footer class="composer" id="composer">
         <div class="row-resizer" id="composerResizer" data-i18n-title="input.resizer"></div>
         <div class="error-bar" id="errorBar" hidden></div>
         <div class="composer-row">
-          <textarea id="input"></textarea>
+          <textarea id="input" data-i18n-aria="input.aria" aria-label="你的消息"></textarea>
           <div class="composer-buttons">
-            <button id="btnSend" class="btn btn-primary" data-i18n="btn.send"></button>
-            <button id="btnStop" class="btn danger" data-i18n="btn.stop" hidden></button>
-            <button id="btnReply" class="btn" data-i18n="btn.reply" data-i18n-title="btn.replyTitle" hidden></button>
-            <button id="btnAddGreeting" class="btn btn-ghost" data-i18n="btn.addGreeting" data-i18n-title="btn.addGreetingTitle" hidden></button>
-            <button id="btnGreetingReload" class="btn" data-i18n="btn.reload" data-i18n-title="btn.reloadTitle" hidden></button>
-            <button id="btnGreetingConfirm" class="btn btn-primary" data-i18n="btn.confirm" data-i18n-title="btn.confirmTitle" hidden></button>
-            <button id="btnGreetingCancel" class="btn btn-small btn-ghost" data-i18n="btn.cancel" hidden></button>
+            <button id="btnSend" class="btn btn-primary" data-i18n="btn.send">发送</button>
+            <button id="btnStop" class="btn danger" data-i18n="btn.stop" hidden>停止</button>
+            <button id="btnReply" class="btn" data-i18n="btn.reply" data-i18n-title="btn.replyTitle" hidden>生成回复</button>
+            <button id="btnAddGreeting" class="btn btn-ghost" data-i18n="btn.addGreeting" data-i18n-title="btn.addGreetingTitle" hidden>添加开场白</button>
+            <button id="btnGreetingReload" class="btn" data-i18n="btn.reload" data-i18n-title="btn.reloadTitle" hidden>重载</button>
+            <button id="btnGreetingConfirm" class="btn btn-primary" data-i18n="btn.confirm" data-i18n-title="btn.confirmTitle" hidden>确认</button>
+            <button id="btnGreetingCancel" class="btn btn-small btn-ghost" data-i18n="btn.cancel" hidden>取消</button>
           </div>
         </div>
         <div class="composer-footer" id="footer"></div>
@@ -74,141 +74,141 @@
     <aside class="settings-pane" id="settingsPane">
       <!-- 手机布局：设置面板的标题栏 -->
       <div class="settings-head mobile-only">
-        <strong data-i18n="set.title"></strong>
-        <button class="btn btn-small btn-ghost" id="btnCloseSettings" data-i18n="modal.close"></button>
+        <strong data-i18n="set.title">设置</strong>
+        <button class="btn btn-small btn-ghost" id="btnCloseSettings" data-i18n="modal.close">关闭</button>
       </div>
 
       <!-- 手机布局：顶部放不下的“重命名 / 删除”放在这里 -->
       <section class="card mobile-only">
-        <h3 data-i18n="set.conversation"></h3>
+        <h3 data-i18n="set.conversation">当前对话</h3>
         <div class="row">
-          <button class="btn btn-small" id="btnRenameConv2" data-i18n="conv.rename"></button>
-          <button class="btn btn-small btn-ghost danger" id="btnDeleteConv2" data-i18n="conv.delete"></button>
+          <button class="btn btn-small" id="btnRenameConv2" data-i18n="conv.rename">重命名</button>
+          <button class="btn btn-small btn-ghost danger" id="btnDeleteConv2" data-i18n="conv.delete">删除</button>
         </div>
       </section>
 
       <!-- 锁定的对话（来自加密世界卡）才显示 -->
       <section class="card lock-card lock-only">
-        <h3 data-i18n="lock.title"></h3>
+        <h3 data-i18n="lock.title">🔒 受保护的世界卡</h3>
         <p class="hint" data-i18n="lock.hint"></p>
-        <button class="btn btn-small" id="btnUnlock" data-i18n="lock.unlock"></button>
+        <button class="btn btn-small" id="btnUnlock" data-i18n="lock.unlock">输入密码解锁</button>
       </section>
 
       <section class="card">
-        <h3 data-i18n="set.systemPrompt"></h3>
+        <h3 id="hSystemPrompt" data-i18n="set.systemPrompt">System Prompt</h3>
         <p class="hint" data-i18n="set.systemPromptHint"></p>
-        <textarea id="systemPrompt" class="scroll-box unlockable" rows="6"></textarea>
+        <textarea id="systemPrompt" aria-labelledby="hSystemPrompt" class="scroll-box unlockable" rows="6"></textarea>
         <div class="lock-box lock-only" data-i18n="lock.protected"></div>
         <div class="row unlockable">
-          <button class="btn btn-small" id="btnExpandSystem" data-i18n="expand.button"></button>
-          <button class="btn btn-small btn-ghost" id="btnResetSystem" data-i18n="set.resetDefault"></button>
+          <button class="btn btn-small" id="btnExpandSystem" data-i18n="expand.button">放大窗口</button>
+          <button class="btn btn-small btn-ghost" id="btnResetSystem" data-i18n="set.resetDefault">恢复默认</button>
         </div>
       </section>
 
       <section class="card">
-        <h3 data-i18n="set.world"></h3>
+        <h3 id="hWorld" data-i18n="set.world">世界观</h3>
         <p class="hint" data-i18n="set.worldHint"></p>
-        <textarea id="worldText" class="scroll-box unlockable" rows="7" data-i18n-ph="set.worldPlaceholder"></textarea>
+        <textarea id="worldText" aria-labelledby="hWorld" class="scroll-box unlockable" rows="7" data-i18n-ph="set.worldPlaceholder"></textarea>
         <div class="lock-box lock-only" data-i18n="lock.protected"></div>
         <div class="row">
-          <button class="btn btn-small unlockable" id="btnUploadWorld" data-i18n="set.uploadText"></button>
-          <button class="btn btn-small unlockable" id="btnExpandWorld" data-i18n="expand.button"></button>
-          <button class="btn btn-small btn-ghost unlockable" id="btnClearWorld" data-i18n="set.clear"></button>
+          <button class="btn btn-small unlockable" id="btnUploadWorld" data-i18n="set.uploadText">上传文本文件</button>
+          <button class="btn btn-small unlockable" id="btnExpandWorld" data-i18n="expand.button">放大窗口</button>
+          <button class="btn btn-small btn-ghost unlockable" id="btnClearWorld" data-i18n="set.clear">清空</button>
           <span class="muted small" id="worldCount"></span>
         </div>
       </section>
 
       <section class="card">
-        <h3 data-i18n="set.npc"></h3>
+        <h3 id="hNpc" data-i18n="set.npc">NPC角色</h3>
         <p class="hint" data-i18n="set.npcHint"></p>
         <!-- {{char}} 的值：显示和发送时，内容里的 {{char}} 换成这里填的值。读取酒馆角色卡时自动填上角色名 -->
-        <input type="text" id="charName" class="user-name unlockable" spellcheck="false" autocomplete="off" data-i18n-ph="set.charNamePlaceholder" data-i18n-title="set.charNameTitle">
-        <textarea id="npcText" class="scroll-box unlockable" rows="5" data-i18n-ph="set.npcPlaceholder"></textarea>
+        <input type="text" id="charName" data-i18n-aria="set.charNamePlaceholder" aria-label="{{char}}值" class="user-name unlockable" spellcheck="false" autocomplete="off" data-i18n-ph="set.charNamePlaceholder" data-i18n-title="set.charNameTitle">
+        <textarea id="npcText" aria-labelledby="hNpc" class="scroll-box unlockable" rows="5" data-i18n-ph="set.npcPlaceholder"></textarea>
         <div class="lock-box lock-only" data-i18n="lock.protected"></div>
         <div class="row">
-          <button class="btn btn-small unlockable" id="btnExpandNpc" data-i18n="expand.button"></button>
+          <button class="btn btn-small unlockable" id="btnExpandNpc" data-i18n="expand.button">放大窗口</button>
           <span class="muted small" id="npcCount"></span>
         </div>
       </section>
 
       <section class="card">
-        <h3 data-i18n="set.persona"></h3>
+        <h3 id="hPersona" data-i18n="set.persona">用户角色人设</h3>
         <p class="hint" data-i18n="set.personaHint"></p>
         <!-- {{user}} 的值：显示和发送时，内容里的 {{user}} 换成这里填的值 -->
-        <input type="text" id="userName" class="user-name" spellcheck="false" autocomplete="off" data-i18n-ph="set.userNamePlaceholder" data-i18n-title="set.userNameTitle">
-        <textarea id="persona" class="scroll-box" rows="5" data-i18n-ph="set.personaPlaceholder"></textarea>
+        <input type="text" id="userName" data-i18n-aria="set.userNamePlaceholder" aria-label="{{user}}值" class="user-name" spellcheck="false" autocomplete="off" data-i18n-ph="set.userNamePlaceholder" data-i18n-title="set.userNameTitle">
+        <textarea id="persona" aria-labelledby="hPersona" class="scroll-box" rows="5" data-i18n-ph="set.personaPlaceholder"></textarea>
       </section>
 
       <section class="card">
-        <h3 data-i18n="set.postHistory"></h3>
-        <textarea id="postHistory" class="scroll-box unlockable" rows="4" data-i18n-ph="set.postHistoryPlaceholder"></textarea>
+        <h3 id="hPostHistory" data-i18n="set.postHistory">重点指令（Post-History Instructions）</h3>
+        <textarea id="postHistory" aria-labelledby="hPostHistory" class="scroll-box unlockable" rows="4" data-i18n-ph="set.postHistoryPlaceholder"></textarea>
         <div class="lock-box lock-only" data-i18n="lock.protected"></div>
         <p class="hint post-history-hint" data-i18n="set.postHistoryHint"></p>
         <p class="hint per-conv" data-i18n="set.perConvHint"></p>
       </section>
 
       <section class="card">
-        <h3 data-i18n="set.memory"></h3>
+        <h3 id="hMemory" data-i18n="set.memory">记忆长度</h3>
         <p class="hint" data-i18n="set.memoryHint"></p>
         <div class="row nowrap stepper">
           <button class="btn btn-small" id="btnRoundsMinus" data-i18n-title="set.roundsMinus">−</button>
           <!-- “轮”字在框里、不能选中，只有数字可以修改；数字和“轮”一起在框里居中 -->
           <label class="unit-input" for="rounds">
-            <input type="number" id="rounds" min="1" max="40" step="1">
-            <span class="unit" data-i18n="set.roundsUnit" aria-hidden="true"></span>
+            <input type="number" id="rounds" aria-labelledby="hMemory roundsUnit" min="1" max="40" step="1">
+            <span class="unit" id="roundsUnit" data-i18n="set.roundsUnit">轮</span>
           </label>
           <button class="btn btn-small" id="btnRoundsPlus" data-i18n-title="set.roundsPlus">＋</button>
         </div>
         <p class="hint" id="tokenEstimate"></p>
-        <button class="btn btn-small" id="btnPreviewNext" data-i18n="set.previewNext"></button>
+        <button class="btn btn-small" id="btnPreviewNext" data-i18n="set.previewNext">查看下一轮将发送的内容</button>
       </section>
 
       <section class="card">
-        <h3 data-i18n="set.model"></h3>
-        <label class="field"><span data-i18n="set.provider"></span>
+        <h3 data-i18n="set.model">模型与接口</h3>
+        <label class="field"><span data-i18n="set.provider">服务商</span>
           <select id="provider"></select>
         </label>
-        <label class="field"><span data-i18n="set.baseUrl"></span>
+        <label class="field"><span data-i18n="set.baseUrl">接口地址（Base URL）</span>
           <input type="text" id="baseUrl" spellcheck="false">
         </label>
-        <label class="field"><span data-i18n="set.apiKey"></span>
+        <label class="field"><span data-i18n="set.apiKey">API Key</span>
           <div class="row nowrap">
             <input type="password" id="apiKey" spellcheck="false" autocomplete="off" placeholder="sk-...">
-            <button class="btn btn-small btn-ghost" id="btnToggleKey" data-i18n="set.show"></button>
+            <button class="btn btn-small btn-ghost" id="btnToggleKey" data-i18n="set.show">显示</button>
           </div>
         </label>
         <label class="field-inline remember-keys">
-          <input type="checkbox" id="rememberKeys"> <span data-i18n="set.rememberKey"></span>
+          <input type="checkbox" id="rememberKeys"> <span data-i18n="set.rememberKey">在这台电脑上记住 API Key</span>
         </label>
         <p class="hint" data-i18n="set.rememberKeyHint"></p>
-        <div class="field"><span data-i18n="set.modelName"></span>
+        <div class="field"><span id="modelLabel" data-i18n="set.modelName">模型</span>
           <div class="row nowrap">
             <!-- 可以直接输入模型名，也可以点 ▾ 从列表里选 -->
             <div class="combo" id="modelCombo">
-              <input type="text" id="model" spellcheck="false" autocomplete="off" data-i18n-ph="set.modelPlaceholder">
+              <input type="text" id="model" aria-labelledby="modelLabel" spellcheck="false" autocomplete="off" data-i18n-ph="set.modelPlaceholder">
               <button type="button" class="combo-toggle" id="btnModelMenu" data-i18n-title="set.showModels">▾</button>
               <div class="combo-menu" id="modelMenu" hidden></div>
             </div>
-            <button class="btn btn-small btn-ghost" id="btnFetchModels" data-i18n="set.fetchModels" data-i18n-title="set.fetchModelsTitle"></button>
+            <button class="btn btn-small btn-ghost" id="btnFetchModels" data-i18n="set.fetchModels" data-i18n-title="set.fetchModelsTitle">获取列表</button>
           </div>
         </div>
-        <label class="field"><span data-i18n="set.maxTokens"></span>
+        <label class="field"><span data-i18n="set.maxTokens">最大输出长度（token）</span>
           <input type="number" id="maxTokens" min="256" step="256">
         </label>
         <div id="anthropicOptions">
-          <label class="field"><span data-i18n="set.effort"></span>
+          <label class="field"><span data-i18n="set.effort">思考深度（effort）</span>
             <select id="effort">
-              <option value="" data-i18n="set.effortDefault"></option>
-              <option value="low" data-i18n="set.effortLow"></option>
-              <option value="medium" data-i18n="set.effortMedium"></option>
-              <option value="high" data-i18n="set.effortHigh"></option>
+              <option value="" data-i18n="set.effortDefault">模型默认</option>
+              <option value="low" data-i18n="set.effortLow">low（快、省）</option>
+              <option value="medium" data-i18n="set.effortMedium">medium</option>
+              <option value="high" data-i18n="set.effortHigh">high（慢、细致）</option>
             </select>
           </label>
         </div>
         <div id="openaiOptions">
           <label class="field-inline">
-            <input type="checkbox" id="useTemperature"> <span data-i18n="set.temperature"></span>
-            <input type="number" id="temperature" min="0" max="2" step="0.05">
+            <input type="checkbox" id="useTemperature"> <span id="temperatureLabel" data-i18n="set.temperature">自定义 temperature</span>
+            <input type="number" id="temperature" aria-labelledby="temperatureLabel" min="0" max="2" step="0.05">
           </label>
           <p class="hint" data-i18n="set.temperatureHint"></p>
         </div>
@@ -216,48 +216,48 @@
       </section>
 
       <section class="card">
-        <h3 data-i18n="set.art"></h3>
+        <h3 data-i18n="set.art">艺术图</h3>
         <div class="row">
-          <button class="btn btn-small" id="btnUploadArt" data-i18n="set.uploadImage"></button>
-          <button class="btn btn-small" id="btnDownloadArt" data-i18n="set.download"></button>
-          <button class="btn btn-small btn-ghost" id="btnRemoveArt" data-i18n="set.remove"></button>
+          <button class="btn btn-small" id="btnUploadArt" data-i18n="set.uploadImage">上传图片</button>
+          <button class="btn btn-small" id="btnDownloadArt" data-i18n="set.download">下载</button>
+          <button class="btn btn-small btn-ghost" id="btnRemoveArt" data-i18n="set.remove">移除</button>
         </div>
       </section>
 
       <section class="card">
-        <h3 data-i18n="set.export"></h3>
+        <h3 data-i18n="set.export">导出与备份</h3>
         <div class="row">
-          <button class="btn btn-small" id="btnExport" data-i18n="set.exportBtn"></button>
-          <button class="btn btn-small btn-ghost" id="btnRestore" data-i18n="set.restoreBtn"></button>
+          <button class="btn btn-small" id="btnExport" data-i18n="set.exportBtn">导出 / 备份…</button>
+          <button class="btn btn-small btn-ghost" id="btnRestore" data-i18n="set.restoreBtn">读取世界卡 / 备份 / 酒馆卡</button>
         </div>
         <p class="hint" data-i18n="set.exportHint"></p>
       </section>
 
       <section class="card">
-        <h3 data-i18n="set.localData"></h3>
+        <h3 data-i18n="set.localData">本机数据</h3>
         <p class="hint" data-i18n="set.clearAllHint"></p>
-        <button class="btn btn-small danger" id="btnClearAll" data-i18n="set.clearAll"></button>
+        <button class="btn btn-small danger" id="btnClearAll" data-i18n="set.clearAll">清除本机所有数据</button>
       </section>
 
       <section class="card">
-        <h3 data-i18n="set.language"></h3>
-        <select id="langSelect"></select>
+        <h3 id="hLanguage" data-i18n="set.language">语言 / Language</h3>
+        <select id="langSelect" aria-labelledby="hLanguage"></select>
       </section>
     </aside>
   </div>
 
   <!-- 隐藏的文件选择器 -->
-  <input type="file" id="fileWorld" accept=".txt,.md,text/plain,text/markdown" hidden>
-  <input type="file" id="fileArt" accept="image/*" hidden>
-  <input type="file" id="fileRestore" accept=".json,.png,application/json,image/png" hidden>
-  <input type="file" id="fileTavern" accept=".json,.png,application/json,image/png" hidden>
+  <input type="file" id="fileWorld" aria-labelledby="btnUploadWorld" accept=".txt,.md,text/plain,text/markdown" hidden>
+  <input type="file" id="fileArt" aria-labelledby="btnUploadArt" accept="image/*" hidden>
+  <input type="file" id="fileRestore" aria-labelledby="btnRestore" accept=".json,.png,application/json,image/png" hidden>
+  <input type="file" id="fileTavern" aria-labelledby="btnNewTavern" accept=".json,.png,application/json,image/png" hidden>
 
   <!-- 弹窗 -->
   <div class="modal" id="modal" hidden>
     <div class="modal-box">
       <div class="modal-head">
         <strong id="modalTitle"></strong>
-        <button class="btn btn-small btn-ghost" id="btnModalClose" data-i18n="modal.close"></button>
+        <button class="btn btn-small btn-ghost" id="btnModalClose" data-i18n="modal.close">关闭</button>
       </div>
       <pre class="modal-body" id="modalBody"></pre>
     </div>
@@ -276,17 +276,17 @@
       <div class="modal-head"><strong id="pwTitle"></strong></div>
       <div class="dialog-message" id="pwMessage"></div>
       <div class="pw-fields">
-        <label class="field"><span data-i18n="pw.password"></span>
+        <label class="field"><span data-i18n="pw.password">密码（4–16 位）</span>
           <input type="password" id="pw1" maxlength="64" autocomplete="new-password">
         </label>
-        <label class="field" id="pw2Row"><span data-i18n="pw.repeat"></span>
+        <label class="field" id="pw2Row"><span data-i18n="pw.repeat">再输入一次</span>
           <input type="password" id="pw2" maxlength="64" autocomplete="new-password">
         </label>
         <div class="pw-error" id="pwError"></div>
       </div>
       <div class="dialog-buttons">
-        <button class="btn btn-ghost" id="pwCancel" data-i18n="btn.cancel"></button>
-        <button class="btn btn-primary" id="pwOk" data-i18n="pw.ok"></button>
+        <button class="btn btn-ghost" id="pwCancel" data-i18n="btn.cancel">取消</button>
+        <button class="btn btn-primary" id="pwOk" data-i18n="pw.ok">确定</button>
       </div>
     </div>
   </div>
@@ -295,33 +295,33 @@
     <div class="modal-box dialog-box">
       <div class="modal-head"><strong id="textTitle"></strong></div>
       <div class="pw-fields">
-        <label class="field"><span id="textMessage"></span>
-          <input type="text" id="textInput" maxlength="100" spellcheck="false">
-        </label>
+        <div class="field"><span id="textMessage"></span>
+          <input type="text" id="textInput" maxlength="100" spellcheck="false" aria-labelledby="textMessage">
+        </div>
       </div>
       <div class="dialog-buttons">
-        <button class="btn btn-ghost" id="textCancel" data-i18n="btn.cancel"></button>
-        <button class="btn btn-primary" id="textOk" data-i18n="pw.ok"></button>
+        <button class="btn btn-ghost" id="textCancel" data-i18n="btn.cancel">取消</button>
+        <button class="btn btn-primary" id="textOk" data-i18n="pw.ok">确定</button>
       </div>
     </div>
   </div>
 
   <!-- 对话列表里右键一个对话时出现在光标右下方的菜单：重命名、删除 -->
   <div class="split-menu ctx-menu" id="convCtxMenu" role="menu" hidden>
-    <button id="btnCtxRename" class="split-item" role="menuitem" data-i18n="conv.rename"></button>
-    <button id="btnCtxDelete" class="split-item danger" role="menuitem" data-i18n="conv.delete"></button>
+    <button id="btnCtxRename" class="split-item" role="menuitem" data-i18n="conv.rename">重命名</button>
+    <button id="btnCtxDelete" class="split-item danger" role="menuitem" data-i18n="conv.delete">删除</button>
   </div>
 
   <!-- 放大的编辑窗口（System Prompt / 世界观 / NPC角色）：内容和右侧的输入框同步，点窗口以外的地方关闭。
        电脑布局盖在聊天区上，手机布局盖在设置面板上（位置由 JS 设置） -->
   <div class="expand-box" id="expandBox" hidden>
-    <div class="expand-head"><strong id="expandTitle"></strong><span class="muted small" data-i18n="expand.hint"></span></div>
-    <textarea id="expandText"></textarea>
+    <div class="expand-head"><strong id="expandTitle"></strong><span class="muted small" data-i18n="expand.hint">点击窗口以外的地方关闭</span></div>
+    <textarea id="expandText" aria-labelledby="expandTitle"></textarea>
   </div>
 
   <!-- 查看下一轮将发送的内容：按发送的顺序列出每一块（带标签的原文和预估 token），点窗口以外的地方关闭 -->
   <div class="expand-box preview-box" id="previewBox" hidden>
-    <div class="expand-head"><strong data-i18n="preview.title"></strong><span class="muted small" data-i18n="expand.hint"></span></div>
+    <div class="expand-head"><strong data-i18n="preview.title">下一轮将发送的内容</strong><span class="muted small" data-i18n="expand.hint">点击窗口以外的地方关闭</span></div>
     <div class="muted small" id="previewTotal"></div>
     <div class="preview-body" id="previewBody"></div>
   </div>
@@ -329,6 +329,7 @@
   <div class="toast" id="toast" hidden></div>
 
   <script src="js/vendor/marked.min.js"></script>
+  <script src="js/version.js"></script>
   <script src="js/i18n.js"></script>
   <script src="js/db.js"></script>
   <script src="js/crypto.js"></script>

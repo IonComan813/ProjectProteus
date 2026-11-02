@@ -63,7 +63,8 @@ jobs:
           node-version: 22
           cache: npm
 
-      - run: npm ci
+      # 不运行依赖包的安装脚本（打包用不到，也避免依赖包在构建机上执行代码）
+      - run: npm ci --ignore-scripts
 
       - name: Take the version number from the tag
         if: env.RELEASE_TAG != ''
@@ -110,7 +111,8 @@ jobs:
           java-version: 21
           cache: gradle
 
-      - run: npm ci
+      # 不运行依赖包的安装脚本（打包用不到，也避免依赖包在构建机上执行代码）
+      - run: npm ci --ignore-scripts
 
       - name: Work out the version number
         shell: bash

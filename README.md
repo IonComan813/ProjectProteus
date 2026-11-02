@@ -51,6 +51,8 @@ Nothing to install:
 1. Download the whole folder (**Code → Download ZIP** on the GitHub page, then unzip it)
 2. Double-click `index.html` and open it in Chrome or Edge
 
+The notice below the input box says which commit this copy of the web version comes from: if you downloaded it with **Download ZIP** (or "Source code" on the Releases page), it shows the commit and its date, plus the version when that commit is exactly a release, e.g. "(web version v0.4.0, commit abc1234, 2026-11-02)". GitHub writes this into `js/version.js` when it builds the archive; code obtained with `git clone` doesn't have it and just shows "(web version)".
+
 When the window is narrower than 1000 pixels (including on a phone browser), the mobile layout is used automatically.
 
 ### Where is my data stored?

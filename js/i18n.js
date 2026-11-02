@@ -1,5 +1,6 @@
 // 界面多语言。t('键名', { 变量 }) 取当前语言的文字，缺失时退回简体中文。
-// 页面上的固定文字用 data-i18n（文字）、data-i18n-ph（占位提示）、data-i18n-title（悬停提示）标记。
+// 页面上的固定文字用 data-i18n（文字）、data-i18n-ph（占位提示）、data-i18n-title（悬停提示）、data-i18n-aria（屏幕阅读器读的 aria-label）标记。
+// index.html 里这些元素先写着简体中文（和 <html lang="zh-CN"> 一致），载入后换成所选语言。
 
 const LANGS = {
   'zh-CN': '简体中文',
@@ -135,6 +136,10 @@ const I18N = {
     'footer.license': '基于 AGPL v3 的开源项目，项目网址：{url}{version}。使用者需自备 API Key，开发者不为使用者在本软件中的输入和输出承担法律责任。',
     'footer.version': "（版本 {version}）",
     'footer.versionWeb': "（网页版）",
+    'footer.versionWebTag': "（网页版 {tag}，提交 {commit}{date}）",
+    'footer.versionWebCommit': "（网页版，提交 {commit}{date}）",
+    'footer.versionDate': "，{date}",
+    'input.aria': "你的消息",
     'greeting.empty': '输入框还是空的',
     'greeting.dialogTitle': '开场白',
     'greeting.dialogMessage': '开场白是否发送给模型？\n\n· 发送：你之后发送的第一条消息会和开场白合并，作为第一条消息发给模型。\n· 不发送：开场白只显示在聊天区，模型看不到它；你之后发送的第一条消息就是第一条消息。\n\n之后也可以随时用开场白下方的勾选框更改。',
@@ -283,7 +288,7 @@ const I18N = {
     'lock.greetingTag': "🔒 受保护的开场白",
     'lock.unlockTitle': "解锁世界卡",
     'lock.unlockMessage': "输入创作者设置的密码。解锁后这个对话会变成普通对话，可以查看、修改和导出全部内容。",
-    'lock.wrongPassword': "密码不正确",
+    'lock.wrongPw': "密码不正确",
     'lock.unlocked': "已解锁",
     'lock.artLocked': "这张艺术图受保护，不能下载或更换",
     'pw.password': "密码（4–16 位）",
@@ -500,6 +505,10 @@ const I18N = {
     'footer.license': '基於 AGPL v3 的開源專案，專案網址：{url}{version}。使用者需自備 API Key，開發者不為使用者在本軟體中的輸入和輸出承擔法律責任。',
     'footer.version': "（版本 {version}）",
     'footer.versionWeb': "（網頁版）",
+    'footer.versionWebTag': "（網頁版 {tag}，提交 {commit}{date}）",
+    'footer.versionWebCommit': "（網頁版，提交 {commit}{date}）",
+    'footer.versionDate': "，{date}",
+    'input.aria': "你的訊息",
     'greeting.empty': '輸入框還是空的',
     'greeting.dialogTitle': '開場白',
     'greeting.dialogMessage': '開場白是否傳送給模型？\n\n· 傳送：你之後傳送的第一則訊息會與開場白合併，作為第一則訊息傳送給模型。\n· 不傳送：開場白只顯示在聊天區，模型看不到它；你之後傳送的第一則訊息就是第一則訊息。\n\n之後也可以隨時用開場白下方的勾選框更改。',
@@ -640,7 +649,7 @@ const I18N = {
     'lock.greetingTag': "🔒 受保護的開場白",
     'lock.unlockTitle': "解鎖世界卡",
     'lock.unlockMessage': "輸入創作者設定的密碼。解鎖後這個對話會變成一般對話，可以查看、修改和匯出全部內容。",
-    'lock.wrongPassword': "密碼不正確",
+    'lock.wrongPw': "密碼不正確",
     'lock.unlocked': "已解鎖",
     'lock.artLocked': "這張藝術圖受保護，不能下載或更換",
     'pw.password': "密碼（4–16 位）",
@@ -857,6 +866,10 @@ const I18N = {
     'footer.license': 'Open-source project under AGPL v3: {url}{version}. Users must provide their own API keys. The developers bear no legal responsibility for what users enter into or receive from this software.',
     'footer.version': " (version {version})",
     'footer.versionWeb': " (web version)",
+    'footer.versionWebTag': " (web version {tag}, commit {commit}{date})",
+    'footer.versionWebCommit': " (web version, commit {commit}{date})",
+    'footer.versionDate': ", {date}",
+    'input.aria': "Your message",
     'greeting.empty': 'The input box is empty',
     'greeting.dialogTitle': 'Opening',
     'greeting.dialogMessage': 'Send the opening to the model?\n\n· Send: your first message will be merged with the opening and sent as the first message.\n· Don\'t send: the opening is only shown in the chat and the model never sees it; your first message is the first message.\n\nYou can change this at any time with the checkbox below the opening.',
@@ -997,7 +1010,7 @@ const I18N = {
     'lock.greetingTag': "🔒 Protected opening",
     'lock.unlockTitle': "Unlock world card",
     'lock.unlockMessage': "Enter the creator's password. Once unlocked, this becomes a normal conversation whose content can be viewed, edited and exported.",
-    'lock.wrongPassword': "Wrong password",
+    'lock.wrongPw': "Wrong password",
     'lock.unlocked': "Unlocked",
     'lock.artLocked': "This artwork is protected and cannot be downloaded or replaced",
     'pw.password': "Password (4–16 characters)",
@@ -1214,6 +1227,10 @@ const I18N = {
     'footer.license': 'AGPL v3 に基づくオープンソースプロジェクトです。プロジェクト URL：{url}{version}。API キーは利用者ご自身でご用意ください。本ソフトウェアにおける利用者の入力および出力について、開発者は法的責任を負いません。',
     'footer.version': "（バージョン {version}）",
     'footer.versionWeb': "（Web 版）",
+    'footer.versionWebTag': "（Web 版 {tag}、コミット {commit}{date}）",
+    'footer.versionWebCommit': "（Web 版、コミット {commit}{date}）",
+    'footer.versionDate': "、{date}",
+    'input.aria': "あなたのメッセージ",
     'greeting.empty': '入力欄が空です',
     'greeting.dialogTitle': 'オープニング',
     'greeting.dialogMessage': 'オープニングをモデルに送りますか？\n\n· 送る：あとで最初に送るメッセージとオープニングを結合し、最初のメッセージとしてモデルに送ります。\n· 送らない：オープニングはチャット欄に表示されるだけで、モデルには見えません。あとで最初に送るメッセージが最初のメッセージになります。\n\nオープニングの下のチェックボックスでいつでも変更できます。',
@@ -1354,7 +1371,7 @@ const I18N = {
     'lock.greetingTag': "🔒 保護されたオープニング",
     'lock.unlockTitle': "ワールドカードのロック解除",
     'lock.unlockMessage': "作成者が設定したパスワードを入力してください。解除すると通常の会話になり、すべての内容を閲覧・変更・エクスポートできます。",
-    'lock.wrongPassword': "パスワードが違います",
+    'lock.wrongPw': "パスワードが違います",
     'lock.unlocked': "ロックを解除しました",
     'lock.artLocked': "このアートは保護されているため、ダウンロードや差し替えはできません",
     'pw.password': "パスワード（4–16 文字）",
@@ -1503,6 +1520,7 @@ function setLang(lang) {
   for (const el of document.querySelectorAll('[data-i18n]')) el.textContent = t(el.dataset.i18n);
   for (const el of document.querySelectorAll('[data-i18n-ph]')) el.placeholder = t(el.dataset.i18nPh);
   for (const el of document.querySelectorAll('[data-i18n-title]')) el.title = t(el.dataset.i18nTitle);
+  for (const el of document.querySelectorAll('[data-i18n-aria]')) el.setAttribute('aria-label', t(el.dataset.i18nAria));
 }
 
 // 判断一段 System Prompt 是否是某种语言的默认内容（没被用户改过）

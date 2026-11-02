@@ -51,6 +51,8 @@ Windows / macOS / Linux 的原生应用自带 Chromium 浏览器内核，不需�
 1. 下载整个文件夹（GitHub 页面上的 **Code → Download ZIP**，然后解压）
 2. 双击 `index.html`，用 Chrome 或 Edge 打开即可
 
+输入框下方的声明里会注明这份网页版来自哪次提交：用 **Download ZIP**（或 Releases 页面上的「Source code」）下载的，显示提交编号和日期，正好是某个版本的提交时还会显示版本号，例如「（网页版 v0.4.0，提交 abc1234，2026-11-02）」。这些信息是 GitHub 生成压缩包时写进 `js/version.js` 的；用 `git clone` 得到的代码里没有，只显示「（网页版）」。
+
 窗口宽度小于 1000 像素时（包括用手机浏览器打开）会自动切换为手机布局。
 
 ### 数据保存在哪里
