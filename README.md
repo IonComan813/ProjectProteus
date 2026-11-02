@@ -39,6 +39,7 @@ The Windows / macOS / Linux apps come with a built-in Chromium engine, so no sep
 Download `Proteus-<version>-android.apk` on your phone and tap it to install. The first time, Android will ask you to allow your browser (or file manager) to install unknown apps; just follow the prompt.
 
 - The interface uses a mobile layout: the artwork becomes a dimmed background behind the chat; tap ⚙ at the top right to open the settings
+- The back button first closes any open menu, window or the settings panel; when there is nothing left to close, "Press back again to exit Proteus" appears in the middle of the screen, and pressing back again within 2 seconds exits
 - Exporting a story, world card or backup opens the system share menu, so you can save it to Files, a cloud drive, or send it to someone
 - Relay endpoints that block direct browser access (CORS) work too: when a request can't get through, the app resends it through Android's own network connection and remembers that endpoint. For those endpoints the reply appears all at once when it is finished instead of as it is written. The official Claude, OpenAI and Gemini APIs and OpenRouter are not affected and still show replies as they are written
 - Only `https://` API addresses work, not plain `http://` (for example a local model server on your network)

@@ -275,6 +275,9 @@
     </div>
   </div>
 
+  <!-- 安卓：按返回键会退出时，先在屏幕中间显示「再按一次退出海神」，一会儿自动消失 -->
+  <div class="exit-hint" id="exitHint" role="status" aria-live="polite"></div>
+
   <!-- 更新提示：有新版本时立刻显示，盖在所有窗口和弹窗上面（正在生成的回复照常继续）。必须选一个按钮才能关闭 -->
   <div class="modal update-modal" id="updateDialog" hidden>
     <div class="modal-box dialog-box" id="updateBox" tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="updateTitle">

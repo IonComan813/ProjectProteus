@@ -2299,7 +2299,20 @@ function closeSettings() {
   closeModelMenu();
 }
 
-// 安卓返回键：先关掉打开着的弹窗或设置面板，都没有时才退出
+// 安卓返回键：先关掉打开着的弹窗或设置面板，都没有时才退出。
+// 退出要连按两次：第一次在屏幕中间提示「再按一次退出海神」，提示显示期间（EXIT_HINT_MS）再按一次才退出
+const EXIT_HINT_MS = 2000;
+let exitHintAt = 0;
+let exitHintTimer = null;
+
+function showExitHint() {
+  exitHintAt = Date.now();
+  els.exitHint.textContent = t('app.backAgainToExit');
+  els.exitHint.classList.add('show');
+  clearTimeout(exitHintTimer);
+  exitHintTimer = setTimeout(() => { els.exitHint.classList.remove('show'); exitHintAt = 0; }, EXIT_HINT_MS);
+}
+
 function bindBackButton() {
   if (!NATIVE) return;
   nativePlugin('App').addListener('backButton', () => {
@@ -2325,7 +2338,8 @@ function bindBackButton() {
     if (document.body.classList.contains('settings-open')) return closeSettings();
     if (state.editingId) return cancelEdit();
     if (state.greetingMode) return exitGreetingMode();
-    nativePlugin('App').exitApp();
+    if (exitHintAt && Date.now() - exitHintAt < EXIT_HINT_MS) return nativePlugin('App').exitApp();
+    showExitHint();
   });
 }
 

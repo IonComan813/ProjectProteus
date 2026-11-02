@@ -14,6 +14,7 @@ const PROJECT_URL = 'https://github.com/IonComan813/ProjectProteus';
 const I18N = {
   'zh-CN': {
     'app.title': 'Proteus角色扮演',
+    'app.backAgainToExit': '再按一次退出海神',
     'defaultSystemPrompt': `你是一名角色扮演叙事者。根据下方的世界观设定和目前为止的剧情推进故事，扮演世界中除用户角色以外的所有角色，并描写环境与事件。
 - 始终与世界观设定和目前为止的剧情保持一致。
 - 尽量避免替用户角色说话、行动或做决定。例外是不需要做决定的细小、被动的动作，例如接住递过来的杯子、被巨响吓得一缩。这类动作可以直接叙述，不必等待用户回复。
@@ -416,6 +417,7 @@ const I18N = {
 
   'zh-TW': {
     'app.title': 'Proteus角色扮演',
+    'app.backAgainToExit': '再按一次退出海神',
     'defaultSystemPrompt': `你是一名角色扮演敘事者。根據下方的世界觀設定和目前為止的劇情推進故事，扮演世界中除使用者角色以外的所有角色，並描寫環境與事件。
 - 始終與世界觀設定和目前為止的劇情保持一致。
 - 盡量避免替使用者角色說話、行動或做決定。例外是不需要做決定的細小、被動的動作，例如接住遞過來的杯子、被巨響嚇得一縮。這類動作可以直接敘述，不必等待使用者回覆。
@@ -800,6 +802,7 @@ const I18N = {
 
   en: {
     'app.title': 'Proteus Roleplay',
+    'app.backAgainToExit': 'Press back again to exit Proteus',
     'defaultSystemPrompt': `You are a roleplay narrator. Advance the story according to the world setting and the story so far below, play every character in the world except the user's character, and describe the surroundings and events.
 - Always stay consistent with the world setting and the story so far.
 - Avoid speaking, acting, or making decisions for the user's character as much as possible. The exception is minor, passive actions that require no decision, such as catching a cup that is handed over or flinching at a loud noise. You may narrate these without waiting for the user's reply.
@@ -1184,6 +1187,7 @@ const I18N = {
 
   ja: {
     'app.title': 'Proteusロールプレイ',
+    'app.backAgainToExit': 'もう一度押すと Proteus を終了します',
     'defaultSystemPrompt': `あなたはロールプレイの語り手です。以下の世界観設定とこれまでの物語に従って物語を進め、ユーザーのキャラクター以外の登場人物すべてを演じ、環境や出来事を描写してください。
 - 常に世界観設定とこれまでの物語と矛盾しないようにしてください。
 - ユーザーのキャラクターの代わりに話したり、行動したり、決定したりすることは、できるだけ避けてください。例外は、判断を必要としない小さく受動的な動作です（差し出されたカップを受け取る、大きな音にびくっとする、など）。こうした動作は、ユーザーの返信を待たずに描写してかまいません。
