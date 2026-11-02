@@ -304,6 +304,10 @@ function memoryCutoff() {
 const isAssistant = (conv) => !!conv && conv.mode === 'assistant';
 const isTavern = (conv) => !!conv && !isAssistant(conv) && !!conv.tavern;
 
+// 导出时可以选择加密的对话：只有角色扮演对话。助理模式不加密；酒馆兼容对话的设定来自酒馆卡的作者，
+// 作者没有选择锁定，不能由读卡的人加上锁，所以也不加密。（以前的测试版导出过加密的酒馆兼容对话，那些照常读取、保持锁定）
+const canEncrypt = (conv) => !isAssistant(conv) && !isTavern(conv);
+
 // 对话的类型：roleplay（角色扮演）、assistant（助理模式）、tavern（酒馆兼容）。对话列表里名称前的 emoji 也按它
 const kindOf = (conv) => (isAssistant(conv) ? 'assistant' : isTavern(conv) ? 'tavern' : 'roleplay');
 const KIND_EMOJI = { roleplay: '🎭', assistant: '🤖', tavern: '🍺' };
@@ -1537,7 +1541,7 @@ async function exportWorldCard() {
   let password = null;
   if (conv.lock) {
     if (!(await confirmLockedExport(t('export.card'), t('export.lockedCard')))) return;
-  } else {
+  } else if (canEncrypt(conv)) {
     const enc = await askEncrypt(t('export.card'), t('export.cardEncryptMessage'), true);
     if (!enc) return;
     password = enc.password;
@@ -1575,7 +1579,7 @@ async function backupConv() {
   let lock = conv.lock || null;
   if (lock) {
     if (!(await confirmLockedExport(t('export.conv'), t('export.lockedConv')))) return;
-  } else {
+  } else if (canEncrypt(conv)) {
     const enc = await askEncrypt(t('export.conv'), t('export.convEncryptMessage'), false);
     if (!enc) return;
     if (enc.password !== null) lock = await Locker.lock(lockedFields(conv), enc.password);
@@ -1599,8 +1603,8 @@ async function backup() {
   const lockedN = state.conversations.filter((c) => c.lock).length;
   if (lockedN && !(await confirmLockedExport(t('export.full'), t('export.lockedAll', { n: lockedN })))) return;
   let password = null;
-  // 助理模式的对话不加密：只有还有未锁定的角色扮演对话时才问
-  if (state.conversations.some((c) => !c.lock && !isAssistant(c))) {
+  // 助理模式和酒馆兼容对话不加密：只有还有未锁定的角色扮演对话时才问
+  if (state.conversations.some((c) => !c.lock && canEncrypt(c))) {
     const enc = await askEncrypt(t('export.full'), t('export.fullEncryptMessage'), false);
     if (!enc) return;
     password = enc.password;
@@ -1609,8 +1613,8 @@ async function backup() {
   const conversations = [];
   const arts = {};
   for (const c of state.conversations) {
-    // 助理模式的对话（和它的艺术图）不加密
-    const encrypt = !isAssistant(c) && (!!c.lock || password !== null);
+    // 助理模式和酒馆兼容对话（和它们的艺术图）不加密；已经锁定的保持原来的密文
+    const encrypt = !!c.lock || (canEncrypt(c) && password !== null);
     if (!encrypt || c.lock) conversations.push(storable(c));
     else conversations.push(storable({ ...c, lock: await Locker.lock(lockedFields(c), password) }));
     const art = await artForExport(c.id, encrypt);
@@ -1896,7 +1900,7 @@ async function mergeCard(conv, x) {
 
 async function importST(st, artBlob, filename) {
   const cur = state.conv;
-  const tavern = isTavern(cur) && !cur.lock;
+  const tavern = isTavern(cur) && !cur.lock; // 现在酒馆兼容对话不能加密；以前的测试版导出的加密文件读进来仍是锁定的
   const started = tavern && cur.messages.length > 0; // 发出过消息：读取的设定可能和已有的剧情冲突
   const open = tavern && !started; // 可以加入当前对话
 
