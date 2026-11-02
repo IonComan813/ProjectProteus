@@ -508,18 +508,28 @@ function closeNewConvMenu() {
 
 const roundsText = (n) => t(n === 1 ? 'conv.round1' : 'conv.rounds', { n });
 
-const convLabel = (c) => KIND_EMOJI[kindOf(c)] + ' ' + (c.lock ? '🔒 ' : '') + t('conv.option', { title: convTitle(c), rounds: roundsText(roundsOf(c)), time: fmtTime(c.activeAt) });
+// 对话名称、轮数和时间之间的分隔：手机布局只有一个圆点（屏幕窄），电脑布局圆点两边各一个空格
+const convLabel = (c) => KIND_EMOJI[kindOf(c)] + ' ' + (c.lock ? '🔒 ' : '')
+  + t('conv.option', { title: convTitle(c), rounds: roundsText(roundsOf(c)), time: fmtTime(c.activeAt), sep: isMobileLayout() ? '·' : ' · ' });
 
 // 对话列表（顶部）。按最近一次活动的时间排序
 function renderConvSelect() {
   els.convCurrent.textContent = state.conv ? convLabel(state.conv) : '';
   if (!els.convMenu.hidden) fillConvMenu();
+  if (!els.allConvBox.hidden) fillAllConvs(); // 在「全部对话」窗口里重命名、删除后跟着更新
 }
 
-const convMenu = { items: [], active: -1 };
+// 对话列表只列出最近活动的 CONV_MENU_SIZE 个对话（按最近一次活动的时间，旧对话有了新消息也会排到前面）；
+// 更多时最后一项是「…」，点开「全部对话」窗口。convMenu.items 是列出的对话，active 是选中的位置（「…」排在最后）
+const CONV_MENU_SIZE = 9;
+const convMenu = { items: [], active: -1, more: false };
+
+const sortedConvs = () => [...state.conversations].sort((a, b) => b.activeAt - a.activeAt);
 
 function fillConvMenu() {
-  convMenu.items = [...state.conversations].sort((a, b) => b.activeAt - a.activeAt);
+  const all = sortedConvs();
+  convMenu.items = all.slice(0, CONV_MENU_SIZE);
+  convMenu.more = all.length > CONV_MENU_SIZE;
   els.convMenu.innerHTML = '';
   convMenu.items.forEach((c, i) => {
     const item = document.createElement('div');
@@ -534,9 +544,26 @@ function fillConvMenu() {
       openConvCtxMenu(c, e.clientX, e.clientY);
     });
     item.addEventListener('mousemove', () => highlightConv(i, false));
+    addLongPress(item, (x, y) => {
+      highlightConv(i, false);
+      openConvCtxMenu(c, x, y);
+    });
     els.convMenu.appendChild(item);
   });
-  if (convMenu.active >= convMenu.items.length) convMenu.active = convMenu.items.length - 1;
+  if (convMenu.more) {
+    const more = document.createElement('div');
+    more.className = 'combo-item conv-more';
+    more.setAttribute('role', 'option');
+    more.textContent = '…';
+    more.title = t('conv.allTitle');
+    more.setAttribute('aria-label', t('conv.allTitle'));
+    more.addEventListener('click', openAllConvs);
+    more.addEventListener('contextmenu', (e) => e.preventDefault());
+    more.addEventListener('mousemove', () => highlightConv(convMenu.items.length, false));
+    els.convMenu.appendChild(more);
+  }
+  const n = convMenu.items.length + (convMenu.more ? 1 : 0);
+  if (convMenu.active >= n) convMenu.active = n - 1;
   highlightConv(convMenu.active, false);
 }
 
@@ -547,6 +574,38 @@ function openConvMenu() {
   els.convMenu.hidden = false;
   els.convSelect.setAttribute('aria-expanded', 'true');
   highlightConv(convMenu.items.indexOf(state.conv), true);
+}
+
+// 「全部对话」窗口：所有对话按最近活动的时间排列。点对话切换过去，右键（触屏上长按）重命名或删除，
+// 点窗口以外的地方或按 Esc 关闭
+function openAllConvs() {
+  closeConvMenu();
+  fillAllConvs();
+  els.allConvBox.hidden = false;
+  const cur = els.allConvList.querySelector('.current');
+  if (cur) { cur.scrollIntoView({ block: 'center' }); cur.focus({ preventScroll: true }); }
+}
+
+function closeAllConvs() {
+  closeConvCtxMenu();
+  els.allConvBox.hidden = true;
+}
+
+function fillAllConvs() {
+  els.allConvList.innerHTML = '';
+  for (const c of sortedConvs()) {
+    const item = button(convLabel(c), () => {
+      closeAllConvs();
+      if (c !== state.conv) void switchConv(c.id);
+    }, 'all-conv-item' + (c === state.conv ? ' current' : ''));
+    item.title = convLabel(c);
+    item.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      openConvCtxMenu(c, e.clientX, e.clientY);
+    });
+    addLongPress(item, (x, y) => openConvCtxMenu(c, x, y));
+    els.allConvList.appendChild(item);
+  }
 }
 
 function closeConvMenu() {
@@ -569,7 +628,41 @@ function pickConv(c) {
   if (c !== state.conv) void switchConv(c.id);
 }
 
-// 右键菜单：只有“删除”，删除的是右键点中的那个对话（不一定是当前对话）
+// 触屏上长按（约半秒、手指没有移动）调用 onPress(x, y)，代替鼠标右键：安卓 WebView 不一定把长按当作右键。
+// 长按以后松手不算一次点击（不会切换对话）。手指移动超过 10 像素（在滚动）就取消
+function addLongPress(el, onPress) {
+  let timer = null;
+  let fired = false;
+  let x0 = 0;
+  let y0 = 0;
+  const cancel = () => { clearTimeout(timer); timer = null; };
+  el.addEventListener('touchstart', (e) => {
+    cancel();
+    fired = false;
+    if (e.touches.length !== 1) return;
+    x0 = e.touches[0].clientX;
+    y0 = e.touches[0].clientY;
+    timer = setTimeout(() => {
+      timer = null;
+      fired = true;
+      if (navigator.vibrate) navigator.vibrate(15);
+      onPress(x0, y0);
+    }, 500);
+  }, { passive: true });
+  el.addEventListener('touchmove', (e) => {
+    const p = e.touches[0];
+    if (timer && Math.hypot(p.clientX - x0, p.clientY - y0) > 10) cancel();
+  }, { passive: true });
+  el.addEventListener('touchend', (e) => {
+    cancel();
+    if (fired && e.cancelable) e.preventDefault(); // 不产生随后的点击
+  });
+  el.addEventListener('touchcancel', cancel);
+  // 长按时系统也可能发出右键（contextmenu）事件：已经由上面处理过，不再重复打开
+  el.addEventListener('contextmenu', (e) => { if (fired) { e.preventDefault(); e.stopImmediatePropagation(); } }, true);
+}
+
+// 右键菜单（触屏上长按）：重命名、删除，对象是右键点中的那个对话（不一定是当前对话）
 let ctxConv = null;
 
 function openConvCtxMenu(conv, x, y) {
@@ -2795,11 +2888,12 @@ function bindChat() {
   els.btnJumpBottom.addEventListener('click', scrollToBottom);
   els.btnJumpTop.addEventListener('click', scrollToTop);
 
-  // 对话列表：点击展开；键盘 ↑ ↓ 选择、Enter 切换、Esc 收起，菜单键或 Shift + F10 打开右键菜单
+  // 对话列表：点击展开；键盘 ↑ ↓ 选择、Enter 切换（选中「…」时打开「全部对话」）、Esc 收起，
+  // 菜单键或 Shift + F10 打开右键菜单
   els.convSelect.addEventListener('click', () => { if (els.convMenu.hidden) openConvMenu(); else closeConvMenu(); });
   els.convSelect.addEventListener('keydown', (e) => {
     const open = !els.convMenu.hidden;
-    const n = convMenu.items.length;
+    const n = convMenu.items.length + (convMenu.more ? 1 : 0);
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
       if (!open) return openConvMenu();
@@ -2809,6 +2903,7 @@ function bindChat() {
     } else if (open && (e.key === 'Enter' || e.key === ' ')) {
       e.preventDefault();
       if (convMenu.items[convMenu.active]) pickConv(convMenu.items[convMenu.active]);
+      else if (convMenu.more && convMenu.active === convMenu.items.length) openAllConvs();
     } else if (open && (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey))) {
       e.preventDefault();
       const el = els.convMenu.querySelectorAll('.combo-item')[convMenu.active];
@@ -2837,10 +2932,15 @@ function bindChat() {
   });
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
-    if (!els.convCtxMenu.hidden) { e.stopPropagation(); closeConvCtxMenu(); els.convSelect.focus(); }
+    if (!els.convCtxMenu.hidden) { e.stopPropagation(); closeConvCtxMenu(); if (els.allConvBox.hidden) els.convSelect.focus(); }
     else if (!els.convMenu.hidden) { e.stopPropagation(); closeConvMenu(); els.convSelect.focus(); }
+    else if (!els.allConvBox.hidden) { e.stopPropagation(); closeAllConvs(); els.convSelect.focus(); }
   }, true);
   window.addEventListener('resize', closeConvMenu);
+  // 点「全部对话」窗口以外的地方关闭它
+  els.allConvBox.addEventListener('click', (e) => { if (e.target === els.allConvBox) closeAllConvs(); });
+  // 电脑和手机布局的对话名称写法不同（手机上更紧凑），切换布局时重新显示
+  window.matchMedia('(max-width: 999px)').addEventListener('change', renderConvSelect);
   els.btnNewConv.addEventListener('click', (e) => {
     e.stopPropagation();
     if (els.newConvMenu.hidden) openNewConvMenu(); else closeNewConvMenu();
@@ -2861,9 +2961,7 @@ function bindChat() {
     if (e.key === 'Escape' && !els.newConvMenu.hidden) { e.stopPropagation(); closeNewConvMenu(); els.btnNewConv.focus(); }
   }, true);
   els.btnRenameConv.addEventListener('click', () => renameConv());
-  els.btnRenameConv2.addEventListener('click', () => renameConv());
   els.btnDeleteConv.addEventListener('click', () => deleteConv());
-  els.btnDeleteConv2.addEventListener('click', () => deleteConv());
 
   els.btnModalClose.addEventListener('click', () => { els.modal.hidden = true; });
   els.modal.addEventListener('click', (e) => { if (e.target === els.modal) els.modal.hidden = true; });

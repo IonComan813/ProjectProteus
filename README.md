@@ -63,13 +63,13 @@ Switching computers, reinstalling your system or (for the web version) clearing 
 
 ### Checking for updates
 
-The native apps (desktop and Android) check the update server for a new version each time they start:
+The native apps (desktop and Android) check the update server for a new version when they start. To keep requests to the server down, they check at most once a day: after a check that finds nothing new, opening the app again on the same day doesn't check, and the first start on the next day does (by date, not 24 hours). A check that can't reach the server doesn't count, so the next start tries again.
 
 - You are told about a new **release**, and about a new **test version** if it is also newer than the latest release. When there are both, they are listed in one window: choose which to download
-- If you don't want to update now:
-  - "Not now": no update this time; you are told again at the next start
-  - "Remind me tomorrow": nothing is shown when you open the app during the next day, even if a newer version comes out. The ▾ next to it also has "Remind me in 3 days"
-  - "Skip this version" in the ▾ menu: the versions listed are not shown again; you are told when a newer version number comes out
+- The buttons are "Download test version", "Download" (the release) and "Remind me tomorrow", showing a download button for each version offered. If you don't want to update now:
+  - "Remind me tomorrow": nothing is shown when you open the app during the next 24 hours, even if a newer version comes out. The ▾ next to it also has "Remind me in 3 days" (72 hours)
+  - "Skip this version" in the ▾ menu: the versions listed are not shown again; you are told when a newer version number comes out. After skipping, the next check is also on the next day
+- You have to choose one of the buttons: Esc or clicking outside does not close this window
 - The installer for this device is downloaded (Windows installer / portable, Mac Apple silicon / Intel, Linux or Android); your conversations and settings are kept when you install the new version:
   - **Desktop**: downloaded inside the app. You choose where to save it first (the Downloads folder by default), and the taskbar shows the progress. When it finishes you are asked whether to close the app and run the installer (Windows installer), open the installer (Mac dmg; then drag Proteus into Applications to replace the old version) or start the new version (Linux AppImage). The Windows portable version downloads a zip: you can open its folder, then unzip it and replace the old folder after closing the app
   - **Android**: downloaded by the system browser; tap the notification to install when it finishes
@@ -81,7 +81,7 @@ The native apps (desktop and Android) check the update server for a new version 
 | Area | What it does |
 |---|---|
 | Left | Artwork. Click to upload; portrait images work best. The image is shown at the width of the left column without stretching: if it is taller than the column, the top and bottom are cropped; if it is shorter, black bars are added above and below. Drag the right edge of the column to resize it (up to about 45% of the window, always leaving enough room for the chat); double-click the edge to reset |
-| Middle | The story. At the top you can switch, create, rename and delete conversations ("＋ New chat" opens a menu where you choose a "🎭 roleplay", "🤖 assistant" (see [Assistant mode](#assistant-mode)) or "🍺 SillyTavern" chat (see [Loading SillyTavern character cards](#loading-sillytavern-character-cards)); in the list, the emoji before each conversation's name shows its type, followed by its number of rounds and the time of its latest activity — creating it, saving the opening, or sending a request to the model — and the list is sorted by that time; in the open list, left-click switches to a conversation and right-click lets you rename or delete it); at the bottom is the input box, press **Ctrl + Enter** to send. Drag the edge above the input box to change its height |
+| Middle | The story. At the top you can switch, create, rename and delete conversations ("＋ New chat" opens a menu where you choose a "🎭 roleplay", "🤖 assistant" (see [Assistant mode](#assistant-mode)) or "🍺 SillyTavern" chat (see [Loading SillyTavern character cards](#loading-sillytavern-character-cards)); in the list, the emoji before each conversation's name shows its type, followed by its number of rounds and the time of its latest activity — creating it, saving the opening, or sending a request to the model — and the list is sorted by that time; in the open list, left-click switches to a conversation and right-click (long-press on a touch screen) lets you rename or delete it; the list shows the 9 most recently active conversations, and the last item "…" opens the "All conversations" window with the rest); at the bottom is the input box, press **Ctrl + Enter** to send. Drag the edge above the input box to change its height |
 | Right | Settings, from top to bottom: System Prompt → World → NPC characters (with the `{{char}}` value) → User's character (with the `{{user}}` value) → Key Instructions → Memory length → Model & API → Artwork → Export & backup → App data → Language |
 
 Below the System Prompt, world and NPC characters boxes, "Enlarge" opens a large editing window for easier writing; it stays in sync with the box on the right. Click outside it (or press Esc) to close it. On a computer it covers the chat; in the mobile layout (the settings panel opened with ⚙) it covers the settings panel.

@@ -78,15 +78,6 @@
         <button class="btn btn-small btn-ghost" id="btnCloseSettings" data-i18n="modal.close">关闭</button>
       </div>
 
-      <!-- 手机布局：顶部放不下的“重命名 / 删除”放在这里 -->
-      <section class="card mobile-only">
-        <h3 data-i18n="set.conversation">当前对话</h3>
-        <div class="row">
-          <button class="btn btn-small" id="btnRenameConv2" data-i18n="conv.rename">重命名</button>
-          <button class="btn btn-small btn-ghost danger" id="btnDeleteConv2" data-i18n="conv.delete">删除</button>
-        </div>
-      </section>
-
       <!-- 锁定的对话（来自加密世界卡）才显示 -->
       <section class="card lock-card lock-only">
         <h3 data-i18n="lock.title">🔒 受保护的世界卡</h3>
@@ -253,6 +244,15 @@
   <input type="file" id="fileArt" aria-labelledby="btnUploadArt" accept="image/*" hidden>
   <input type="file" id="fileRestore" aria-labelledby="btnRestore" accept=".json,.png,application/json,image/png" hidden>
   <input type="file" id="fileTavern" aria-labelledby="btnNewTavern" accept=".json,.png,application/json,image/png" hidden>
+
+  <!-- 全部对话：对话列表最后的「…」打开，按最近活动的时间排列。点窗口以外的地方关闭。
+       放在其他弹窗前面：在这里重命名、删除时，输入框和确认框显示在它上面 -->
+  <div class="modal" id="allConvBox" hidden>
+    <div class="modal-box all-conv-box">
+      <div class="modal-head"><strong data-i18n="conv.allTitle">全部对话</strong><span class="muted small" data-i18n="expand.hint">点击窗口以外的地方关闭</span></div>
+      <div class="all-conv-list" id="allConvList"></div>
+    </div>
+  </div>
 
   <!-- 弹窗 -->
   <div class="modal" id="modal" hidden>
