@@ -34,7 +34,7 @@ const DB = (() => {
     });
   }
 
-  // 删除整个数据库（“清除本机所有数据”）
+  // 删除整个数据库（“清除软件数据”）
   async function destroy() {
     if (dbPromise) (await dbPromise).close();
     dbPromise = null;

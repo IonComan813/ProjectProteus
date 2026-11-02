@@ -2683,7 +2683,7 @@ function bindSettings() {
     await loadArt();
   });
 
-  // 公用电脑：不记住 API Key；清除本机所有数据
+  // 公用设备：不记住 API Key；清除软件数据
   els.rememberKeys.addEventListener('change', async () => {
     s().rememberKeys = els.rememberKeys.checked;
     clearTimeout(saveTimer);
@@ -2691,7 +2691,7 @@ function bindSettings() {
   });
   els.btnClearAll.addEventListener('click', async () => {
     if (state.generating) return toast(t('conv.stopFirst'));
-    if (!(await ask(t('set.clearAllConfirm'), { ok: t('set.clearAll'), danger: true }))) return;
+    if (!(await ask(t('set.clearAllConfirm', pageVars()), { ok: t('set.clearAll'), danger: true }))) return;
     if (state.generating) return toast(t('conv.stopFirst'));
     clearTimeout(saveTimer);
     clearTimeout(convSaveTimer);
