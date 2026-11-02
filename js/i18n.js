@@ -1483,7 +1483,22 @@ const PREVIOUS_DEFAULT_SYSTEM_PROMPTS = [
   "あなたはロールプレイの語り手です。以下の世界観設定に従って物語を進め、ユーザーのキャラクター以外の登場人物すべてを演じ、環境や出来事を描写してください。\n- 常に世界観設定と矛盾しないようにしてください。\n- ユーザーのキャラクターの代わりに話したり、行動したり、決定したりしないでください。\n- 毎回の返信では、場面、他の登場人物の言動、出来事の展開を描写し、適度な長さにして、最後にユーザーが行動できる余地を残してください。\n- 日本語で書いてください。",
 ];
 
-let LANG = detectLang(); // 读取设置之前（例如本机数据读取失败时的提示）先按系统语言
+// 上次显示的界面语言另外同步存一份在 localStorage：设置存在 IndexedDB 里，要等异步读取完才知道，
+// 页面一载入就先换成上次的语言，不会先闪一下 index.html 里写的简体中文。读取设置后仍以设置为准
+const LANG_CACHE_KEY = 'proteus.lang';
+function cachedLang() {
+  try {
+    const v = localStorage.getItem(LANG_CACHE_KEY);
+    return LANGS[v] ? v : null;
+  } catch (_) {
+    return null; // 存储不可用（例如被浏览器禁用）时按系统语言
+  }
+}
+function forgetCachedLang() {
+  try { localStorage.removeItem(LANG_CACHE_KEY); } catch (_) { /* 存储不可用 */ }
+}
+
+let LANG = cachedLang() || detectLang(); // 读取设置之前（例如本机数据读取失败时的提示）先用上次的语言，没有就按系统语言
 
 function t(key, vars) {
   let s = (I18N[LANG] && I18N[LANG][key]);
@@ -1515,6 +1530,7 @@ function matchLang(tag) {
 
 function setLang(lang) {
   LANG = LANGS[lang] ? lang : detectLang();
+  try { localStorage.setItem(LANG_CACHE_KEY, LANG); } catch (_) { /* 存储不可用：下次载入时按系统语言 */ }
   document.documentElement.lang = LANG;
   document.title = t('app.title');
   for (const el of document.querySelectorAll('[data-i18n]')) el.textContent = t(el.dataset.i18n);
@@ -1536,3 +1552,6 @@ function isDefaultAssistantPrompt(text) {
 function isPreviousDefaultSystemPrompt(text) {
   return PREVIOUS_DEFAULT_SYSTEM_PROMPTS.includes(text);
 }
+
+// 这个脚本在页面末尾载入，页面元素都已经在了：马上换成上次的语言（或系统语言），不等读取设置
+setLang(LANG);

@@ -2699,6 +2699,7 @@ function bindSettings() {
     clearTimeout(convSaveTimer);
     convSavePending = null;
     await DB.destroy();
+    forgetCachedLang();
     forgetNativeOrigins();
     location.reload();
   });
