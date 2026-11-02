@@ -202,7 +202,7 @@ async function afterUpdateDownload(file) {
   }
   try {
     if (kind === 'appimage') {
-      fs.chmodSync(file, 0o755);
+      fs.chmodSync(file, 0o700); // 只给自己读、写、运行的权限：启动新版本不需要让其他用户也能运行
       spawn(file, [], { detached: true, stdio: 'ignore' }).unref();
     } else {
       const error = await shell.openPath(file);
