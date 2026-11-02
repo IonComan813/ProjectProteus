@@ -577,35 +577,107 @@ function openConvMenu() {
 }
 
 // 「全部对话」窗口：所有对话按最近活动的时间排列。点对话切换过去，右键（触屏上长按）重命名或删除，
-// 点窗口以外的地方或按 Esc 关闭
+// 点窗口以外的地方或按 Esc 关闭。
+// 可以选中多个对话一起删除：
+//   电脑：按住 Ctrl（Mac 上是 ⌘）点击，选中或取消选中一个；按住 Shift 点击，选中从上次点的那个到这个之间的全部
+//         （同时按住 Ctrl 时加到已选中的里面）。右键任一选中的对话弹出删除。
+//   触屏：每个对话最右边有一个勾选框；长按任一勾选的对话弹出删除。
+// 选中两个以上时菜单里只有删除（不能一起重命名）。选中的对话记在 allSel（对话 id），allAnchor 是 Shift 选择的起点
+const allSel = new Set();
+let allAnchor = null;
+
 function openAllConvs() {
   closeConvMenu();
+  allSel.clear();
+  allAnchor = null;
   fillAllConvs();
   els.allConvBox.hidden = false;
-  const cur = els.allConvList.querySelector('.current');
+  const cur = els.allConvList.querySelector('.current .all-conv-item');
   if (cur) { cur.scrollIntoView({ block: 'center' }); cur.focus({ preventScroll: true }); }
 }
 
 function closeAllConvs() {
   closeConvCtxMenu();
   els.allConvBox.hidden = true;
+  allSel.clear();
+  allAnchor = null;
 }
 
+// 选中的对话（按列表里的顺序）
+const selectedConvs = () => sortedConvs().filter((c) => allSel.has(c.id));
+
 function fillAllConvs() {
+  const top = els.allConvList.scrollTop; // 重新列出后保持滚动位置（勾选、改名、删除时列表不跳回顶部）
   els.allConvList.innerHTML = '';
-  for (const c of sortedConvs()) {
-    const item = button(convLabel(c), () => {
+  const list = sortedConvs();
+  // 已经删掉的对话不再算选中
+  const ids = new Set(list.map((c) => c.id));
+  for (const id of [...allSel]) if (!ids.has(id)) allSel.delete(id);
+  if (allAnchor && !ids.has(allAnchor)) allAnchor = null;
+  for (const c of list) {
+    const row = document.createElement('div');
+    row.className = 'all-conv-row' + (c === state.conv ? ' current' : '') + (allSel.has(c.id) ? ' selected' : '');
+    const item = button(convLabel(c), (e) => {
+      if (e.shiftKey) return selectConvRange(c, e.ctrlKey || e.metaKey);
+      if (e.ctrlKey || e.metaKey) return toggleConvSelected(c);
       closeAllConvs();
       if (c !== state.conv) void switchConv(c.id);
-    }, 'all-conv-item' + (c === state.conv ? ' current' : ''));
+    }, 'all-conv-item');
     item.title = convLabel(c);
-    item.addEventListener('contextmenu', (e) => {
+    item.setAttribute('aria-pressed', String(allSel.has(c.id)));
+    // 触屏上的勾选框（电脑上由 CSS 隐藏）
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.className = 'all-conv-check';
+    box.checked = allSel.has(c.id);
+    box.setAttribute('aria-label', t('conv.select', { title: convTitle(c) }));
+    box.addEventListener('change', () => toggleConvSelected(c));
+    row.append(item, box);
+    row.addEventListener('contextmenu', (e) => {
       e.preventDefault();
-      openConvCtxMenu(c, e.clientX, e.clientY);
+      openAllConvCtxMenu(c, e.clientX, e.clientY);
     });
-    addLongPress(item, (x, y) => openConvCtxMenu(c, x, y));
-    els.allConvList.appendChild(item);
+    addLongPress(row, (x, y) => openAllConvCtxMenu(c, x, y));
+    els.allConvList.appendChild(row);
   }
+  els.allConvList.scrollTop = top;
+}
+
+function toggleConvSelected(c) {
+  if (allSel.has(c.id)) allSel.delete(c.id); else allSel.add(c.id);
+  allAnchor = c.id;
+  closeConvCtxMenu();
+  fillAllConvs();
+  focusAllConv(c);
+}
+
+// Shift + 点击：选中起点（上次 Ctrl 点击或 Shift 点击时的起点；还没有时是当前对话）到 c 之间的全部。
+// keep 为 true（同时按住 Ctrl）时保留原来选中的，否则只留这一段
+function selectConvRange(c, keep) {
+  const list = sortedConvs();
+  let a = list.findIndex((x) => x.id === allAnchor);
+  if (a < 0) a = Math.max(0, list.indexOf(state.conv));
+  allAnchor = list[a].id;
+  const b = list.indexOf(c);
+  if (!keep) allSel.clear();
+  for (let i = Math.min(a, b); i <= Math.max(a, b); i++) allSel.add(list[i].id);
+  closeConvCtxMenu();
+  fillAllConvs();
+  focusAllConv(c);
+}
+
+function focusAllConv(c) {
+  const i = sortedConvs().indexOf(c);
+  const el = els.allConvList.querySelectorAll('.all-conv-item')[i];
+  if (el) el.focus({ preventScroll: true });
+}
+
+// 「全部对话」窗口里的右键菜单（触屏上长按）：点中的是选中的对话、并且选中了两个以上时，只有「删除 N 个对话」；
+// 否则和对话列表里一样，对点中的那个对话重命名或删除
+function openAllConvCtxMenu(c, x, y) {
+  const sel = selectedConvs();
+  if (allSel.has(c.id) && sel.length > 1) openConvCtxMenu(sel, x, y);
+  else openConvCtxMenu(c, x, y);
 }
 
 function closeConvMenu() {
@@ -662,17 +734,21 @@ function addLongPress(el, onPress) {
   el.addEventListener('contextmenu', (e) => { if (fired) { e.preventDefault(); e.stopImmediatePropagation(); } }, true);
 }
 
-// 右键菜单（触屏上长按）：重命名、删除，对象是右键点中的那个对话（不一定是当前对话）
+// 右键菜单（触屏上长按）：重命名、删除，对象是右键点中的那个对话（不一定是当前对话）。
+// target 是一组对话时（「全部对话」窗口里选中了多个），菜单里只有「删除 N 个对话」
 let ctxConv = null;
 
-function openConvCtxMenu(conv, x, y) {
-  ctxConv = conv;
+function openConvCtxMenu(target, x, y) {
+  ctxConv = target;
+  const many = Array.isArray(target);
+  els.btnCtxRename.hidden = many;
+  els.btnCtxDelete.textContent = many ? t('conv.deleteN', { n: target.length }) : t('conv.delete');
   const m = els.convCtxMenu;
   m.hidden = false;
   // 出现在光标右下方；靠近窗口边缘时往回收，不超出窗口
   m.style.left = Math.max(4, Math.min(x, window.innerWidth - m.offsetWidth - 4)) + 'px';
   m.style.top = Math.max(4, Math.min(y, window.innerHeight - m.offsetHeight - 4)) + 'px';
-  els.btnCtxRename.focus();
+  (many ? els.btnCtxDelete : els.btnCtxRename).focus();
 }
 
 function closeConvCtxMenu() {
@@ -2218,6 +2294,8 @@ function bindBackButton() {
         return;
       }
     }
+    if (!els.convCtxMenu.hidden) return closeConvCtxMenu();
+    if (!els.allConvBox.hidden && allSel.size) { allSel.clear(); return fillAllConvs(); } // 先取消勾选，再按一次关闭窗口
     if (!els.allConvBox.hidden) return closeAllConvs();
     // 信息弹窗直接关掉：它没有自己的 Escape 处理，派发 Escape 会连设置面板一起关掉
     if (!els.modal.hidden) { els.modal.hidden = true; return; }
@@ -2855,19 +2933,41 @@ async function deleteConv(gone = state.conv) {
   if (state.generating && gone === state.conv) return toast(t('conv.stopFirst'));
   if (!(await ask(t('conv.deleteConfirm', { title: convTitle(gone) }), { ok: t('conv.delete'), danger: true }))) return;
   if (!state.conversations.includes(gone) || (state.generating && gone === state.conv)) return;
-  if (convSavePending === gone) convSavePending = null;
-  state.conversations = state.conversations.filter((c) => c !== gone);
+  await removeConvs([gone]);
+}
+
+// 一次删除多个对话（「全部对话」窗口里选中的）。只有一个时和 deleteConv 一样
+async function deleteConvs(list) {
+  list = list.filter((c) => state.conversations.includes(c));
+  if (list.length <= 1) return list.length ? deleteConv(list[0]) : undefined;
+  if (state.generating && list.includes(state.conv)) return toast(t('conv.stopFirst'));
+  const names = list.slice(0, 5).map((c) => '· ' + convTitle(c)).join('\n') + (list.length > 5 ? '\n…' : '');
+  if (!(await ask(t('conv.deleteManyConfirm', { n: list.length, list: names }), { ok: t('conv.deleteN', { n: list.length }), danger: true }))) return;
+  list = list.filter((c) => state.conversations.includes(c)); // 确认期间可能已经被删掉
+  if (!list.length) return;
+  if (state.generating && list.includes(state.conv)) return toast(t('conv.stopFirst'));
+  await removeConvs(list);
+}
+
+async function removeConvs(list) {
+  const gone = new Set(list);
+  if (gone.has(convSavePending)) convSavePending = null;
+  state.conversations = state.conversations.filter((c) => !gone.has(c));
   if (!state.conversations.length) {
-    // 删掉最后一个对话时，新建一个空对话并沿用被删对话的设定、开场白和艺术图
-    const c = newConversation(gone);
+    // 删掉了全部对话时，新建一个空对话并沿用被删对话（当前对话在其中时用当前对话）的设定、开场白和艺术图
+    const from = gone.has(state.conv) ? state.conv : list[0];
+    const c = newConversation(from);
     state.conversations.push(c);
     await DB.putConversation(storable(c));
-    const art = await DB.get(artKey(gone.id));
+    const art = await DB.get(artKey(from.id));
     if (art) await DB.set(artKey(c.id), art);
   }
-  await DB.deleteConversation(gone.id);
-  await DB.del(artKey(gone.id));
-  if (gone !== state.conv) return renderConvSelect();
+  for (const c of list) {
+    allSel.delete(c.id);
+    await DB.deleteConversation(c.id);
+    await DB.del(artKey(c.id));
+  }
+  if (!gone.has(state.conv)) return renderConvSelect();
   const next = [...state.conversations].sort((a, b) => b.activeAt - a.activeAt)[0];
   await switchConv(next.id);
 }
@@ -2923,12 +3023,14 @@ function bindChat() {
   els.btnCtxRename.addEventListener('click', () => {
     const c = ctxConv;
     closeConvCtxMenu();
-    if (c) void renameConv(c); // 不用等：输入框和保存由 renameConv 自己完成
+    if (c && !Array.isArray(c)) void renameConv(c); // 不用等：输入框和保存由 renameConv 自己完成
   });
   els.btnCtxDelete.addEventListener('click', () => {
     const c = ctxConv;
     closeConvCtxMenu();
-    if (c) void deleteConv(c); // 不用等：确认框和删除由 deleteConv 自己完成
+    // 不用等：确认框和删除由 deleteConv / deleteConvs 自己完成
+    if (Array.isArray(c)) void deleteConvs(c);
+    else if (c) void deleteConv(c);
   });
   // 有输入框或确认框打开时（例如正在重命名），对话列表不受点击、Esc 和窗口大小变化影响
   const dialogOpen = () => !els.dialog.hidden || !els.textDialog.hidden || !els.pwDialog.hidden || !els.modal.hidden;
@@ -2942,6 +3044,7 @@ function bindChat() {
     if (e.key !== 'Escape' || dialogOpen()) return;
     if (!els.convCtxMenu.hidden) { e.stopPropagation(); closeConvCtxMenu(); if (els.allConvBox.hidden) els.convSelect.focus(); }
     else if (!els.convMenu.hidden) { e.stopPropagation(); closeConvMenu(); els.convSelect.focus(); }
+    else if (!els.allConvBox.hidden && allSel.size) { e.stopPropagation(); allSel.clear(); fillAllConvs(); } // 先取消选中
     else if (!els.allConvBox.hidden) { e.stopPropagation(); closeAllConvs(); els.convSelect.focus(); }
   }, true);
   // 窗口变宽变窄时收起列表；只是高度变化（手机上弹出、收起键盘）时不收起

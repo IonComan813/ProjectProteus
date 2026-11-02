@@ -130,9 +130,14 @@ body.resizing iframe { pointer-events: none; }
 /* 「全部对话」窗口 */
 .all-conv-box { width: min(560px, 90vw); }
 .all-conv-list { overflow-y: auto; min-height: 0; padding: 6px; }
+/* 每行：对话名称（点击切换）和触屏上的勾选框；选中的行（多选）底色更深 */
+.all-conv-row { display: flex; align-items: center; border-radius: 4px; }
+.all-conv-row:hover, .all-conv-row:focus-within { background: rgba(201, 169, 110, .18); }
+.all-conv-row.selected { background: rgba(201, 169, 110, .34); }
 .all-conv-item {
   display: block;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   padding: 7px 10px;
   border: none;
   border-radius: 4px;
@@ -149,8 +154,17 @@ body.resizing iframe { pointer-events: none; }
   -webkit-user-select: none;
   -webkit-touch-callout: none;
 }
-.all-conv-item:hover, .all-conv-item:focus-visible { background: rgba(201, 169, 110, .18); outline: none; }
-.all-conv-item.current { font-weight: 600; color: var(--accent); }
+.all-conv-item:focus-visible { outline: none; }
+.all-conv-row.current .all-conv-item { font-weight: 600; color: var(--accent); }
+/* 勾选框只在触屏上显示；电脑上用 Ctrl / Shift 点击多选 */
+.all-conv-check { display: none; flex: none; width: 20px; height: 20px; margin: 0 10px 0 6px; accent-color: var(--accent); }
+.all-conv-tip { padding: 6px 12px 4px; border-top: 1px solid var(--border); }
+.all-conv-tip .tip-touch { display: none; }
+@media (hover: none) {
+  .all-conv-check { display: block; }
+  .all-conv-tip .tip-mouse { display: none; }
+  .all-conv-tip .tip-touch { display: inline; }
+}
 .combo-item.current { font-weight: 600; }
 /* 右键菜单：出现在光标右下方（位置由 JS 设置） */
 .split-menu.ctx-menu { position: fixed; right: auto; top: 0; left: 0; min-width: 120px; z-index: 55; } /* 要盖在「全部对话」窗口上 */
