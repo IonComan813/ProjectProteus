@@ -229,7 +229,9 @@ async function downloadUpdate(url) {
         else if (info.state === 'done') toast(t('update.downloaded'));
       });
     }
-    if (await desktop.downloadUpdate(url)) return;
+    const result = await desktop.downloadUpdate(url);
+    if (result === 'cancelled') return toast(t('update.saveCancelled')); // 下次检查时再提示
+    if (result) return;
   }
   const a = document.createElement('a');
   a.href = url;
