@@ -135,6 +135,8 @@ async function checkForUpdates() {
     const skipNow = { ...(updateSnooze().skip || {}) };
     for (const m of offers) skipNow[m.channel] = m.version;
     setUpdateSnooze({ ...updateSnooze(), until: 0, skip: skipNow });
+    state.settings.updateCheckedDay = today; // 跳过以后也是第二天再检查
+    saveSettingsSoon();
     toast(t('update.skipped'));
   } else if (choice.manifest) {
     await downloadUpdate(`${UPDATE_BASE_URL}/${choice.manifest.channel}/${encodeURIComponent(choice.manifest.files[key])}`);
@@ -148,7 +150,7 @@ function localDay(d = new Date()) {
 }
 
 // 更新提示窗口。按钮依次是：下载测试版 / 下载正式版（有哪个显示哪个）/「一天后提醒」（旁边的 ▾ 打开菜单：三天后提醒、跳过此版本）。
-// 返回 { manifest } / { remindDays } / { skip: true }；按 Esc 关闭返回 null（下次检查时再提示）
+// 返回 { manifest } / { remindDays } / { skip: true }。必须选一个，不能用 Esc 或点窗口外面关闭
 function showUpdateDialog(current, offers) {
   const lines = offers.map((m) => t(m.channel === 'beta' ? 'update.lineBeta' : 'update.lineStable', { version: m.version }));
   const message = t('update.message', { current, list: lines.join('\n') })
@@ -165,10 +167,12 @@ function showUpdateDialog(current, offers) {
       resolve(value);
     };
     const closeMenu = () => { if (menu) { menu.hidden = true; toggle.setAttribute('aria-expanded', 'false'); } };
+    // 这个窗口必须选一个按钮才能关闭：Esc 只收起 ▾ 菜单，点窗口外面也不关闭
     const onKey = (e) => {
       if (e.key !== 'Escape') return;
+      e.preventDefault();
       e.stopPropagation();
-      if (menu && !menu.hidden) { closeMenu(); toggle.focus(); } else close(null);
+      if (menu && !menu.hidden) { closeMenu(); toggle.focus(); }
     };
     const onOutside = (e) => { if (menu && !menu.hidden && !split.contains(e.target)) closeMenu(); };
 
