@@ -582,7 +582,9 @@ function openConvMenu() {
 //   电脑：按住 Ctrl（Mac 上是 ⌘）点击，选中或取消选中一个；按住 Shift 点击，选中从上次点的那个到这个之间的全部
 //         （同时按住 Ctrl 时加到已选中的里面）。右键任一选中的对话弹出删除。
 //   触屏：每个对话最右边有一个勾选框；长按任一勾选的对话弹出删除。
-// 选中两个以上时菜单里只有删除（不能一起重命名）。选中的对话记在 allSel（对话 id），allAnchor 是 Shift 选择的起点
+// 选中两个以上时菜单里只有删除（不能一起重命名）。不按 Ctrl / Shift 右键（触屏上长按）一个没有选中的对话时，
+// 原来选中的全部取消，菜单只对这一个对话（重命名、删除）。
+// 选中的对话记在 allSel（对话 id），allAnchor 是 Shift 选择的起点
 const allSel = new Set();
 let allAnchor = null;
 
@@ -616,7 +618,8 @@ function fillAllConvs() {
   if (allAnchor && !ids.has(allAnchor)) allAnchor = null;
   for (const c of list) {
     const row = document.createElement('div');
-    row.className = 'all-conv-row' + (c === state.conv ? ' current' : '') + (allSel.has(c.id) ? ' selected' : '');
+    row.className = 'all-conv-row' + (c === state.conv ? ' current' : '');
+    row.dataset.id = c.id;
     const item = button(convLabel(c), (e) => {
       if (e.shiftKey) return selectConvRange(c, e.ctrlKey || e.metaKey);
       if (e.ctrlKey || e.metaKey) return toggleConvSelected(c);
@@ -624,12 +627,10 @@ function fillAllConvs() {
       if (c !== state.conv) void switchConv(c.id);
     }, 'all-conv-item');
     item.title = convLabel(c);
-    item.setAttribute('aria-pressed', String(allSel.has(c.id)));
     // 触屏上的勾选框（电脑上由 CSS 隐藏）
     const box = document.createElement('input');
     box.type = 'checkbox';
     box.className = 'all-conv-check';
-    box.checked = allSel.has(c.id);
     box.setAttribute('aria-label', t('conv.select', { title: convTitle(c) }));
     box.addEventListener('change', () => toggleConvSelected(c));
     row.append(item, box);
@@ -641,13 +642,24 @@ function fillAllConvs() {
     els.allConvList.appendChild(row);
   }
   els.allConvList.scrollTop = top;
+  showConvSelection();
+}
+
+// 按 allSel 更新每一行的选中样式和勾选框（不重新列出，长按、点击中的那一行不会被换掉）
+function showConvSelection() {
+  for (const row of els.allConvList.children) {
+    const on = allSel.has(row.dataset.id);
+    row.classList.toggle('selected', on);
+    row.querySelector('.all-conv-item').setAttribute('aria-pressed', String(on));
+    row.querySelector('.all-conv-check').checked = on;
+  }
 }
 
 function toggleConvSelected(c) {
   if (allSel.has(c.id)) allSel.delete(c.id); else allSel.add(c.id);
   allAnchor = c.id;
   closeConvCtxMenu();
-  fillAllConvs();
+  showConvSelection();
   focusAllConv(c);
 }
 
@@ -662,7 +674,7 @@ function selectConvRange(c, keep) {
   if (!keep) allSel.clear();
   for (let i = Math.min(a, b); i <= Math.max(a, b); i++) allSel.add(list[i].id);
   closeConvCtxMenu();
-  fillAllConvs();
+  showConvSelection();
   focusAllConv(c);
 }
 
@@ -673,10 +685,15 @@ function focusAllConv(c) {
 }
 
 // 「全部对话」窗口里的右键菜单（触屏上长按）：点中的是选中的对话、并且选中了两个以上时，只有「删除 N 个对话」；
-// 否则和对话列表里一样，对点中的那个对话重命名或删除
+// 点中的是没有选中的对话时，原来选中的全部取消，和对话列表里一样对这一个对话重命名或删除
 function openAllConvCtxMenu(c, x, y) {
+  if (!allSel.has(c.id) && allSel.size) {
+    allSel.clear();
+    allAnchor = null;
+    showConvSelection();
+  }
   const sel = selectedConvs();
-  if (allSel.has(c.id) && sel.length > 1) openConvCtxMenu(sel, x, y);
+  if (sel.length > 1) openConvCtxMenu(sel, x, y);
   else openConvCtxMenu(c, x, y);
 }
 
@@ -1273,7 +1290,7 @@ async function rollback(i) {
 // ---------------- 发送与生成 ----------------
 
 // 点击是否落在确认框、输入框或信息弹窗里：这些窗口盖在其他东西上面，在里面点击不应该关掉下面打开的菜单和窗口
-const insideDialog = (el) => !!(el && el.closest && el.closest('#dialog, #textDialog, #pwDialog, #modal'));
+const insideDialog = (el) => !!(el && el.closest && el.closest('#dialog, #textDialog, #pwDialog, #modal, #updateDialog'));
 
 // 带多个按钮的确认框，返回所选按钮的 value（关闭则为 null）
 function choose(title, message, options) {
@@ -2286,16 +2303,20 @@ function closeSettings() {
 function bindBackButton() {
   if (!NATIVE) return;
   nativePlugin('App').addListener('backButton', () => {
+    // 更新提示盖在所有东西上面，而且必须选一个按钮：返回键只收起它里面的 ▾ 菜单（由它自己的 Esc 处理），不关掉窗口
+    if (!els.updateDialog.hidden) {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      return;
+    }
     for (const id of ['pwDialog', 'textDialog', 'dialog']) {
       if (!els[id].hidden) {
         document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-        // 必须选一个按钮的窗口（更新提示）：返回键只收起它里面的菜单，不关掉窗口
-        if (!els[id].dataset.mandatory) els[id].hidden = true;
+        els[id].hidden = true;
         return;
       }
     }
     if (!els.convCtxMenu.hidden) return closeConvCtxMenu();
-    if (!els.allConvBox.hidden && allSel.size) { allSel.clear(); return fillAllConvs(); } // 先取消勾选，再按一次关闭窗口
+    if (!els.allConvBox.hidden && allSel.size) { allSel.clear(); return showConvSelection(); } // 先取消勾选，再按一次关闭窗口
     if (!els.allConvBox.hidden) return closeAllConvs();
     // 信息弹窗直接关掉：它没有自己的 Escape 处理，派发 Escape 会连设置面板一起关掉
     if (!els.modal.hidden) { els.modal.hidden = true; return; }
@@ -2941,8 +2962,7 @@ async function deleteConvs(list) {
   list = list.filter((c) => state.conversations.includes(c));
   if (list.length <= 1) return list.length ? deleteConv(list[0]) : undefined;
   if (state.generating && list.includes(state.conv)) return toast(t('conv.stopFirst'));
-  const names = list.slice(0, 5).map((c) => '· ' + convTitle(c)).join('\n') + (list.length > 5 ? '\n…' : '');
-  if (!(await ask(t('conv.deleteManyConfirm', { n: list.length, list: names }), { ok: t('conv.deleteN', { n: list.length }), danger: true }))) return;
+  if (!(await ask(t('conv.deleteManyConfirm', { n: list.length }), { ok: t('conv.deleteN', { n: list.length }), danger: true }))) return;
   list = list.filter((c) => state.conversations.includes(c)); // 确认期间可能已经被删掉
   if (!list.length) return;
   if (state.generating && list.includes(state.conv)) return toast(t('conv.stopFirst'));
@@ -3033,7 +3053,7 @@ function bindChat() {
     else if (c) void deleteConv(c);
   });
   // 有输入框或确认框打开时（例如正在重命名），对话列表不受点击、Esc 和窗口大小变化影响
-  const dialogOpen = () => !els.dialog.hidden || !els.textDialog.hidden || !els.pwDialog.hidden || !els.modal.hidden;
+  const dialogOpen = () => !els.dialog.hidden || !els.textDialog.hidden || !els.pwDialog.hidden || !els.modal.hidden || !els.updateDialog.hidden;
   // 点在列表和右键菜单以外：都收起；点在列表里（右键菜单以外）：只收起右键菜单
   document.addEventListener('mousedown', (e) => {
     if (els.convCtxMenu.contains(e.target) || dialogOpen()) return;
@@ -3044,7 +3064,7 @@ function bindChat() {
     if (e.key !== 'Escape' || dialogOpen()) return;
     if (!els.convCtxMenu.hidden) { e.stopPropagation(); closeConvCtxMenu(); if (els.allConvBox.hidden) els.convSelect.focus(); }
     else if (!els.convMenu.hidden) { e.stopPropagation(); closeConvMenu(); els.convSelect.focus(); }
-    else if (!els.allConvBox.hidden && allSel.size) { e.stopPropagation(); allSel.clear(); fillAllConvs(); } // 先取消选中
+    else if (!els.allConvBox.hidden && allSel.size) { e.stopPropagation(); allSel.clear(); showConvSelection(); } // 先取消选中
     else if (!els.allConvBox.hidden) { e.stopPropagation(); closeAllConvs(); els.convSelect.focus(); }
   }, true);
   // 窗口变宽变窄时收起列表；只是高度变化（手机上弹出、收起键盘）时不收起
@@ -3175,8 +3195,8 @@ function init() {
     showError(t('boot.failed', { msg: e.message }));
     throw e;
   });
-  // 读完数据、知道当前版本号以后，稍等一下再检查更新（只在原生应用里；读取数据失败时不检查）
-  Promise.all([version, booted]).then(() => setTimeout(() => void checkForUpdates(), 3000), () => {});
+  // 启动时立刻检查更新（只在原生应用里），和读取数据同时进行；有要提示的版本时等数据读完就显示（读取数据失败时不显示）
+  void checkForUpdates(version, booted);
 }
 
 document.addEventListener('DOMContentLoaded', init);

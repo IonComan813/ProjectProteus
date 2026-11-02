@@ -669,6 +669,9 @@ textarea:focus, input:focus, select:focus { outline: 1px solid var(--accent); bo
   max-height: 60vh; /* 显示较长的内容（例如将要覆盖的 System Prompt）时可以滚动 */
   overflow: auto;
 }
+/* 更新提示：盖在其他弹窗、「全部对话」窗口和右键菜单（55）上面，提示文字（toast，60）仍在它上面 */
+.modal.update-modal { z-index: 57; }
+#updateBox:focus { outline: none; }
 /* 更新提示里的「一天后提醒 ▾」：菜单往下展开、靠右对齐；下面放不下时由 JS 加上 drop-up 改为往上 */
 .update-remind .split-menu { left: auto; right: 0; }
 .update-remind .split-menu.drop-up { top: auto; bottom: calc(100% + 4px); }
