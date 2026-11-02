@@ -310,8 +310,9 @@ const I18N = {
     'set.rememberKeyHint': "公用设备请取消勾选：API Key 将只在本次打开期间有效，关闭页面后需要重新填写。",
     'set.localData': "软件数据",
     'set.clearAll': "清除软件数据",
-    'set.clearAllHint': "删除当前软件保存的所有对话、设定、艺术图和 API Key。在公用设备上用完后可以点这里。网页版的数据存在打开它的浏览器里，和原生应用分开存储，清除一边不影响另一边。",
-    'set.clearAllConfirm': "将删除当前软件保存的所有对话、设定、艺术图和 API Key，无法恢复。网页版（浏览器里）和原生应用的数据分开存储，这里只清除当前这一边。建议先做完整备份。确定吗？",
+    'set.clearAllHint': "删除当前软件保存的所有对话、设定、艺术图和 API Key。在公用设备上用完后可以点这里。网页版{webMark}的数据存在打开它的浏览器里，和原生应用{nativeMark}分开存储，清除一边不影响另一边。",
+    'set.clearAllConfirm': "将删除当前软件保存的所有对话、设定、艺术图和 API Key，无法恢复。网页版{webMark}的数据存在浏览器里，和原生应用{nativeMark}分开存储，这里只清除当前软件的数据。建议先做完整备份。确定吗？",
+    'set.currentApp': "（当前软件）",
     'set.download': "下载",
     'art.none': "还没有艺术图",
     // 多个开场白、重点指令、{{user}} 的值、回到顶部、读取酒馆卡
@@ -670,8 +671,9 @@ const I18N = {
     'set.rememberKeyHint': "公用裝置請取消勾選：API Key 將只在本次開啟期間有效，關閉頁面後需要重新填寫。",
     'set.localData': "軟體資料",
     'set.clearAll': "清除軟體資料",
-    'set.clearAllHint': "刪除目前軟體儲存的所有對話、設定、藝術圖和 API Key。在公用裝置上用完後可以點這裡。網頁版的資料存在開啟它的瀏覽器裡，和原生應用程式分開儲存，清除一邊不影響另一邊。",
-    'set.clearAllConfirm': "將刪除目前軟體儲存的所有對話、設定、藝術圖和 API Key，無法復原。網頁版（瀏覽器裡）和原生應用程式的資料分開儲存，這裡只清除目前這一邊。建議先做完整備份。確定嗎？",
+    'set.clearAllHint': "刪除目前軟體儲存的所有對話、設定、藝術圖和 API Key。在公用裝置上用完後可以點這裡。網頁版{webMark}的資料存在開啟它的瀏覽器裡，和原生應用程式{nativeMark}分開儲存，清除一邊不影響另一邊。",
+    'set.clearAllConfirm': "將刪除目前軟體儲存的所有對話、設定、藝術圖和 API Key，無法復原。網頁版{webMark}的資料存在瀏覽器裡，和原生應用程式{nativeMark}分開儲存，這裡只清除目前軟體的資料。建議先做完整備份。確定嗎？",
+    'set.currentApp': "（目前軟體）",
     'set.download': "下載",
     'art.none': "還沒有藝術圖",
     // 多个开场白、重点指令、{{user}} 的值、回到顶部、读取酒馆卡
@@ -1030,8 +1032,9 @@ const I18N = {
     'set.rememberKeyHint': "Uncheck on shared devices: keys will then only last until you close the page.",
     'set.localData': "App data",
     'set.clearAll': "Clear app data",
-    'set.clearAllHint': "Deletes every conversation, setting, artwork and API key saved by this copy of Proteus. Use it when you are done on a shared device. The web version keeps its data in the browser you open it with, separate from the native apps; clearing one does not affect the other.",
-    'set.clearAllConfirm': "This deletes every conversation, setting, artwork and API key saved by this copy of Proteus, and cannot be undone. The web version (in the browser) and the native apps store their data separately; only this one is cleared. Consider making a full backup first. Continue?",
+    'set.clearAllHint': "Deletes every conversation, setting, artwork and API key saved by this app. Use it when you are done on a shared device. The web version{webMark} keeps its data in the browser you open it with, separate from the native apps{nativeMark}; clearing one does not affect the other.",
+    'set.clearAllConfirm': "This deletes every conversation, setting, artwork and API key saved by this app, and cannot be undone. The web version{webMark} keeps its data in the browser, separate from the native apps{nativeMark}; only this app's data is cleared. Consider making a full backup first. Continue?",
+    'set.currentApp': " (this app)",
     'set.download': "Download",
     'art.none': "No artwork yet",
     // 多个开场白、重点指令、{{user}} 的值、回到顶部、读取酒馆卡
@@ -1390,8 +1393,9 @@ const I18N = {
     'set.rememberKeyHint': "共用の端末ではチェックを外してください。API キーはページを閉じるまでしか有効にならず、次回は再入力が必要です。",
     'set.localData': "アプリのデータ",
     'set.clearAll': "アプリのデータを削除",
-    'set.clearAllHint': "このアプリに保存されたすべての会話、設定、アート、API キーを削除します。共用の端末で使い終わったときに。Web 版のデータは開いたブラウザに保存され、ネイティブアプリとは別に保存されます。片方を削除してももう片方には影響しません。",
-    'set.clearAllConfirm': "このアプリに保存されたすべての会話、設定、アート、API キーを削除します。元に戻せません。Web 版（ブラウザ）とネイティブアプリのデータは別々に保存されており、削除されるのはこちら側だけです。先に完全バックアップを取ることをおすすめします。よろしいですか？",
+    'set.clearAllHint': "このアプリに保存されたすべての会話、設定、アート、API キーを削除します。共用の端末で使い終わったときに。Web 版{webMark}のデータは開いたブラウザに保存され、ネイティブアプリ{nativeMark}とは別に保存されます。片方を削除してももう片方には影響しません。",
+    'set.clearAllConfirm': "このアプリに保存されたすべての会話、設定、アート、API キーを削除します。元に戻せません。Web 版{webMark}のデータはブラウザに、ネイティブアプリ{nativeMark}のデータはアプリ内に別々に保存されており、削除されるのはこのアプリのデータだけです。先に完全バックアップを取ることをおすすめします。よろしいですか？",
+    'set.currentApp': "（このアプリ）",
     'set.download': "ダウンロード",
     'art.none': "まだアートがありません",
     // 多个开场白、重点指令、{{user}} 的值、回到顶部、读取酒馆卡
@@ -1528,12 +1532,23 @@ function matchLang(tag) {
   return 'en';
 }
 
+// 运行在原生应用里（电脑版 Electron、安卓版 Capacitor），还是浏览器里（网页版）
+const IN_NATIVE_APP = /\bElectron\//.test(navigator.userAgent)
+  || !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+
+// 界面文字里可以用的变量：{webMark} / {nativeMark} 在网页版 / 原生应用那一边标上「（当前软件）」，另一边为空
+function pageVars() {
+  const mark = t('set.currentApp');
+  return { webMark: IN_NATIVE_APP ? '' : mark, nativeMark: IN_NATIVE_APP ? mark : '' };
+}
+
 function setLang(lang) {
   LANG = LANGS[lang] ? lang : detectLang();
   try { localStorage.setItem(LANG_CACHE_KEY, LANG); } catch (_) { /* 存储不可用：下次载入时按系统语言 */ }
   document.documentElement.lang = LANG;
   document.title = t('app.title');
-  for (const el of document.querySelectorAll('[data-i18n]')) el.textContent = t(el.dataset.i18n);
+  const vars = pageVars();
+  for (const el of document.querySelectorAll('[data-i18n]')) el.textContent = t(el.dataset.i18n, vars);
   for (const el of document.querySelectorAll('[data-i18n-ph]')) el.placeholder = t(el.dataset.i18nPh);
   for (const el of document.querySelectorAll('[data-i18n-title]')) el.title = t(el.dataset.i18nTitle);
   for (const el of document.querySelectorAll('[data-i18n-aria]')) el.setAttribute('aria-label', t(el.dataset.i18nAria));

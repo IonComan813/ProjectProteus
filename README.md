@@ -369,7 +369,7 @@ Cards that rely on SillyTavern-only features (regex scripts, STscript, front-end
 ## Shared devices
 
 - "Remember API keys on this device" under "Model & API": when unchecked, API keys only last until you close the page and are never written to this device
-- "Clear app data" under "App data" on the right: deletes every conversation, setting, artwork and API key saved by this copy of Proteus. The web version keeps its data in the browser you open it with, separate from the native apps; clearing one does not affect the other
+- "Clear app data" under "App data" on the right: deletes every conversation, setting, artwork and API key saved by this app. The web version keeps its data in the browser you open it with, separate from the native apps; clearing one does not affect the other (the note marks whichever one you are using with "(this app)")
 
 ## API key security
 

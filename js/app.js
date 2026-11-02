@@ -2691,7 +2691,7 @@ function bindSettings() {
   });
   els.btnClearAll.addEventListener('click', async () => {
     if (state.generating) return toast(t('conv.stopFirst'));
-    if (!(await ask(t('set.clearAllConfirm'), { ok: t('set.clearAll'), danger: true }))) return;
+    if (!(await ask(t('set.clearAllConfirm', pageVars()), { ok: t('set.clearAll'), danger: true }))) return;
     if (state.generating) return toast(t('conv.stopFirst'));
     clearTimeout(saveTimer);
     clearTimeout(convSaveTimer);
