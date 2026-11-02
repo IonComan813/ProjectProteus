@@ -26,7 +26,7 @@ const DEFAULT_SETTINGS = {
   provider: 'anthropic',
   apiKeys: {},
   baseUrls: {},
-  models: { anthropic: PROVIDERS.anthropic.defaultModel },
+  models: {},          // 各服务商的模型名。没有预填：模型名要用户自己获取列表后选，或直接输入
   maxTokens: { anthropic: 16000, custom_anthropic: 16000 },
   modelLists: {},      // 各服务商“获取列表”得到的模型名，记下来供下拉选择
   effort: '',
@@ -2233,6 +2233,7 @@ function fillProviderFields() {
   els.maxTokens.value = s.maxTokens[s.provider] || '';
   els.maxTokens.placeholder = t(p.format === 'anthropic' ? 'set.maxTokensAnthropic' : 'set.maxTokensOpenai');
   closeModelMenu();
+  els.btnModelMenu.disabled = !modelOptions().length; // 还没获取列表时 ▾ 不能点
   els.anthropicOptions.hidden = p.format !== 'anthropic';
   els.openaiOptions.hidden = p.format !== 'openai';
   els.temperature.disabled = !s.useTemperature;
@@ -2243,11 +2244,9 @@ function fillProviderFields() {
 
 const modelMenu = { items: [], active: -1 };
 
-// 可选的模型：优先用“获取列表”得到的，没有就用预设的几个
+// 可选的模型：只有点“获取列表”从接口拿到的。没有预设的列表：预设的名字不一定能用，容易误解成都可以用
 function modelOptions() {
-  const p = state.settings.provider;
-  const fetched = state.settings.modelLists[p];
-  return fetched && fetched.length ? fetched : PROVIDERS[p].models;
+  return state.settings.modelLists[state.settings.provider] || [];
 }
 
 // filter 为空时显示全部；否则只显示包含这段文字的
@@ -2255,14 +2254,10 @@ function openModelMenu(filter) {
   const f = (filter || '').trim().toLowerCase();
   const current = els.model.value.trim();
   modelMenu.items = modelOptions().filter((m) => !f || m.toLowerCase().includes(f));
+  // 还没获取列表，或者没有匹配的：不打开（输入的名字照样可以用）
+  if (!modelMenu.items.length) return closeModelMenu();
   modelMenu.active = modelMenu.items.indexOf(current);
   els.modelMenu.innerHTML = '';
-  if (!modelMenu.items.length) {
-    const empty = document.createElement('div');
-    empty.className = 'combo-empty';
-    empty.textContent = t(f ? 'set.modelNoMatch' : 'set.modelListEmpty');
-    els.modelMenu.appendChild(empty);
-  }
   modelMenu.items.forEach((m, i) => {
     const item = document.createElement('div');
     item.className = 'combo-item' + (m === current ? ' current' : '');
@@ -2598,8 +2593,6 @@ function bindSettings() {
   });
   els.provider.addEventListener('change', () => {
     s().provider = els.provider.value;
-    const p = PROVIDERS[s().provider];
-    if (!s().models[s().provider] && p.defaultModel) s().models[s().provider] = p.defaultModel;
     fillProviderFields();
     saveSettingsSoon();
     updateEstimate();
@@ -2660,6 +2653,7 @@ function bindSettings() {
     try {
       const list = await fetchModels(providerCfg());
       s().modelLists[s().provider] = list;
+      els.btnModelMenu.disabled = !list.length;
       saveSettingsSoon();
       toast(t('set.fetchedModels', { n: list.length }));
       openModelMenu('');

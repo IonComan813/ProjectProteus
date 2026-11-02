@@ -386,7 +386,7 @@ Proteus 在使用者自己的电脑上运行，API Key 只保存在本机浏览�
 |---|---|
 | Anthropic（Claude 官方） | 直接调用 Claude |
 | OpenAI 官方 | |
-| Google Gemini | 使用 Gemini 的 OpenAI 兼容接口，在 [Google AI Studio](https://aistudio.google.com/) 申请 API Key 即可。免费额度下较大的模型经常繁忙（HTTP 503）或长时间无响应，所以默认用 `gemini-3.5-flash-lite`；遇到 503 时稍等再点「生成回复」或「重新生成」即可 |
+| Google Gemini | 使用 Gemini 的 OpenAI 兼容接口，在 [Google AI Studio](https://aistudio.google.com/) 申请 API Key 即可。免费额度下较大的模型经常繁忙（HTTP 503）或长时间无响应，建议先用 `gemini-3.5-flash-lite` 这类小模型；遇到 503 时稍等再点「生成回复」或「重新生成」即可 |
 | 其他 OpenAI 兼容格式（大多数中转站） | OpenRouter、DeepSeek、各种中转站等。需要自己填写接口地址，通常以 `/v1` 结尾（OpenRouter 是 `https://openrouter.ai/api/v1`） |
 | 其他 Anthropic 兼容格式（部分中转站） | 提供 Claude 原生格式的中转站 |
 

@@ -444,7 +444,8 @@ body.resizing iframe { pointer-events: none; }
   font-size: 12px;
   cursor: pointer;
 }
-.combo-toggle:hover { color: var(--text); }
+.combo-toggle:hover:not(:disabled) { color: var(--text); }
+.combo-toggle:disabled { opacity: 0.35; cursor: default; } /* 还没获取模型列表 */
 .combo-menu {
   position: absolute;
   left: 0;
@@ -473,7 +474,6 @@ body.resizing iframe { pointer-events: none; }
 @supports (color: SelectedItem) {
   .combo-item.active { background: SelectedItem; color: SelectedItemText; }  /* 支持 SelectedItem 的浏览器用它，和原生下拉框一致 */
 }
-.combo-empty { padding: 6px 10px; font-size: 12px; color: var(--muted); white-space: normal; }
 
 .pw-fields { padding: 0 16px 8px; }
 .pw-fields input { width: 100%; }
