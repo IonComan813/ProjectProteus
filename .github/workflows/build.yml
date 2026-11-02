@@ -18,6 +18,14 @@
 # 密钥别名必须是 proteus，密钥密码与密钥库密码相同。
 # 没有添加时：只打包不发布的运行改用临时的调试密钥签名（能安装，但以后的版本无法直接覆盖更新）；
 # 要发布到 Release 的运行直接失败。
+#
+# 更新服务器（Cloudflare R2，存储桶 projectproteus-releases）：发布到 Release 之后，同一批安装包和一个 version.json
+# 也上传到 R2，软件启动时从那里检查更新（js/update.js）。标签不带后缀的放在 stable/，带后缀的（测试版）放在 beta/，
+# 每个频道只保留最新的一个版本，两个频道互不覆盖；重新打包一个比频道里现有版本旧的标签时，不动那个频道。
+# 需要在仓库 Settings → Secrets and variables → Actions 里添加：
+#   Secrets：R2_ACCESS_KEY_ID、R2_SECRET_ACCESS_KEY（R2 的 API 令牌，对这个存储桶有「对象读和写」权限）
+#   Variables：UPDATE_BASE_URL（存储桶的公开地址，例如 https://pub-xxxx.r2.dev 或自己的域名，结尾不带 /）
+# 没有添加 Secrets 时跳过上传（只给出警告）；没有 UPDATE_BASE_URL 时，打出的安装包不检查更新。
 
 name: Build native app
 
@@ -79,6 +87,12 @@ jobs:
       - name: Check licenses and write third-party notices
         run: npm run notices
 
+      - name: Set the update server address
+        env:
+          UPDATE_BASE_URL: ${{ vars.UPDATE_BASE_URL }}
+        shell: bash
+        run: node scripts/set-update-url.js "$UPDATE_BASE_URL"
+
       - name: Build
         run: npx electron-builder ${{ matrix.args }} --publish never
 
@@ -125,6 +139,11 @@ jobs:
             version=$(node -p "require('./package.json').version")
           fi
           echo "APP_VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Set the update server address
+        env:
+          UPDATE_BASE_URL: ${{ vars.UPDATE_BASE_URL }}
+        run: node scripts/set-update-url.js "$UPDATE_BASE_URL"
 
       - name: Copy the web app into the Android project
         run: npm run android:sync
@@ -245,3 +264,38 @@ jobs:
           gh release upload "$RELEASE_TAG" artifacts/* --clobber
           echo "Uploaded to https://github.com/$GH_REPO/releases/tag/$RELEASE_TAG:"
           ls -1 artifacts
+
+      # 上传到更新服务器（Cloudflare R2，用 S3 兼容接口）。频道里原有的文件在新的 version.json 写好之后才删除，
+      # 检查更新的软件不会读到指向不存在文件的 version.json
+      - name: Publish to the update server
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          # R2 不支持新版 AWS CLI 默认附加的校验和
+          AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+          AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+          R2_ENDPOINT: https://fe03e958078a8537f7ef143d89668385.r2.cloudflarestorage.com
+          R2_BUCKET: projectproteus-releases
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
+            echo "::warning::R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY are not set: not publishing to the update server."
+            exit 0
+          fi
+          channel=stable
+          [[ "$RELEASE_TAG" == *-* ]] && channel=beta
+          dest="s3://$R2_BUCKET/$channel/"
+          s3() { aws s3 --endpoint-url "$R2_ENDPOINT" "$@"; }
+          # 频道里现有的版本比这次的新时不动它
+          s3 cp "${dest}version.json" old-version.json --only-show-errors || rm -f old-version.json
+          status=0
+          node scripts/update-manifest.js artifacts "$RELEASE_TAG" version.json old-version.json || status=$?
+          if [ "$status" = 3 ]; then exit 0; fi
+          if [ "$status" != 0 ]; then exit "$status"; fi
+          s3 sync artifacts "$dest" --exclude version.json --only-show-errors
+          s3 cp version.json "${dest}version.json" --content-type application/json --cache-control no-cache --only-show-errors
+          s3 sync artifacts "$dest" --exclude version.json --delete --only-show-errors
+          echo "Published $RELEASE_TAG to the $channel channel:"
+          s3 ls "$dest"

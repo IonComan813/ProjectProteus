@@ -3,6 +3,7 @@
 
 const { app, BrowserWindow, Menu, dialog, shell, session } = require('electron');
 const path = require('path');
+const fs = require('fs');
 
 const ROOT = path.join(__dirname, '..');
 
@@ -34,6 +35,21 @@ function systemLanguage() {
   return langs[0] || app.getLocale() || '';
 }
 
+// 检查更新时要知道下载哪个安装包：处理器架构（Apple 芯片上用 Rosetta 运行 Intel 版时也算 arm64）
+function cpuArch() {
+  return process.arch === 'x64' && app.runningUnderARM64Translation ? 'arm64' : process.arch;
+}
+
+// Windows 免安装版（zip）：安装版的程序目录里有卸载程序 Uninstall 海神Proteus.exe，免安装版没有
+function isPortable() {
+  if (process.platform !== 'win32') return false;
+  try {
+    return !fs.readdirSync(path.dirname(process.execPath)).some((f) => /^Uninstall .*\.exe$/i.test(f));
+  } catch (_) {
+    return false;
+  }
+}
+
 function isWebUrl(url) {
   return /^https?:\/\//i.test(url);
 }
@@ -59,7 +75,15 @@ function createWindow() {
 
   // 版本号通过网址参数传给页面，显示在输入框下方的开源声明里。
   // 系统语言也一起传过去：还没在设置里选过界面语言时，页面按它自动选择
-  win.loadFile(path.join(ROOT, 'index.html'), { query: { version: app.getVersion(), syslang: systemLanguage() } });
+  win.loadFile(path.join(ROOT, 'index.html'), {
+    query: {
+      version: app.getVersion(),
+      syslang: systemLanguage(),
+      platform: process.platform,
+      arch: cpuArch(),
+      portable: isPortable() ? '1' : '',
+    },
+  });
 
   // 消息里的链接、底部的项目网址：用系统默认浏览器打开，不在软件窗口里打开
   win.webContents.setWindowOpenHandler(({ url }) => {

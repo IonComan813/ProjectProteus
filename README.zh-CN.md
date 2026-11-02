@@ -61,6 +61,15 @@ Windows / macOS / Linux 的原生应用自带 Chromium 浏览器内核，不需�
 
 换电脑、重装系统，或者（网页版）清除浏览器数据都会看不到原来的内容，所以请定期用右侧「导出 / 备份…」里的「完整备份（全部对话）」导出一份。
 
+### 检查更新
+
+原生应用（电脑版和安卓版）每次启动时会从更新服务器检查有没有新版本：
+
+- 有新的**正式版**时提示；有新的**测试版**、而且它也比最新的正式版新时，也一起提示。两个都有时列在同一个窗口里，可以选择下载哪个，或者「暂不更新」
+- 选择后用浏览器下载这台设备对应的安装包（Windows 安装版 / 免安装版、Mac 的 Apple 芯片 / Intel 版、Linux、安卓分别对应），下载完成后照常安装即可，对话和设定会保留
+- 版本号的先后：带后缀的测试版排在同一个版本号的正式版之前，例如 `0.4.0-beta.2` < `0.4.0` < `0.4.1-beta.1`
+- 连不上更新服务器时什么都不提示。网页版不检查更新
+
 ## 界面
 
 | 区域 | 作用 |
@@ -419,6 +428,8 @@ js/crypto.js      世界卡加密
 js/providers.js   和各家模型接口通信
 js/render.js      消息显示（Markdown/HTML，沙箱隔离）
 js/stcard.js      读取酒馆（SillyTavern）的角色卡和世界书
+js/update.js      原生应用启动时检查更新
+js/version.js     网页版的版本信息（用 Download ZIP 下载时由 GitHub 填入）
 js/app.js         界面逻辑、对话管理、上下文拼装
 js/vendor/        第三方库（marked：Markdown 解析，MIT 许可，许可证全文在 marked.LICENSE.md）
 electron/main.js  Windows / macOS / Linux 原生应用的入口（窗口、安全设置、解除跨域限制）
@@ -483,6 +494,24 @@ keytool -genkeypair -v -keystore proteus.jks -alias proteus -keyalg RSA -keysize
 ```
 
 没有设置时，「只打包不发布」的运行会改用临时的调试密钥签名（能安装，但以后无法覆盖更新），并在运行结果里给出警告；要发布到 Release 的运行会直接失败，避免把调试版发给用户。密钥文件和密码请另外妥善备份，**不要提交到仓库**。
+
+#### 更新服务器（Cloudflare R2）
+
+发布到 Release 之后，工作流会把同一批安装包和一个 `version.json` 上传到 Cloudflare R2 的存储桶 `projectproteus-releases`，软件启动时从那里检查更新（`js/update.js`）。不带后缀的标签放在 `stable/`，带后缀的（测试版）放在 `beta/`；每个频道只保留最新的一个版本，两个频道互不覆盖。重新打包一个比频道里现有版本旧的标签时，那个频道保持不变。
+
+需要先做三件事：
+
+1. 在 Cloudflare 的 R2 → 存储桶 → Settings 里开启公开访问：**Public Development URL**（`https://pub-….r2.dev`，有限速，官方说明只适合测试），或者绑定一个托管在 Cloudflare 上的自己的域名（**Custom Domains**）
+2. 在 R2 → Manage API tokens 里创建一个令牌，权限选「Object Read & Write」，只给这个存储桶
+3. 在仓库 Settings → Secrets and variables → Actions 里添加：
+
+| 类型 | 名称 | 内容 |
+|---|---|---|
+| Secret | `R2_ACCESS_KEY_ID` | 令牌的 Access Key ID |
+| Secret | `R2_SECRET_ACCESS_KEY` | 令牌的 Secret Access Key |
+| Variable | `UPDATE_BASE_URL` | 第 1 步得到的公开地址，结尾不带 `/` |
+
+没有添加两个 Secret 时，跳过上传，只给出警告；没有 `UPDATE_BASE_URL` 时，打出的安装包不检查更新（打包时由 `scripts/set-update-url.js` 把地址写进 `js/update.js`）。
 
 #### 安卓冒烟测试
 

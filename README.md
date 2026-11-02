@@ -61,6 +61,15 @@ All data (settings, conversations, images, API keys) is stored **only on this de
 
 Switching computers, reinstalling your system or (for the web version) clearing browser data will make your existing content disappear, so export a "Full backup (all conversations)" regularly from "Export / Backup…" on the right.
 
+### Checking for updates
+
+The native apps (desktop and Android) check the update server for a new version each time they start:
+
+- You are told about a new **release**, and about a new **test version** if it is also newer than the latest release. When there are both, they are listed in one window: choose which to download, or "Not now"
+- Your browser then downloads the installer for this device (Windows installer / portable, Mac Apple silicon / Intel, Linux or Android). Install it as usual when it finishes; your conversations and settings are kept
+- Version order: a test version comes before the release with the same number, e.g. `0.4.0-beta.2` < `0.4.0` < `0.4.1-beta.1`
+- Nothing is shown when the update server can't be reached. The web version does not check for updates
+
 ## Interface
 
 | Area | What it does |
@@ -418,6 +427,8 @@ js/crypto.js      World card encryption
 js/providers.js   Communication with the model APIs
 js/render.js      Message display (Markdown/HTML, sandboxed)
 js/stcard.js      Loading SillyTavern character cards and lorebooks
+js/update.js      Checking for updates when a native app starts
+js/version.js     The web version's version info (filled in by GitHub for Download ZIP)
 js/app.js         Interface logic, conversation management, context assembly
 js/vendor/        Third-party libraries (marked: Markdown parser, MIT license, full text in marked.LICENSE.md)
 electron/main.js  Entry point of the Windows / macOS / Linux apps (window, security settings, removing CORS restrictions)
@@ -482,6 +493,24 @@ keytool -genkeypair -v -keystore proteus.jks -alias proteus -keyalg RSA -keysize
 ```
 
 If they are not set, build-only runs sign with a temporary debug key instead (installable, but future versions can't update it in place) and show a warning in the run results; runs that publish to a release fail, so a debug build is never shipped to users. Keep a separate safe backup of the key file and password, and **never commit them to the repository**.
+
+#### Update server (Cloudflare R2)
+
+After publishing to a release, the workflow also uploads the same installers and a `version.json` to the Cloudflare R2 bucket `projectproteus-releases`, where the app checks for updates at startup (`js/update.js`). Tags without a suffix go to `stable/`, tags with one (test versions) to `beta/`; each channel keeps only its latest version, and neither overwrites the other. Rebuilding a tag older than what a channel already holds leaves that channel unchanged.
+
+Set up three things first:
+
+1. In Cloudflare, R2 → the bucket → Settings, enable public access: the **Public Development URL** (`https://pub-….r2.dev`; rate-limited, and Cloudflare says it is meant for testing), or connect a domain of your own that is on Cloudflare (**Custom Domains**)
+2. In R2 → Manage API tokens, create a token with "Object Read & Write" permission for this bucket only
+3. In the repository's Settings → Secrets and variables → Actions, add:
+
+| Kind | Name | Value |
+|---|---|---|
+| Secret | `R2_ACCESS_KEY_ID` | The token's Access Key ID |
+| Secret | `R2_SECRET_ACCESS_KEY` | The token's Secret Access Key |
+| Variable | `UPDATE_BASE_URL` | The public address from step 1, without a trailing `/` |
+
+Without the two secrets the upload is skipped with a warning; without `UPDATE_BASE_URL` the installers built don't check for updates (`scripts/set-update-url.js` writes the address into `js/update.js` at build time).
 
 #### Android smoke test
 
