@@ -146,7 +146,7 @@ function allowCors() {
 }
 
 // ---- 下载更新 ----
-// 页面（js/update.js）请求下载某个安装包时：让用户选择保存位置，任务栏显示进度，
+// 页面（js/update.js）请求下载某个安装包时：先让用户选择保存位置，选好后才开始下载，任务栏显示进度，
 // 下载完成后按安装包的类型问用户：关闭软件并运行安装程序（Windows 安装版）、打开 dmg（macOS）、
 // 启动新的 AppImage（Linux），或者打开所在文件夹（Windows 免安装版的 zip，需要自己解压替换）。
 const UPDATE_TEXT = {
@@ -181,7 +181,7 @@ const UPDATE_TEXT = {
 };
 const updateText = () => UPDATE_TEXT[pageLang] || UPDATE_TEXT['zh-CN'];
 
-const pendingUpdates = new Set(); // 页面请求下载、还没开始的安装包地址
+const pendingUpdates = new Map(); // 页面请求下载、还没开始的安装包：地址 → 用户选好的保存位置
 
 function sendUpdateState(info) {
   if (win) win.webContents.send('update-download', info);
@@ -216,21 +216,31 @@ async function afterUpdateDownload(file) {
 }
 
 function setupUpdateDownloads() {
-  ipcMain.handle('download-update', (e, url) => {
+  // 先让用户选好保存位置，再开始下载（不用 Electron 默认的做法：那样会一边弹“另存为”一边已经在下载）。
+  // 返回 'started'（开始下载）、'cancelled'（用户取消了保存）或 false（请求不合规定）
+  ipcMain.handle('download-update', async (e, url) => {
     // 只接受这个窗口的请求（preload 只在主页面里运行，消息显示用的沙箱小窗口调用不到），而且只下载 https 地址上的安装包
     if (!win || e.sender.id !== win.webContents.id) return false;
     if (typeof url !== 'string' || !/^https:\/\/[^\s]+\.(exe|zip|dmg|AppImage)$/i.test(url)) return false;
-    pendingUpdates.add(url);
+    let name;
+    try { name = decodeURIComponent(new URL(url).pathname.split('/').pop()); } catch (_) { return false; }
+    const ext = path.extname(name).slice(1);
+    const { canceled, filePath } = await dialog.showSaveDialog(win, {
+      title: updateText().save,
+      defaultPath: path.join(app.getPath('downloads'), name),
+      filters: [{ name: ext, extensions: [ext] }],
+    });
+    if (canceled || !filePath) return 'cancelled';
+    pendingUpdates.set(url, filePath);
     win.webContents.downloadURL(url);
-    return true;
+    return 'started';
   });
 
   session.defaultSession.on('will-download', (_e, item) => {
     const url = item.getURLChain()[0] || item.getURL();
     if (!pendingUpdates.has(url)) return; // 其他下载（例如导出备份）照常处理
+    item.setSavePath(pendingUpdates.get(url)); // 用户已经选好的位置：不再弹“另存为”
     pendingUpdates.delete(url);
-    // 不设置保存路径：Electron 会弹出“另存为”，默认放在“下载”文件夹
-    item.setSaveDialogOptions({ title: updateText().save, defaultPath: path.join(app.getPath('downloads'), item.getFilename()) });
     item.on('updated', (_ev, state) => {
       if (state !== 'progressing') return;
       const total = item.getTotalBytes();

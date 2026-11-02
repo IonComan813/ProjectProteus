@@ -487,7 +487,7 @@ async function createConversation(kind = kindOf(state.conv)) {
   const art = from && (await DB.get(artKey(from.id)));
   if (art) await DB.set(artKey(c.id), art);
   await switchConv(c.id);
-  els.input.focus();
+  // 不自动把光标放进输入框（手机上会弹出键盘）：用户自己点输入框
 }
 
 // “＋ 新对话”的菜单：🎭 角色扮演、🤖 助理模式、🍺 酒馆兼容
@@ -1195,6 +1195,9 @@ async function rollback(i) {
 }
 
 // ---------------- 发送与生成 ----------------
+
+// 点击是否落在确认框、输入框或信息弹窗里：这些窗口盖在其他东西上面，在里面点击不应该关掉下面打开的菜单和窗口
+const insideDialog = (el) => !!(el && el.closest && el.closest('#dialog, #textDialog, #pwDialog, #modal'));
 
 // 带多个按钮的确认框，返回所选按钮的 value（关闭则为 null）
 function choose(title, message, options) {
@@ -2210,10 +2213,12 @@ function bindBackButton() {
     for (const id of ['pwDialog', 'textDialog', 'dialog']) {
       if (!els[id].hidden) {
         document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-        els[id].hidden = true;
+        // 必须选一个按钮的窗口（更新提示）：返回键只收起它里面的菜单，不关掉窗口
+        if (!els[id].dataset.mandatory) els[id].hidden = true;
         return;
       }
     }
+    if (!els.allConvBox.hidden) return closeAllConvs();
     // 信息弹窗直接关掉：它没有自己的 Escape 处理，派发 Escape 会连设置面板一起关掉
     if (!els.modal.hidden) { els.modal.hidden = true; return; }
     if (expandSource) return closeExpand();
@@ -2812,7 +2817,7 @@ function bindSettings() {
 
   // 查看下一轮将发送的内容
   els.btnPreviewNext.addEventListener('click', openPreview);
-  document.addEventListener('mousedown', (e) => { if (!els.previewBox.hidden && !els.previewBox.contains(e.target)) closePreview(); }, true);
+  document.addEventListener('mousedown', (e) => { if (!els.previewBox.hidden && !els.previewBox.contains(e.target) && !insideDialog(e.target)) closePreview(); }, true);
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !els.previewBox.hidden) { e.stopPropagation(); closePreview(); }
   }, true);
@@ -2822,7 +2827,7 @@ function bindSettings() {
     expandSource.dispatchEvent(new Event('input')); // 和直接在右侧输入一样保存、更新字数
   });
   // 点在放大窗口以外的地方就关闭（按 Esc 也可以）
-  document.addEventListener('mousedown', (e) => { if (expandSource && !els.expandBox.contains(e.target)) closeExpand(); }, true);
+  document.addEventListener('mousedown', (e) => { if (expandSource && !els.expandBox.contains(e.target) && !insideDialog(e.target)) closeExpand(); }, true);
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && expandSource) { e.stopPropagation(); closeExpand(); }
   }, true);
@@ -2914,29 +2919,38 @@ function bindChat() {
       closeConvMenu();
     }
   });
+  // 重命名、删除后对话列表保持打开，可以接着改别的对话（只收起右键菜单）
   els.btnCtxRename.addEventListener('click', () => {
     const c = ctxConv;
-    closeConvMenu();
+    closeConvCtxMenu();
     if (c) void renameConv(c); // 不用等：输入框和保存由 renameConv 自己完成
   });
   els.btnCtxDelete.addEventListener('click', () => {
     const c = ctxConv;
-    closeConvMenu();
+    closeConvCtxMenu();
     if (c) void deleteConv(c); // 不用等：确认框和删除由 deleteConv 自己完成
   });
+  // 有输入框或确认框打开时（例如正在重命名），对话列表不受点击、Esc 和窗口大小变化影响
+  const dialogOpen = () => !els.dialog.hidden || !els.textDialog.hidden || !els.pwDialog.hidden || !els.modal.hidden;
   // 点在列表和右键菜单以外：都收起；点在列表里（右键菜单以外）：只收起右键菜单
   document.addEventListener('mousedown', (e) => {
-    if (els.convCtxMenu.contains(e.target)) return;
+    if (els.convCtxMenu.contains(e.target) || dialogOpen()) return;
     closeConvCtxMenu();
     if (!els.convPicker.contains(e.target)) closeConvMenu();
   });
   document.addEventListener('keydown', (e) => {
-    if (e.key !== 'Escape') return;
+    if (e.key !== 'Escape' || dialogOpen()) return;
     if (!els.convCtxMenu.hidden) { e.stopPropagation(); closeConvCtxMenu(); if (els.allConvBox.hidden) els.convSelect.focus(); }
     else if (!els.convMenu.hidden) { e.stopPropagation(); closeConvMenu(); els.convSelect.focus(); }
     else if (!els.allConvBox.hidden) { e.stopPropagation(); closeAllConvs(); els.convSelect.focus(); }
   }, true);
-  window.addEventListener('resize', closeConvMenu);
+  // 窗口变宽变窄时收起列表；只是高度变化（手机上弹出、收起键盘）时不收起
+  let lastWidth = window.innerWidth;
+  window.addEventListener('resize', () => {
+    if (window.innerWidth === lastWidth) return;
+    lastWidth = window.innerWidth;
+    closeConvMenu();
+  });
   // 点「全部对话」窗口以外的地方关闭它
   els.allConvBox.addEventListener('click', (e) => { if (e.target === els.allConvBox) closeAllConvs(); });
   // 电脑和手机布局的对话名称写法不同（手机上更紧凑），切换布局时重新显示
@@ -2956,7 +2970,7 @@ function bindChat() {
     const i = items.indexOf(document.activeElement);
     items[(i + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length].focus();
   });
-  document.addEventListener('click', (e) => { if (!els.newConvGroup.contains(e.target)) closeNewConvMenu(); });
+  document.addEventListener('click', (e) => { if (!els.newConvGroup.contains(e.target) && !insideDialog(e.target)) closeNewConvMenu(); });
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !els.newConvMenu.hidden) { e.stopPropagation(); closeNewConvMenu(); els.btnNewConv.focus(); }
   }, true);
