@@ -516,10 +516,16 @@ function renderConvSelect() {
   if (!els.convMenu.hidden) fillConvMenu();
 }
 
-const convMenu = { items: [], active: -1 };
+// 对话超过 CONV_PAGE_SIZE 个时分页显示，右下角是「◀ 1/2 ▶」。
+// convMenu.items 是当前这一页的对话，active 是它在这一页里的位置
+const CONV_PAGE_SIZE = 10;
+const convMenu = { items: [], active: -1, page: 0, pages: 1 };
 
 function fillConvMenu() {
-  convMenu.items = [...state.conversations].sort((a, b) => b.activeAt - a.activeAt);
+  const all = [...state.conversations].sort((a, b) => b.activeAt - a.activeAt);
+  convMenu.pages = Math.max(1, Math.ceil(all.length / CONV_PAGE_SIZE));
+  convMenu.page = Math.min(Math.max(0, convMenu.page), convMenu.pages - 1);
+  convMenu.items = all.slice(convMenu.page * CONV_PAGE_SIZE, (convMenu.page + 1) * CONV_PAGE_SIZE);
   els.convMenu.innerHTML = '';
   convMenu.items.forEach((c, i) => {
     const item = document.createElement('div');
@@ -536,13 +542,51 @@ function fillConvMenu() {
     item.addEventListener('mousemove', () => highlightConv(i, false));
     els.convMenu.appendChild(item);
   });
+  if (convMenu.pages > 1) els.convMenu.appendChild(convPager());
   if (convMenu.active >= convMenu.items.length) convMenu.active = convMenu.items.length - 1;
   highlightConv(convMenu.active, false);
+}
+
+// 翻页栏：◀ 页码/总页数 ▶。箭头用 CSS 画的实心三角形（有的系统字体里 ◀ ▶ 会显示成彩色表情）
+function convPager() {
+  const bar = document.createElement('div');
+  bar.className = 'conv-pager';
+  const arrow = (dir, d, label) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'conv-page-btn';
+    b.title = label;
+    b.setAttribute('aria-label', label);
+    b.innerHTML = `<span class="tri tri-${dir}"></span>`;
+    b.disabled = convMenu.page + d < 0 || convMenu.page + d >= convMenu.pages;
+    b.addEventListener('mousedown', (e) => e.preventDefault()); // 焦点留在对话列表上，键盘照常可用
+    b.addEventListener('click', () => turnConvPage(d));
+    return b;
+  };
+  const num = document.createElement('span');
+  num.className = 'conv-page-num';
+  num.textContent = `${convMenu.page + 1}/${convMenu.pages}`;
+  bar.append(arrow('left', -1, t('conv.prevPage')), num, arrow('right', 1, t('conv.nextPage')));
+  return bar;
+}
+
+// 翻页。active 是翻过去以后要选中的位置（默认不选中）
+function turnConvPage(d, active = -1) {
+  const page = convMenu.page + d;
+  if (page < 0 || page >= convMenu.pages) return;
+  closeConvCtxMenu();
+  convMenu.page = page;
+  convMenu.active = -1;
+  fillConvMenu();
+  highlightConv(active === 'last' ? convMenu.items.length - 1 : active, true);
 }
 
 function openConvMenu() {
   closeNewConvMenu();
   convMenu.active = -1;
+  // 打开时显示当前对话所在的那一页
+  const all = [...state.conversations].sort((a, b) => b.activeAt - a.activeAt);
+  convMenu.page = Math.max(0, Math.floor(all.indexOf(state.conv) / CONV_PAGE_SIZE));
   fillConvMenu();
   els.convMenu.hidden = false;
   els.convSelect.setAttribute('aria-expanded', 'true');
@@ -2795,7 +2839,8 @@ function bindChat() {
   els.btnJumpBottom.addEventListener('click', scrollToBottom);
   els.btnJumpTop.addEventListener('click', scrollToTop);
 
-  // 对话列表：点击展开；键盘 ↑ ↓ 选择、Enter 切换、Esc 收起，菜单键或 Shift + F10 打开右键菜单
+  // 对话列表：点击展开；键盘 ↑ ↓ 选择（到了一页的头尾会翻到相邻的一页）、← → 翻页、Enter 切换、Esc 收起，
+  // 菜单键或 Shift + F10 打开右键菜单
   els.convSelect.addEventListener('click', () => { if (els.convMenu.hidden) openConvMenu(); else closeConvMenu(); });
   els.convSelect.addEventListener('keydown', (e) => {
     const open = !els.convMenu.hidden;
@@ -2805,7 +2850,13 @@ function bindChat() {
       if (!open) return openConvMenu();
       closeConvCtxMenu();
       const d = e.key === 'ArrowDown' ? 1 : -1;
-      highlightConv(convMenu.active < 0 ? 0 : (convMenu.active + d + n) % n, true);
+      const next = convMenu.active < 0 ? 0 : convMenu.active + d;
+      if (next >= n && convMenu.page < convMenu.pages - 1) turnConvPage(1, 0);
+      else if (next < 0 && convMenu.page > 0) turnConvPage(-1, 'last');
+      else highlightConv((next + n) % n, true);
+    } else if (open && (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'PageUp' || e.key === 'PageDown')) {
+      e.preventDefault();
+      turnConvPage(e.key === 'ArrowLeft' || e.key === 'PageUp' ? -1 : 1, 0);
     } else if (open && (e.key === 'Enter' || e.key === ' ')) {
       e.preventDefault();
       if (convMenu.items[convMenu.active]) pickConv(convMenu.items[convMenu.active]);

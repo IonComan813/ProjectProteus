@@ -122,8 +122,42 @@ body.resizing iframe { pointer-events: none; }
 .conv-current > span:first-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .conv-current .caret { color: var(--muted); }
 .conv-current:focus-visible, .conv-current[aria-expanded="true"] { outline: 1px solid var(--accent); border-color: var(--accent); }
-.conv-menu { max-height: min(60vh, 480px); user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+/* 一页最多 10 个对话，加上翻页栏也要一次显示完，不出现滚动条（.combo-menu 的 280px 上限对它不适用） */
+.combo-menu.conv-menu { max-height: min(80vh, 520px); user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 .conv-menu .combo-item { line-height: 26px; }
+/* 对话超过 10 个时列表底部的翻页栏：◀ 1/2 ▶，靠右 */
+.conv-pager {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 4px;
+  border-top: 1px solid ButtonBorder;
+  background: Canvas;
+  font-size: 12px;
+}
+.conv-page-num { min-width: 36px; text-align: center; font-variant-numeric: tabular-nums; }
+.conv-page-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: CanvasText;
+  cursor: pointer;
+}
+.conv-page-btn:hover:not(:disabled) { background: Highlight; color: HighlightText; }
+.conv-page-btn:disabled { opacity: 0.3; cursor: default; }
+/* 实心三角形（CSS 画的，不依赖字体） */
+.tri { display: inline-block; border-top: 5px solid transparent; border-bottom: 5px solid transparent; }
+.tri-left { border-right: 7px solid currentColor; }
+.tri-right { border-left: 7px solid currentColor; }
 .combo-item.current { font-weight: 600; }
 /* 右键菜单：出现在光标右下方（位置由 JS 设置） */
 .split-menu.ctx-menu { position: fixed; right: auto; top: 0; left: 0; min-width: 120px; z-index: 40; }
@@ -708,6 +742,9 @@ textarea:focus, input:focus, select:focus { outline: 1px solid var(--accent); bo
     height: 100%;
   }
   .chat-header {
+    /* 毛玻璃效果会让顶栏自成一层：给它一个层级，下拉列表才能盖在下面的聊天区上 */
+    position: relative;
+    z-index: 10;
     gap: 6px;
     padding: 8px 10px;
     padding-top: calc(8px + var(--safe-area-inset-top, env(safe-area-inset-top, 0px)));
@@ -784,6 +821,8 @@ textarea:focus, input:focus, select:focus { outline: 1px solid var(--accent); bo
   .modal-box, .dialog-box { width: 94vw; }
   input[type=text], input[type=password], input[type=number], select, textarea, .conv-current { font-size: 16px; }
   .conv-menu .combo-item { line-height: 36px; font-size: 15px; }
+  .conv-pager { font-size: 14px; }
+  .conv-page-btn { width: 40px; height: 34px; }
 }
 
 /* 触屏没有“鼠标悬停”，消息下方的按钮一直显示 */
