@@ -7,8 +7,9 @@
 //   { version, tag, date, release（GitHub Release 页面）, files: { 'win-setup', 'win-zip', 'mac-arm64', 'mac-x64', 'linux', 'android' } }
 // files 里是安装包的文件名，和 version.json 放在同一个目录里。
 //
-// 软件启动后读取这两个文件：正式版比当前版本新就提示；测试版比当前版本新、也比正式版新才提示。
-// 两个都有时在同一个窗口里列出，由用户选择下载哪个、稍后提醒、跳过这些版本，或者这次不更新。
+// 软件启动时立刻读取这两个文件：正式版比当前版本新就提示；测试版比当前版本新、也比正式版新才提示。
+// 两个都有时在同一个窗口里列出，由用户选择下载哪个、稍后提醒或跳过这些版本。
+// 提示窗口一拿到版本信息就显示，盖在其他窗口和弹窗上面；正在生成回复时也显示，回复照常继续。
 // 电脑版在软件里下载（可以选择保存位置，完成后问是否关闭软件并运行安装程序）；安卓版用系统浏览器下载。
 // 网页版不检查（没有安装包可更新）。
 
@@ -73,11 +74,6 @@ async function fetchUpdateManifest(channel) {
   }
 }
 
-// 等到没有别的弹窗、也没有在生成回复时再提示（同一时间只能显示一个弹窗）
-function updateDialogFree() {
-  return els.dialog.hidden && els.pwDialog.hidden && els.textDialog.hidden && els.modal.hidden && !state.generating;
-}
-
 // 稍后提醒和跳过的版本，保存在软件设置里：
 //   updateSnooze.until：这个时间之前不提示（「一天后提醒」「三天后提醒」），期间出了更新的版本也不提示
 //   updateSnooze.skip：{ stable, beta } 各频道跳过的版本（「跳过此版本」），只有更新的版本才再提示
@@ -93,17 +89,28 @@ function setUpdateSnooze(z) {
   saveSettingsSoon();
 }
 
-async function checkForUpdates() {
-  if (!UPDATE_BASE_URL || !IN_NATIVE_APP || !state.version) return;
+// 启动时调用，不等读取数据：version 是取得当前版本号（写进 state.version）的 Promise，booted 是读取数据的 Promise。
+// 是否需要检查（稍后提醒、今天是否已经检查过）直接从数据库里的设置判断，和读取数据同时请求更新服务器；
+// 要显示提示、记下检查日期时才等数据读完（读取失败就不提示）
+async function checkForUpdates(version, booted) {
+  if (!UPDATE_BASE_URL || !IN_NATIVE_APP) return;
   const key = updateFileKey();
   if (!key) return;
-  const snooze = updateSnooze();
-  if (snooze.until && Date.now() < snooze.until) return;
-  const today = localDay();
-  if (state.settings.updateCheckedDay === today) return;
-  const skip = snooze.skip || {};
+  let saved;
+  try {
+    [saved] = await Promise.all([DB.get('settings'), version]);
+  } catch (_) {
+    return;
+  }
   const current = state.version;
+  if (!current) return;
+  const z = saved && saved.updateSnooze && typeof saved.updateSnooze === 'object' ? saved.updateSnooze : {};
+  if (z.until && Date.now() < z.until) return;
+  const today = localDay();
+  if (saved && saved.updateCheckedDay === today) return;
+  const skip = z.skip || {};
   let [stable, beta] = await Promise.all([fetchUpdateManifest('stable'), fetchUpdateManifest('beta')]);
+  try { await booted; } catch (_) { return; }
   const failed = stable === 'error' || beta === 'error';
   if (stable === 'error') stable = null;
   if (beta === 'error') beta = null;
@@ -119,11 +126,6 @@ async function checkForUpdates() {
       saveSettingsSoon();
     }
     return;
-  }
-
-  for (let waited = 0; !updateDialogFree(); waited += 2000) {
-    if (waited > 10 * 60 * 1000) return; // 一直没空就算了，下次启动再提示
-    await new Promise((r) => setTimeout(r, 2000));
   }
 
   const choice = await showUpdateDialog(current, offers);
@@ -155,26 +157,28 @@ function localDay(d = new Date()) {
 }
 
 // 更新提示窗口。按钮依次是：下载测试版 / 下载正式版（有哪个显示哪个）/「一天后提醒」（旁边的 ▾ 打开菜单：三天后提醒、跳过此版本）。
-// 返回 { manifest } / { remindDays } / { skip: true }。必须选一个，不能用 Esc 或点窗口外面关闭
+// 返回 { manifest } / { remindDays } / { skip: true }。必须选一个，不能用 Esc 或点窗口外面关闭。
+// 用自己的窗口（#updateDialog），盖在其他窗口和弹窗上面；关闭后下面的东西保持原样，焦点回到原来的位置
 function showUpdateDialog(current, offers) {
   const lines = offers.map((m) => t(m.channel === 'beta' ? 'update.lineBeta' : 'update.lineStable', { version: m.version }));
   const message = t('update.message', { current, list: lines.join('\n') })
     + (offers.some((m) => m.channel === 'beta') ? '\n\n' + t('update.betaNote') : '');
   return new Promise((resolve) => {
-    els.dialogTitle.textContent = t('update.title');
-    els.dialogMessage.textContent = message;
-    els.dialogButtons.innerHTML = '';
+    els.updateTitle.textContent = t('update.title');
+    els.updateMessage.textContent = message;
+    els.updateButtons.innerHTML = '';
+    const prevFocus = document.activeElement;
     let menu = null;
     const close = (value) => {
-      els.dialog.hidden = true;
-      delete els.dialog.dataset.mandatory;
+      els.updateDialog.hidden = true;
       window.removeEventListener('keydown', onKey, true);
       document.removeEventListener('pointerdown', onOutside, true);
+      if (prevFocus && prevFocus.isConnected && prevFocus !== document.body) prevFocus.focus({ preventScroll: true });
       resolve(value);
     };
     const closeMenu = () => { if (menu) { menu.hidden = true; toggle.setAttribute('aria-expanded', 'false'); } };
     // 这个窗口必须选一个按钮才能关闭：Esc 只收起 ▾ 菜单，点窗口外面也不关闭。
-    // Esc 在 window 的捕获阶段最先处理并且不再传下去：窗口下面已经打开的列表、放大窗口、设置面板等都不会被它关掉
+    // Esc 在 window 的捕获阶段最先处理并且不再传下去：窗口下面已经打开的弹窗、列表、放大窗口、设置面板等都不会被它关掉
     const onKey = (e) => {
       if (e.key !== 'Escape') return;
       e.preventDefault();
@@ -186,7 +190,7 @@ function showUpdateDialog(current, offers) {
 
     for (const m of offers.slice().reverse()) {
       const label = t(m.channel === 'beta' ? 'update.getBeta' : 'update.getStable', { version: m.version });
-      els.dialogButtons.appendChild(button(label, () => close({ manifest: m }), 'btn' + (m.channel === 'stable' ? ' btn-primary' : '')));
+      els.updateButtons.appendChild(button(label, () => close({ manifest: m }), 'btn' + (m.channel === 'stable' ? ' btn-primary' : '')));
     }
 
     // 「一天后提醒 ▾」：左边直接选一天后提醒，右边的 ▾ 打开菜单
@@ -220,13 +224,13 @@ function showUpdateDialog(current, offers) {
       menu.appendChild(item);
     }
     split.appendChild(menu);
-    els.dialogButtons.appendChild(split);
+    els.updateButtons.appendChild(split);
 
     window.addEventListener('keydown', onKey, true);
     document.addEventListener('pointerdown', onOutside, true);
-    els.dialog.dataset.mandatory = '1'; // 安卓的返回键也不能关掉它（见 bindBackButton）
-    els.dialog.hidden = false;
-    (els.dialogButtons.querySelector('.btn-primary') || els.dialogButtons.firstElementChild).focus();
+    els.updateDialog.hidden = false; // 安卓的返回键也不能关掉它（见 bindBackButton）
+    // 焦点放在窗口本身、不放在按钮上：窗口可能在用户打字时突然出现，空格、回车不会误按到「下载」。按 Tab 进入按钮
+    els.updateBox.focus({ preventScroll: true });
   });
 }
 

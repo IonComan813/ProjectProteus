@@ -251,6 +251,8 @@
     <div class="modal-box all-conv-box">
       <div class="modal-head"><strong data-i18n="conv.allTitle">全部对话</strong><span class="muted small" data-i18n="expand.hint">点击窗口以外的地方关闭</span></div>
       <div class="all-conv-list" id="allConvList"></div>
+      <!-- 多选的说明：电脑上和触屏上只显示其中一句（CSS 按有没有鼠标悬停区分） -->
+      <div class="all-conv-tip muted small"><span class="tip-mouse" data-i18n="conv.multiTipMouse">按住 Ctrl 或 Shift 点击可以选中多个对话，右键删除</span><span class="tip-touch" data-i18n="conv.multiTipTouch">勾选右边的方框可以选中多个对话，长按其中任意一个删除</span></div>
     </div>
   </div>
 
@@ -270,6 +272,18 @@
       <div class="modal-head"><strong id="dialogTitle"></strong></div>
       <div class="dialog-message" id="dialogMessage"></div>
       <div class="dialog-buttons" id="dialogButtons"></div>
+    </div>
+  </div>
+
+  <!-- 安卓：按返回键会退出时，先在屏幕中间显示「再按一次退出海神」，一会儿自动消失 -->
+  <div class="exit-hint" id="exitHint" role="status" aria-live="polite"></div>
+
+  <!-- 更新提示：有新版本时立刻显示，盖在所有窗口和弹窗上面（正在生成的回复照常继续）。必须选一个按钮才能关闭 -->
+  <div class="modal update-modal" id="updateDialog" hidden>
+    <div class="modal-box dialog-box" id="updateBox" tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="updateTitle">
+      <div class="modal-head"><strong id="updateTitle"></strong></div>
+      <div class="dialog-message" id="updateMessage"></div>
+      <div class="dialog-buttons" id="updateButtons"></div>
     </div>
   </div>
 

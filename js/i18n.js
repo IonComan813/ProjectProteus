@@ -14,6 +14,7 @@ const PROJECT_URL = 'https://github.com/IonComan813/ProjectProteus';
 const I18N = {
   'zh-CN': {
     'app.title': 'Proteus角色扮演',
+    'app.backAgainToExit': '再按一次退出海神',
     'defaultSystemPrompt': `你是一名角色扮演叙事者。根据下方的世界观设定和目前为止的剧情推进故事，扮演世界中除用户角色以外的所有角色，并描写环境与事件。
 - 始终与世界观设定和目前为止的剧情保持一致。
 - 尽量避免替用户角色说话、行动或做决定。例外是不需要做决定的细小、被动的动作，例如接住递过来的杯子、被巨响吓得一缩。这类动作可以直接叙述，不必等待用户回复。
@@ -73,6 +74,11 @@ const I18N = {
     "export.menuMessageAssistant": "· 对话记录：当前对话的全部消息，不含 System Prompt。\n· 完整备份（全部对话）：所有对话和软件设置（不含 API Key），用于换电脑或防止数据丢失。读取时替换本机所有对话和设置。\n· 日志：最近一次请求模型时实际发送的请求和收到的原始回复（API Key 已隐藏），用于排查问题。只记这次打开软件以来的最后一次。\n\n助理模式没有世界卡和完整备份（当前对话）。",
     'conv.renamePrompt': '对话名称：',
     'conv.deleteConfirm': '删除对话「{title}」？此操作无法撤销。',
+    'conv.deleteN': '删除 {n} 个对话',
+    'conv.deleteManyConfirm': '删除这 {n} 个对话？此操作无法撤销。',
+    'conv.select': '选中「{title}」',
+    'conv.multiTipMouse': '按住 Ctrl 或 Shift 点击可以选中多个对话，右键删除',
+    'conv.multiTipTouch': '勾选右边的方框可以选中多个对话，长按其中任意一个删除',
     'conv.stopFirst': '请先停止当前生成',
 
     // 消息
@@ -411,6 +417,7 @@ const I18N = {
 
   'zh-TW': {
     'app.title': 'Proteus角色扮演',
+    'app.backAgainToExit': '再按一次退出海神',
     'defaultSystemPrompt': `你是一名角色扮演敘事者。根據下方的世界觀設定和目前為止的劇情推進故事，扮演世界中除使用者角色以外的所有角色，並描寫環境與事件。
 - 始終與世界觀設定和目前為止的劇情保持一致。
 - 盡量避免替使用者角色說話、行動或做決定。例外是不需要做決定的細小、被動的動作，例如接住遞過來的杯子、被巨響嚇得一縮。這類動作可以直接敘述，不必等待使用者回覆。
@@ -464,6 +471,11 @@ const I18N = {
     "export.menuMessageAssistant": "· 對話紀錄：目前對話的全部訊息，不含 System Prompt。\n· 完整備份（全部對話）：所有對話和軟體設定（不含 API Key），用於換電腦或防止資料遺失。讀取時取代本機所有對話和設定。\n· 日誌：最近一次請求模型時實際送出的請求和收到的原始回覆（API Key 已隱藏），用於排查問題。只記這次開啟軟體以來的最後一次。\n\n助理模式沒有世界卡和完整備份（目前對話）。",
     'conv.renamePrompt': '對話名稱：',
     'conv.deleteConfirm': '刪除對話「{title}」？此操作無法復原。',
+    'conv.deleteN': '刪除 {n} 個對話',
+    'conv.deleteManyConfirm': '刪除這 {n} 個對話？此操作無法復原。',
+    'conv.select': '選取「{title}」',
+    'conv.multiTipMouse': '按住 Ctrl 或 Shift 點擊可以選取多個對話，按右鍵刪除',
+    'conv.multiTipTouch': '勾選右邊的方框可以選取多個對話，長按其中任意一個刪除',
     'conv.stopFirst': '請先停止目前的生成',
     'msg.you': '你',
     'msg.story': '劇情',
@@ -790,6 +802,7 @@ const I18N = {
 
   en: {
     'app.title': 'Proteus Roleplay',
+    'app.backAgainToExit': 'Press back again to exit Proteus',
     'defaultSystemPrompt': `You are a roleplay narrator. Advance the story according to the world setting and the story so far below, play every character in the world except the user's character, and describe the surroundings and events.
 - Always stay consistent with the world setting and the story so far.
 - Avoid speaking, acting, or making decisions for the user's character as much as possible. The exception is minor, passive actions that require no decision, such as catching a cup that is handed over or flinching at a loud noise. You may narrate these without waiting for the user's reply.
@@ -843,6 +856,11 @@ const I18N = {
     "export.menuMessageAssistant": "· Chat: all messages in this conversation, without the System Prompt.\n· Full backup (all conversations): all conversations and app settings (without API keys), for moving to another computer or guarding against data loss. Loading it replaces all conversations and settings on this device.\n· Log: the request actually sent to the model the last time and the raw reply received (API key hidden), for troubleshooting. Only the last one since the app was opened.\n\nWorld cards and single-conversation backups are not available in assistant mode.",
     'conv.renamePrompt': 'Conversation name:',
     'conv.deleteConfirm': 'Delete conversation "{title}"? This cannot be undone.',
+    'conv.deleteN': 'Delete {n} conversations',
+    'conv.deleteManyConfirm': 'Delete these {n} conversations? This cannot be undone.',
+    'conv.select': 'Select "{title}"',
+    'conv.multiTipMouse': 'Ctrl-click or Shift-click to select several conversations, then right-click to delete',
+    'conv.multiTipTouch': 'Tick the boxes on the right to select several conversations, then long-press any of them to delete',
     'conv.stopFirst': 'Stop the current generation first',
     'msg.you': 'You',
     'msg.story': 'Story',
@@ -1169,6 +1187,7 @@ const I18N = {
 
   ja: {
     'app.title': 'Proteusロールプレイ',
+    'app.backAgainToExit': 'もう一度押すと Proteus を終了します',
     'defaultSystemPrompt': `あなたはロールプレイの語り手です。以下の世界観設定とこれまでの物語に従って物語を進め、ユーザーのキャラクター以外の登場人物すべてを演じ、環境や出来事を描写してください。
 - 常に世界観設定とこれまでの物語と矛盾しないようにしてください。
 - ユーザーのキャラクターの代わりに話したり、行動したり、決定したりすることは、できるだけ避けてください。例外は、判断を必要としない小さく受動的な動作です（差し出されたカップを受け取る、大きな音にびくっとする、など）。こうした動作は、ユーザーの返信を待たずに描写してかまいません。
@@ -1222,6 +1241,11 @@ const I18N = {
     "export.menuMessageAssistant": "· 会話：この会話のすべてのメッセージ。System Prompt は含みません。\n· 完全バックアップ（すべての会話）：すべての会話とアプリの設定（API キーを除く）。パソコンの移行やデータ消失への備えに。読み込むとこの端末のすべての会話と設定が置き換えられます。\n· ログ：直近にモデルへ実際に送ったリクエストと受け取った生の返信（API キーは非表示）。トラブル調査用です。アプリを開いてからの最後の 1 件だけを記録します。\n\nアシスタントモードではワールドカードと完全バックアップ（この会話）は使えません。",
     'conv.renamePrompt': '会話の名前：',
     'conv.deleteConfirm': '会話「{title}」を削除しますか？元に戻せません。',
+    'conv.deleteN': '{n} 件の会話を削除',
+    'conv.deleteManyConfirm': 'この {n} 件の会話を削除しますか？元に戻せません。',
+    'conv.select': '「{title}」を選択',
+    'conv.multiTipMouse': 'Ctrl または Shift を押しながらクリックすると複数選択でき、右クリックで削除できます',
+    'conv.multiTipTouch': '右側のチェックボックスで複数選択し、そのどれかを長押しすると削除できます',
     'conv.stopFirst': '先に生成を停止してください',
     'msg.you': 'あなた',
     'msg.story': '物語',

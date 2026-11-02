@@ -130,9 +130,14 @@ body.resizing iframe { pointer-events: none; }
 /* 「全部对话」窗口 */
 .all-conv-box { width: min(560px, 90vw); }
 .all-conv-list { overflow-y: auto; min-height: 0; padding: 6px; }
+/* 每行：对话名称（点击切换）和触屏上的勾选框；选中的行（多选）底色更深 */
+.all-conv-row { display: flex; align-items: center; border-radius: 4px; }
+.all-conv-row:hover, .all-conv-row:focus-within { background: rgba(201, 169, 110, .18); }
+.all-conv-row.selected { background: rgba(201, 169, 110, .34); }
 .all-conv-item {
   display: block;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   padding: 7px 10px;
   border: none;
   border-radius: 4px;
@@ -149,8 +154,17 @@ body.resizing iframe { pointer-events: none; }
   -webkit-user-select: none;
   -webkit-touch-callout: none;
 }
-.all-conv-item:hover, .all-conv-item:focus-visible { background: rgba(201, 169, 110, .18); outline: none; }
-.all-conv-item.current { font-weight: 600; color: var(--accent); }
+.all-conv-item:focus-visible { outline: none; }
+.all-conv-row.current .all-conv-item { font-weight: 600; color: var(--accent); }
+/* 勾选框只在触屏上显示；电脑上用 Ctrl / Shift 点击多选 */
+.all-conv-check { display: none; flex: none; width: 20px; height: 20px; margin: 0 10px 0 6px; accent-color: var(--accent); }
+.all-conv-tip { padding: 6px 12px 4px; border-top: 1px solid var(--border); }
+.all-conv-tip .tip-touch { display: none; }
+@media (hover: none) {
+  .all-conv-check { display: block; }
+  .all-conv-tip .tip-mouse { display: none; }
+  .all-conv-tip .tip-touch { display: inline; }
+}
 .combo-item.current { font-weight: 600; }
 /* 右键菜单：出现在光标右下方（位置由 JS 设置） */
 .split-menu.ctx-menu { position: fixed; right: auto; top: 0; left: 0; min-width: 120px; z-index: 55; } /* 要盖在「全部对话」窗口上 */
@@ -655,6 +669,9 @@ textarea:focus, input:focus, select:focus { outline: 1px solid var(--accent); bo
   max-height: 60vh; /* 显示较长的内容（例如将要覆盖的 System Prompt）时可以滚动 */
   overflow: auto;
 }
+/* 更新提示：盖在其他弹窗、「全部对话」窗口和右键菜单（55）上面，提示文字（toast，60）仍在它上面 */
+.modal.update-modal { z-index: 57; }
+#updateBox:focus { outline: none; }
 /* 更新提示里的「一天后提醒 ▾」：菜单往下展开、靠右对齐；下面放不下时由 JS 加上 drop-up 改为往上 */
 .update-remind .split-menu { left: auto; right: 0; }
 .update-remind .split-menu.drop-up { top: auto; bottom: calc(100% + 4px); }
@@ -677,6 +694,29 @@ textarea:focus, input:focus, select:focus { outline: 1px solid var(--accent); bo
   border-radius: 6px;
   z-index: 60;
 }
+
+/* 安卓「再按一次退出海神」：屏幕正中，深色半透明底、浅色字，淡入淡出；不挡点击 */
+.exit-hint {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  max-width: 80vw;
+  padding: 10px 22px;
+  border-radius: 22px;
+  background: rgba(12, 13, 16, .88);
+  border: 1px solid rgba(201, 169, 110, .45);
+  color: #f1ece2;
+  font-size: 15px;
+  text-align: center;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, .45);
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity .2s, visibility .2s;
+  z-index: 65;
+}
+.exit-hint.show { opacity: 1; visibility: visible; }
 
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: #3a3c44; border-radius: 5px; border: 2px solid transparent; background-clip: padding-box; }
