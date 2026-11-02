@@ -7,32 +7,27 @@ const PROVIDERS = {
   anthropic: {
     format: 'anthropic',
     baseUrl: 'https://api.anthropic.com',
-    models: ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-fable-5-1'],
     defaultModel: 'claude-opus-5-5',
   },
   openai: {
     format: 'openai',
     baseUrl: 'https://api.openai.com/v1',
-    models: [],
     defaultModel: '',
   },
   gemini: {
     format: 'openai', // 使用 Gemini 提供的 OpenAI 兼容接口
     baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
     // 免费额度下较大的模型常常繁忙（503）或长时间排队，默认用最稳定的 3.5-flash-lite
-    models: ['gemini-3.5-flash-lite', 'gemini-3.5-flash', 'gemini-3-flash-preview', 'gemini-3.8-flash', 'gemini-3.1-pro-preview'],
     defaultModel: 'gemini-3.5-flash-lite',
   },
   custom_openai: {
     format: 'openai',
     baseUrl: '',
-    models: [],
     defaultModel: '',
   },
   custom_anthropic: {
     format: 'anthropic',
     baseUrl: '',
-    models: ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5'],
     defaultModel: '',
   },
 };

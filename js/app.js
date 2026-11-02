@@ -2243,11 +2243,9 @@ function fillProviderFields() {
 
 const modelMenu = { items: [], active: -1 };
 
-// 可选的模型：优先用“获取列表”得到的，没有就用预设的几个
+// 可选的模型：只有点“获取列表”从接口拿到的。没有预设的列表：预设的名字不一定能用，容易误解成都可以用
 function modelOptions() {
-  const p = state.settings.provider;
-  const fetched = state.settings.modelLists[p];
-  return fetched && fetched.length ? fetched : PROVIDERS[p].models;
+  return state.settings.modelLists[state.settings.provider] || [];
 }
 
 // filter 为空时显示全部；否则只显示包含这段文字的
