@@ -366,14 +366,14 @@ World cards and full backups exported from a SillyTavern chat keep this mark (wi
 
 Cards that rely on SillyTavern-only features (regex scripts, STscript, front-end extensions, etc.) lose those effects; HTML status bars written directly by the model are displayed as usual.
 
-## Shared computers
+## Shared devices
 
-- "Remember API keys on this computer" under "Model & API": when unchecked, API keys only last until you close the page and are never written to this device
+- "Remember API keys on this device" under "Model & API": when unchecked, API keys only last until you close the page and are never written to this device
 - "Clear all local data" under "Local data" on the right: deletes every conversation, setting, artwork and API key Proteus has stored in this browser
 
 ## API key security
 
-Proteus runs on your own computer. API keys are stored only locally and never pass through any third-party server, and exported world cards and backups never include them. Please note:
+Proteus runs on your own device. API keys are stored only in the app's data on this device (for the web version, the browser's storage) and never pass through any third-party server, and exported world cards and backups never include them. Please note:
 
 - (Web version) In Chrome, all local web pages opened by double-clicking share the same storage, so in theory a malicious local HTML file could read the data Proteus has saved. Don't open HTML files of unknown origin in the same browser, or use a native app instead; the native apps keep their data completely separate from your browser
 - In world cards shared by others, the opening may contain JS. It runs in an isolated sandbox and cannot read your API keys or data, but it can load external resources such as images (and so can tell that someone opened the card)
