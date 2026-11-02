@@ -62,11 +62,12 @@ async function fetchUpdateManifest(channel) {
   try {
     // 加上时间参数，避免读到缓存里的旧文件
     const res = await fetch(`${UPDATE_BASE_URL}/${channel}/version.json?t=${Date.now()}`, { cache: 'no-store', signal: controller.signal });
-    if (!res.ok) return null;
+    if (res.status === 404) return null; // 这个频道还没有发布过
+    if (!res.ok) return 'error';
     const m = await res.json();
-    return m && typeof m.version === 'string' && m.files && typeof m.files === 'object' ? { ...m, channel } : null;
+    return m && typeof m.version === 'string' && m.files && typeof m.files === 'object' ? { ...m, channel } : 'error';
   } catch (_) {
-    return null; // 连不上、超时或者内容不对：这次不提示
+    return 'error'; // 连不上、超时或者内容不对
   } finally {
     clearTimeout(timer);
   }
@@ -80,6 +81,9 @@ function updateDialogFree() {
 // 稍后提醒和跳过的版本，保存在软件设置里：
 //   updateSnooze.until：这个时间之前不提示（「一天后提醒」「三天后提醒」），期间出了更新的版本也不提示
 //   updateSnooze.skip：{ stable, beta } 各频道跳过的版本（「跳过此版本」），只有更新的版本才再提示
+// 另外 updateCheckedDay 记下最近一次「检查过、没有要提示的更新」是哪一天（本机日期，例如 2026-11-02）：
+// 同一天里再启动软件不再检查，第二天第一次启动时再检查（按日期，不是满 24 小时），以减少对更新服务器的请求。
+// 连不上服务器时不记，下次启动再试
 function updateSnooze() {
   const z = state.settings.updateSnooze;
   return z && typeof z === 'object' ? z : {};
@@ -95,16 +99,27 @@ async function checkForUpdates() {
   if (!key) return;
   const snooze = updateSnooze();
   if (snooze.until && Date.now() < snooze.until) return;
+  const today = localDay();
+  if (state.settings.updateCheckedDay === today) return;
   const skip = snooze.skip || {};
   const current = state.version;
-  const [stable, beta] = await Promise.all([fetchUpdateManifest('stable'), fetchUpdateManifest('beta')]);
+  let [stable, beta] = await Promise.all([fetchUpdateManifest('stable'), fetchUpdateManifest('beta')]);
+  const failed = stable === 'error' || beta === 'error';
+  if (stable === 'error') stable = null;
+  if (beta === 'error') beta = null;
   const wanted = (m) => m && m.files[key] && compareVersions(m.version, current) > 0
     && !(skip[m.channel] && !(compareVersions(m.version, skip[m.channel]) > 0));
   const offers = [];
   if (wanted(stable)) offers.push(stable);
   // 测试版还要比最新的正式版新（不论正式版是否被跳过）
   if (wanted(beta) && (!stable || compareVersions(beta.version, stable.version) > 0)) offers.push(beta);
-  if (!offers.length) return;
+  if (!offers.length) {
+    if (!failed) {
+      state.settings.updateCheckedDay = today;
+      saveSettingsSoon();
+    }
+    return;
+  }
 
   for (let waited = 0; !updateDialogFree(); waited += 2000) {
     if (waited > 10 * 60 * 1000) return; // 一直没空就算了，下次启动再提示
@@ -126,8 +141,14 @@ async function checkForUpdates() {
   }
 }
 
-// 更新提示窗口。按钮：暂不更新 /「一天后提醒」（旁边的 ▾ 打开菜单：三天后提醒、跳过此版本）/ 下载测试版 / 下载正式版。
-// 返回 { manifest } / { remindDays } / { skip: true }，「暂不更新」或关闭返回 null（下次启动再提示）
+// 本机日期（年-月-日），用来判断今天是否已经检查过
+function localDay(d = new Date()) {
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+// 更新提示窗口。按钮依次是：下载测试版 / 下载正式版（有哪个显示哪个）/「一天后提醒」（旁边的 ▾ 打开菜单：三天后提醒、跳过此版本）。
+// 返回 { manifest } / { remindDays } / { skip: true }；按 Esc 关闭返回 null（下次检查时再提示）
 function showUpdateDialog(current, offers) {
   const lines = offers.map((m) => t(m.channel === 'beta' ? 'update.lineBeta' : 'update.lineStable', { version: m.version }));
   const message = t('update.message', { current, list: lines.join('\n') })
@@ -151,7 +172,10 @@ function showUpdateDialog(current, offers) {
     };
     const onOutside = (e) => { if (menu && !menu.hidden && !split.contains(e.target)) closeMenu(); };
 
-    els.dialogButtons.appendChild(button(t('update.later'), () => close(null), 'btn btn-ghost'));
+    for (const m of offers.slice().reverse()) {
+      const label = t(m.channel === 'beta' ? 'update.getBeta' : 'update.getStable', { version: m.version });
+      els.dialogButtons.appendChild(button(label, () => close({ manifest: m }), 'btn' + (m.channel === 'stable' ? ' btn-primary' : '')));
+    }
 
     // 「一天后提醒 ▾」：左边直接选一天后提醒，右边的 ▾ 打开菜单
     const split = document.createElement('div');
@@ -181,14 +205,10 @@ function showUpdateDialog(current, offers) {
     split.appendChild(menu);
     els.dialogButtons.appendChild(split);
 
-    for (const m of offers.slice().reverse()) {
-      const label = t(m.channel === 'beta' ? 'update.getBeta' : 'update.getStable', { version: m.version });
-      els.dialogButtons.appendChild(button(label, () => close({ manifest: m }), 'btn' + (m.channel === 'stable' ? ' btn-primary' : '')));
-    }
     document.addEventListener('keydown', onKey, true);
     document.addEventListener('mousedown', onOutside, true);
     els.dialog.hidden = false;
-    (els.dialogButtons.querySelector('.btn-primary') || els.dialogButtons.lastElementChild).focus();
+    (els.dialogButtons.querySelector('.btn-primary') || els.dialogButtons.firstElementChild).focus();
   });
 }
 

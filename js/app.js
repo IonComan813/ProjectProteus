@@ -508,24 +508,28 @@ function closeNewConvMenu() {
 
 const roundsText = (n) => t(n === 1 ? 'conv.round1' : 'conv.rounds', { n });
 
-const convLabel = (c) => KIND_EMOJI[kindOf(c)] + ' ' + (c.lock ? '🔒 ' : '') + t('conv.option', { title: convTitle(c), rounds: roundsText(roundsOf(c)), time: fmtTime(c.activeAt) });
+// 对话名称、轮数和时间之间的分隔：手机布局只有一个圆点（屏幕窄），电脑布局圆点两边各一个空格
+const convLabel = (c) => KIND_EMOJI[kindOf(c)] + ' ' + (c.lock ? '🔒 ' : '')
+  + t('conv.option', { title: convTitle(c), rounds: roundsText(roundsOf(c)), time: fmtTime(c.activeAt), sep: isMobileLayout() ? '·' : ' · ' });
 
 // 对话列表（顶部）。按最近一次活动的时间排序
 function renderConvSelect() {
   els.convCurrent.textContent = state.conv ? convLabel(state.conv) : '';
   if (!els.convMenu.hidden) fillConvMenu();
+  if (!els.allConvBox.hidden) fillAllConvs(); // 在「全部对话」窗口里重命名、删除后跟着更新
 }
 
-// 对话超过 CONV_PAGE_SIZE 个时分页显示，右下角是「◀ 1/2 ▶」。
-// convMenu.items 是当前这一页的对话，active 是它在这一页里的位置
-const CONV_PAGE_SIZE = 10;
-const convMenu = { items: [], active: -1, page: 0, pages: 1 };
+// 对话列表只列出最近活动的 CONV_MENU_SIZE 个对话（按最近一次活动的时间，旧对话有了新消息也会排到前面）；
+// 更多时最后一项是「…」，点开「全部对话」窗口。convMenu.items 是列出的对话，active 是选中的位置（「…」排在最后）
+const CONV_MENU_SIZE = 9;
+const convMenu = { items: [], active: -1, more: false };
+
+const sortedConvs = () => [...state.conversations].sort((a, b) => b.activeAt - a.activeAt);
 
 function fillConvMenu() {
-  const all = [...state.conversations].sort((a, b) => b.activeAt - a.activeAt);
-  convMenu.pages = Math.max(1, Math.ceil(all.length / CONV_PAGE_SIZE));
-  convMenu.page = Math.min(Math.max(0, convMenu.page), convMenu.pages - 1);
-  convMenu.items = all.slice(convMenu.page * CONV_PAGE_SIZE, (convMenu.page + 1) * CONV_PAGE_SIZE);
+  const all = sortedConvs();
+  convMenu.items = all.slice(0, CONV_MENU_SIZE);
+  convMenu.more = all.length > CONV_MENU_SIZE;
   els.convMenu.innerHTML = '';
   convMenu.items.forEach((c, i) => {
     const item = document.createElement('div');
@@ -546,55 +550,62 @@ function fillConvMenu() {
     });
     els.convMenu.appendChild(item);
   });
-  if (convMenu.pages > 1) els.convMenu.appendChild(convPager());
-  if (convMenu.active >= convMenu.items.length) convMenu.active = convMenu.items.length - 1;
+  if (convMenu.more) {
+    const more = document.createElement('div');
+    more.className = 'combo-item conv-more';
+    more.setAttribute('role', 'option');
+    more.textContent = '…';
+    more.title = t('conv.allTitle');
+    more.setAttribute('aria-label', t('conv.allTitle'));
+    more.addEventListener('click', openAllConvs);
+    more.addEventListener('contextmenu', (e) => e.preventDefault());
+    more.addEventListener('mousemove', () => highlightConv(convMenu.items.length, false));
+    els.convMenu.appendChild(more);
+  }
+  const n = convMenu.items.length + (convMenu.more ? 1 : 0);
+  if (convMenu.active >= n) convMenu.active = n - 1;
   highlightConv(convMenu.active, false);
-}
-
-// 翻页栏：◀ 页码/总页数 ▶。箭头用 CSS 画的实心三角形（有的系统字体里 ◀ ▶ 会显示成彩色表情）
-function convPager() {
-  const bar = document.createElement('div');
-  bar.className = 'conv-pager';
-  const arrow = (dir, d, label) => {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'conv-page-btn';
-    b.title = label;
-    b.setAttribute('aria-label', label);
-    b.innerHTML = `<span class="tri tri-${dir}"></span>`;
-    b.disabled = convMenu.page + d < 0 || convMenu.page + d >= convMenu.pages;
-    b.addEventListener('mousedown', (e) => e.preventDefault()); // 焦点留在对话列表上，键盘照常可用
-    b.addEventListener('click', () => turnConvPage(d));
-    return b;
-  };
-  const num = document.createElement('span');
-  num.className = 'conv-page-num';
-  num.textContent = `${convMenu.page + 1}/${convMenu.pages}`;
-  bar.append(arrow('left', -1, t('conv.prevPage')), num, arrow('right', 1, t('conv.nextPage')));
-  return bar;
-}
-
-// 翻页。active 是翻过去以后要选中的位置（默认不选中）
-function turnConvPage(d, active = -1) {
-  const page = convMenu.page + d;
-  if (page < 0 || page >= convMenu.pages) return;
-  closeConvCtxMenu();
-  convMenu.page = page;
-  convMenu.active = -1;
-  fillConvMenu();
-  highlightConv(active === 'last' ? convMenu.items.length - 1 : active, true);
 }
 
 function openConvMenu() {
   closeNewConvMenu();
   convMenu.active = -1;
-  // 打开时显示当前对话所在的那一页
-  const all = [...state.conversations].sort((a, b) => b.activeAt - a.activeAt);
-  convMenu.page = Math.max(0, Math.floor(all.indexOf(state.conv) / CONV_PAGE_SIZE));
   fillConvMenu();
   els.convMenu.hidden = false;
   els.convSelect.setAttribute('aria-expanded', 'true');
   highlightConv(convMenu.items.indexOf(state.conv), true);
+}
+
+// 「全部对话」窗口：所有对话按最近活动的时间排列。点对话切换过去，右键（触屏上长按）重命名或删除，
+// 点窗口以外的地方或按 Esc 关闭
+function openAllConvs() {
+  closeConvMenu();
+  fillAllConvs();
+  els.allConvBox.hidden = false;
+  const cur = els.allConvList.querySelector('.current');
+  if (cur) { cur.scrollIntoView({ block: 'center' }); cur.focus({ preventScroll: true }); }
+}
+
+function closeAllConvs() {
+  closeConvCtxMenu();
+  els.allConvBox.hidden = true;
+}
+
+function fillAllConvs() {
+  els.allConvList.innerHTML = '';
+  for (const c of sortedConvs()) {
+    const item = button(convLabel(c), () => {
+      closeAllConvs();
+      if (c !== state.conv) void switchConv(c.id);
+    }, 'all-conv-item' + (c === state.conv ? ' current' : ''));
+    item.title = convLabel(c);
+    item.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      openConvCtxMenu(c, e.clientX, e.clientY);
+    });
+    addLongPress(item, (x, y) => openConvCtxMenu(c, x, y));
+    els.allConvList.appendChild(item);
+  }
 }
 
 function closeConvMenu() {
@@ -2877,27 +2888,22 @@ function bindChat() {
   els.btnJumpBottom.addEventListener('click', scrollToBottom);
   els.btnJumpTop.addEventListener('click', scrollToTop);
 
-  // 对话列表：点击展开；键盘 ↑ ↓ 选择（到了一页的头尾会翻到相邻的一页）、← → 翻页、Enter 切换、Esc 收起，
+  // 对话列表：点击展开；键盘 ↑ ↓ 选择、Enter 切换（选中「…」时打开「全部对话」）、Esc 收起，
   // 菜单键或 Shift + F10 打开右键菜单
   els.convSelect.addEventListener('click', () => { if (els.convMenu.hidden) openConvMenu(); else closeConvMenu(); });
   els.convSelect.addEventListener('keydown', (e) => {
     const open = !els.convMenu.hidden;
-    const n = convMenu.items.length;
+    const n = convMenu.items.length + (convMenu.more ? 1 : 0);
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
       if (!open) return openConvMenu();
       closeConvCtxMenu();
       const d = e.key === 'ArrowDown' ? 1 : -1;
-      const next = convMenu.active < 0 ? 0 : convMenu.active + d;
-      if (next >= n && convMenu.page < convMenu.pages - 1) turnConvPage(1, 0);
-      else if (next < 0 && convMenu.page > 0) turnConvPage(-1, 'last');
-      else highlightConv((next + n) % n, true);
-    } else if (open && (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'PageUp' || e.key === 'PageDown')) {
-      e.preventDefault();
-      turnConvPage(e.key === 'ArrowLeft' || e.key === 'PageUp' ? -1 : 1, 0);
+      highlightConv(convMenu.active < 0 ? 0 : (convMenu.active + d + n) % n, true);
     } else if (open && (e.key === 'Enter' || e.key === ' ')) {
       e.preventDefault();
       if (convMenu.items[convMenu.active]) pickConv(convMenu.items[convMenu.active]);
+      else if (convMenu.more && convMenu.active === convMenu.items.length) openAllConvs();
     } else if (open && (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey))) {
       e.preventDefault();
       const el = els.convMenu.querySelectorAll('.combo-item')[convMenu.active];
@@ -2926,10 +2932,15 @@ function bindChat() {
   });
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
-    if (!els.convCtxMenu.hidden) { e.stopPropagation(); closeConvCtxMenu(); els.convSelect.focus(); }
+    if (!els.convCtxMenu.hidden) { e.stopPropagation(); closeConvCtxMenu(); if (els.allConvBox.hidden) els.convSelect.focus(); }
     else if (!els.convMenu.hidden) { e.stopPropagation(); closeConvMenu(); els.convSelect.focus(); }
+    else if (!els.allConvBox.hidden) { e.stopPropagation(); closeAllConvs(); els.convSelect.focus(); }
   }, true);
   window.addEventListener('resize', closeConvMenu);
+  // 点「全部对话」窗口以外的地方关闭它
+  els.allConvBox.addEventListener('click', (e) => { if (e.target === els.allConvBox) closeAllConvs(); });
+  // 电脑和手机布局的对话名称写法不同（手机上更紧凑），切换布局时重新显示
+  window.matchMedia('(max-width: 999px)').addEventListener('change', renderConvSelect);
   els.btnNewConv.addEventListener('click', (e) => {
     e.stopPropagation();
     if (els.newConvMenu.hidden) openNewConvMenu(); else closeNewConvMenu();

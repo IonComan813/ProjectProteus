@@ -122,45 +122,38 @@ body.resizing iframe { pointer-events: none; }
 .conv-current > span:first-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .conv-current .caret { color: var(--muted); }
 .conv-current:focus-visible, .conv-current[aria-expanded="true"] { outline: 1px solid var(--accent); border-color: var(--accent); }
-/* 一页最多 10 个对话，加上翻页栏也要一次显示完，不出现滚动条（.combo-menu 的 280px 上限对它不适用） */
+/* 最多 9 个对话加「…」，一次显示完，不出现滚动条（.combo-menu 的 280px 上限对它不适用） */
 .combo-menu.conv-menu { max-height: min(80vh, 520px); user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 .conv-menu .combo-item { line-height: 26px; }
-/* 对话超过 10 个时列表底部的翻页栏：◀ 1/2 ▶，靠右 */
-.conv-pager {
-  position: sticky;
-  bottom: 0;
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 2px;
-  padding: 2px 4px;
-  border-top: 1px solid ButtonBorder;
-  background: Canvas;
-  font-size: 12px;
-}
-.conv-page-num { min-width: 36px; text-align: center; font-variant-numeric: tabular-nums; }
-.conv-page-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 22px;
-  padding: 0;
+/* 对话列表最后的「…」：居中，点开「全部对话」 */
+.conv-menu .conv-more { text-align: center; letter-spacing: 2px; }
+/* 「全部对话」窗口 */
+.all-conv-box { width: min(560px, 90vw); }
+.all-conv-list { overflow-y: auto; min-height: 0; padding: 6px; }
+.all-conv-item {
+  display: block;
+  width: 100%;
+  padding: 7px 10px;
   border: none;
   border-radius: 4px;
   background: transparent;
-  color: CanvasText;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
-.conv-page-btn:hover:not(:disabled) { background: Highlight; color: HighlightText; }
-.conv-page-btn:disabled { opacity: 0.3; cursor: default; }
-/* 实心三角形（CSS 画的，不依赖字体） */
-.tri { display: inline-block; border-top: 5px solid transparent; border-bottom: 5px solid transparent; }
-.tri-left { border-right: 7px solid currentColor; }
-.tri-right { border-left: 7px solid currentColor; }
+.all-conv-item:hover, .all-conv-item:focus-visible { background: rgba(201, 169, 110, .18); outline: none; }
+.all-conv-item.current { font-weight: 600; color: var(--accent); }
 .combo-item.current { font-weight: 600; }
 /* 右键菜单：出现在光标右下方（位置由 JS 设置） */
-.split-menu.ctx-menu { position: fixed; right: auto; top: 0; left: 0; min-width: 120px; z-index: 40; }
+.split-menu.ctx-menu { position: fixed; right: auto; top: 0; left: 0; min-width: 120px; z-index: 55; } /* 要盖在「全部对话」窗口上 */
 .split-item.danger { color: var(--danger); }
 /* “＋ 新对话 ▾”：只打开菜单，在菜单里选新建哪种对话 */
 .split-btn { position: relative; display: flex; flex: none; }
@@ -663,7 +656,7 @@ textarea:focus, input:focus, select:focus { outline: 1px solid var(--accent); bo
   overflow: auto;
 }
 /* 更新提示里的「一天后提醒 ▾」：在弹窗底部，菜单往上展开 */
-.update-remind .split-menu { top: auto; bottom: calc(100% + 4px); left: 0; right: auto; }
+.update-remind .split-menu { top: auto; bottom: calc(100% + 4px); left: auto; right: 0; }
 .dialog-buttons {
   display: flex;
   flex-wrap: wrap;
@@ -821,8 +814,10 @@ textarea:focus, input:focus, select:focus { outline: 1px solid var(--accent); bo
   .modal-box, .dialog-box { width: 94vw; }
   input[type=text], input[type=password], input[type=number], select, textarea, .conv-current { font-size: 16px; }
   .conv-menu .combo-item { line-height: 36px; font-size: 15px; }
-  .conv-pager { font-size: 14px; }
-  .conv-page-btn { width: 40px; height: 34px; }
+  .all-conv-item { padding: 11px 12px; font-size: 15px; }
+  /* 对话列表铺满屏幕宽度（盖住右边的按钮），条目尽量完整显示 */
+  .combo-menu.conv-menu { right: auto; width: calc(100vw - 20px); }
+  .unit-input .unit { font-size: 16px; } /* 和记忆长度的数字一样大（手机上输入框是 16px） */
   .ctx-menu .split-item { padding: 11px 18px; font-size: 15px; } /* 长按弹出的菜单：方便手指点 */
 }
 
