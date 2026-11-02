@@ -487,8 +487,7 @@ async function createConversation(kind = kindOf(state.conv)) {
   const art = from && (await DB.get(artKey(from.id)));
   if (art) await DB.set(artKey(c.id), art);
   await switchConv(c.id);
-  // 电脑上直接把光标放进输入框；触屏设备（安卓等）不放，否则会弹出键盘
-  if (!NATIVE && !window.matchMedia('(pointer: coarse)').matches) els.input.focus();
+  // 不自动把光标放进输入框（手机上会弹出键盘）：用户自己点输入框
 }
 
 // “＋ 新对话”的菜单：🎭 角色扮演、🤖 助理模式、🍺 酒馆兼容
@@ -1196,6 +1195,9 @@ async function rollback(i) {
 }
 
 // ---------------- 发送与生成 ----------------
+
+// 点击是否落在确认框、输入框或信息弹窗里：这些窗口盖在其他东西上面，在里面点击不应该关掉下面打开的菜单和窗口
+const insideDialog = (el) => !!(el && el.closest && el.closest('#dialog, #textDialog, #pwDialog, #modal'));
 
 // 带多个按钮的确认框，返回所选按钮的 value（关闭则为 null）
 function choose(title, message, options) {
@@ -2815,7 +2817,7 @@ function bindSettings() {
 
   // 查看下一轮将发送的内容
   els.btnPreviewNext.addEventListener('click', openPreview);
-  document.addEventListener('mousedown', (e) => { if (!els.previewBox.hidden && !els.previewBox.contains(e.target)) closePreview(); }, true);
+  document.addEventListener('mousedown', (e) => { if (!els.previewBox.hidden && !els.previewBox.contains(e.target) && !insideDialog(e.target)) closePreview(); }, true);
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !els.previewBox.hidden) { e.stopPropagation(); closePreview(); }
   }, true);
@@ -2825,7 +2827,7 @@ function bindSettings() {
     expandSource.dispatchEvent(new Event('input')); // 和直接在右侧输入一样保存、更新字数
   });
   // 点在放大窗口以外的地方就关闭（按 Esc 也可以）
-  document.addEventListener('mousedown', (e) => { if (expandSource && !els.expandBox.contains(e.target)) closeExpand(); }, true);
+  document.addEventListener('mousedown', (e) => { if (expandSource && !els.expandBox.contains(e.target) && !insideDialog(e.target)) closeExpand(); }, true);
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && expandSource) { e.stopPropagation(); closeExpand(); }
   }, true);
@@ -2968,7 +2970,7 @@ function bindChat() {
     const i = items.indexOf(document.activeElement);
     items[(i + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length].focus();
   });
-  document.addEventListener('click', (e) => { if (!els.newConvGroup.contains(e.target)) closeNewConvMenu(); });
+  document.addEventListener('click', (e) => { if (!els.newConvGroup.contains(e.target) && !insideDialog(e.target)) closeNewConvMenu(); });
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !els.newConvMenu.hidden) { e.stopPropagation(); closeNewConvMenu(); els.btnNewConv.focus(); }
   }, true);

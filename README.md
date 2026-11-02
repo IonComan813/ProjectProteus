@@ -70,6 +70,7 @@ The native apps (desktop and Android) check the update server for a new version 
   - "Remind me tomorrow": nothing is shown when you open the app during the next 24 hours, even if a newer version comes out. The ▾ next to it also has "Remind me in 3 days" (72 hours)
   - "Skip this version" in the ▾ menu: the versions listed are not shown again; you are told when a newer version number comes out. After skipping, the next check is also on the next day
 - You have to choose one of the buttons: Esc or clicking outside does not close this window
+- Once a download has started, the app also doesn't check again that day (not even after installing the new version); if you cancel the save dialog, you are asked again at the next start
 - The installer for this device is downloaded (Windows installer / portable, Mac Apple silicon / Intel, Linux or Android); your conversations and settings are kept when you install the new version:
   - **Desktop**: downloaded inside the app. You choose where to save it first (the Downloads folder by default), and the taskbar shows the progress. When it finishes you are asked whether to close the app and run the installer (Windows installer), open the installer (Mac dmg; then drag Proteus into Applications to replace the old version) or start the new version (Linux AppImage). The Windows portable version downloads a zip: you can open its folder, then unzip it and replace the old folder after closing the app
   - **Android**: downloaded by the system browser; tap the notification to install when it finishes

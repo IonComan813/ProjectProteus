@@ -139,7 +139,12 @@ async function checkForUpdates() {
     saveSettingsSoon();
     toast(t('update.skipped'));
   } else if (choice.manifest) {
-    await downloadUpdate(`${UPDATE_BASE_URL}/${choice.manifest.channel}/${encodeURIComponent(choice.manifest.files[key])}`);
+    const started = await downloadUpdate(`${UPDATE_BASE_URL}/${choice.manifest.channel}/${encodeURIComponent(choice.manifest.files[key])}`);
+    // 开始下载了：今天不再检查（装好新版本后再打开也是第二天才检查）；取消了保存就下次启动再提示
+    if (started) {
+      state.settings.updateCheckedDay = today;
+      saveSettingsSoon();
+    }
   }
 }
 
@@ -163,16 +168,17 @@ function showUpdateDialog(current, offers) {
     const close = (value) => {
       els.dialog.hidden = true;
       delete els.dialog.dataset.mandatory;
-      document.removeEventListener('keydown', onKey, true);
+      window.removeEventListener('keydown', onKey, true);
       document.removeEventListener('pointerdown', onOutside, true);
       resolve(value);
     };
     const closeMenu = () => { if (menu) { menu.hidden = true; toggle.setAttribute('aria-expanded', 'false'); } };
-    // 这个窗口必须选一个按钮才能关闭：Esc 只收起 ▾ 菜单，点窗口外面也不关闭
+    // 这个窗口必须选一个按钮才能关闭：Esc 只收起 ▾ 菜单，点窗口外面也不关闭。
+    // Esc 在 window 的捕获阶段最先处理并且不再传下去：窗口下面已经打开的列表、放大窗口、设置面板等都不会被它关掉
     const onKey = (e) => {
       if (e.key !== 'Escape') return;
       e.preventDefault();
-      e.stopPropagation();
+      e.stopImmediatePropagation();
       if (menu && !menu.hidden) { closeMenu(); toggle.focus(); }
     };
     // 菜单打开时，点它以外的任何地方（包括这个窗口里的其他位置）都收起它；再点一次 ▾ 也收起
@@ -216,7 +222,7 @@ function showUpdateDialog(current, offers) {
     split.appendChild(menu);
     els.dialogButtons.appendChild(split);
 
-    document.addEventListener('keydown', onKey, true);
+    window.addEventListener('keydown', onKey, true);
     document.addEventListener('pointerdown', onOutside, true);
     els.dialog.dataset.mandatory = '1'; // 安卓的返回键也不能关掉它（见 bindBackButton）
     els.dialog.hidden = false;
@@ -224,7 +230,7 @@ function showUpdateDialog(current, offers) {
   });
 }
 
-// 下载安装包。电脑版：在软件里下载，先选择保存位置，完成后问是否关闭软件并运行安装程序（electron/main.js）。
+// 下载安装包，开始下载了返回 true。电脑版：在软件里下载，先选择保存位置，完成后问是否关闭软件并运行安装程序（electron/main.js）。
 // 安卓版：交给系统浏览器下载，下载完成后点通知安装
 let updateProgressBound = false;
 async function downloadUpdate(url) {
@@ -238,8 +244,8 @@ async function downloadUpdate(url) {
       });
     }
     const result = await desktop.downloadUpdate(url);
-    if (result === 'cancelled') return toast(t('update.saveCancelled')); // 下次检查时再提示
-    if (result) return;
+    if (result === 'cancelled') { toast(t('update.saveCancelled')); return false; } // 下次检查时再提示
+    if (result) return true;
   }
   const a = document.createElement('a');
   a.href = url;
@@ -249,4 +255,5 @@ async function downloadUpdate(url) {
   a.click();
   a.remove();
   toast(t('update.downloading'));
+  return true;
 }
