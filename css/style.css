@@ -88,6 +88,7 @@ body.resizing iframe { pointer-events: none; }
 
 /* ---------- 中栏 ---------- */
 .chat-pane {
+  position: relative;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -127,8 +128,10 @@ body.resizing iframe { pointer-events: none; }
 /* 右键菜单：出现在光标右下方（位置由 JS 设置） */
 .split-menu.ctx-menu { position: fixed; right: auto; top: 0; left: 0; min-width: 120px; z-index: 40; }
 .split-item.danger { color: var(--danger); }
-/* “＋ 新对话”和右边的 ▾ 看起来是一个按钮，▾ 打开新建另一种模式的菜单 */
+/* “＋ 新对话 ▾”：只打开菜单，在菜单里选新建哪种对话 */
 .split-btn { position: relative; display: flex; flex: none; }
+.split-btn > .btn.new-conv { border-radius: 6px; }
+.new-conv .caret { margin-left: 2px; color: var(--muted); }
 .split-btn > .btn:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }
 .split-btn > .split-toggle {
   border-top-left-radius: 0;
@@ -174,6 +177,47 @@ body.resizing iframe { pointer-events: none; }
   cursor: pointer;
 }
 .split-item:hover, .split-item:focus-visible { background: rgba(201, 169, 110, .18); outline: none; }
+
+/* 放大的编辑窗口：电脑布局盖在聊天区上、占大半个聊天区，手机布局盖在设置面板上（位置和大小由 JS 设置） */
+.expand-box {
+  position: fixed;
+  z-index: 35;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, .6);
+}
+.expand-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+/* 下一轮将发送的内容：一块一块列出，标题栏右侧是预估 token */
+.preview-body { flex: 1; min-height: 0; overflow: auto; }
+.preview-group { margin: 10px 0 6px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.preview-group:first-child { margin-top: 0; }
+.preview-block { margin-bottom: 10px; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.preview-block-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 10px;
+  background: var(--panel-2);
+  font-size: 12px;
+}
+.preview-block-head > span:first-child { color: var(--accent); font-weight: 600; }
+.preview-block-head > span:last-child { color: var(--muted); white-space: nowrap; }
+.preview-note { padding: 6px 10px 0; font-size: 12px; color: var(--muted); font-style: italic; }
+.preview-block pre {
+  margin: 0;
+  padding: 8px 10px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.expand-box textarea { flex: 1; min-height: 0; resize: none; font-size: 14px; line-height: 1.7; }
 
 .messages-wrap {
   position: relative;
@@ -342,6 +386,30 @@ body.resizing iframe { pointer-events: none; }
 /* 去掉数字框右侧自带的上下箭头，只用两边的 − / ＋ */
 .row.stepper input[type=number]::-webkit-inner-spin-button,
 .row.stepper input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+/* 记忆长度：外框看起来是一个输入框，里面是数字（可以改）和“轮”（不能选中），一起居中 */
+.unit-input {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 84px;
+  padding: 0 8px;
+  flex: none;
+  background: #121317;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: text;
+}
+.unit-input:focus-within { outline: 1px solid var(--accent); border-color: var(--accent); }
+.row.stepper .unit-input input[type=number] {
+  width: 2ch; /* 按数字位数由 JS 调整 */
+  min-width: 1ch;
+  padding: 6px 1px 6px 0;
+  border: none;
+  background: transparent;
+  text-align: right;
+}
+.row.stepper .unit-input input[type=number]:focus { outline: none; }
+.unit-input .unit { font-size: 13px; user-select: none; -webkit-user-select: none; }
 
 /* 锁定的对话（来自加密世界卡） */
 .settings-pane.locked .unlockable { display: none !important; }
@@ -420,6 +488,8 @@ body.resizing iframe { pointer-events: none; }
 .composer-footer a { color: inherit; }
 .composer-footer a:hover { color: var(--accent); }
 .hint.per-conv { margin: 8px 0 0; }
+.hint.post-history-hint { margin: 8px 0 0; }
+.user-name { width: 100%; margin-bottom: 6px; }
 .settings-pane select#langSelect { width: 100%; }
 .error-bar {
   max-width: 900px;
@@ -553,6 +623,8 @@ textarea:focus, input:focus, select:focus { outline: 1px solid var(--accent); bo
   padding: 16px;
   white-space: pre-wrap;
   line-height: 1.7;
+  max-height: 60vh; /* 显示较长的内容（例如将要覆盖的 System Prompt）时可以滚动 */
+  overflow: auto;
 }
 .dialog-buttons {
   display: flex;

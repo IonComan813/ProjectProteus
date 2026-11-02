@@ -28,11 +28,13 @@
           <button id="convSelect" class="conv-current" data-i18n-title="conv.switch" aria-haspopup="listbox" aria-expanded="false"><span id="convCurrent"></span><span class="caret"></span></button>
           <div class="combo-menu conv-menu" id="convMenu" role="listbox" hidden></div>
         </div>
-        <!-- 新对话：主按钮新建同一种模式的对话；右边的 ▾ 打开菜单，新建另一种模式（角色扮演 / 助理模式）的对话 -->
+        <!-- 新对话：按钮只打开菜单，在菜单里选新建哪种对话 -->
         <div class="split-btn" id="newConvGroup">
-          <button id="btnNewConv" class="btn" data-i18n="conv.new"></button><button id="btnNewConvMenu" class="btn split-toggle" data-i18n-title="conv.newMenu" aria-haspopup="menu"><span class="caret"></span></button>
+          <button id="btnNewConv" class="btn new-conv" data-i18n-title="conv.newMenu" aria-haspopup="menu" aria-expanded="false"><span data-i18n="conv.new"></span> <span class="caret"></span></button>
           <div class="split-menu" id="newConvMenu" role="menu" hidden>
-            <button id="btnNewConvOther" class="split-item" role="menuitem"></button>
+            <button id="btnNewRoleplay" class="split-item" role="menuitem" data-i18n="conv.newRoleplay"></button>
+            <button id="btnNewAssistant" class="split-item" role="menuitem" data-i18n="conv.newAssistant"></button>
+            <button id="btnNewTavern" class="split-item" role="menuitem" data-i18n="conv.newTavern"></button>
           </div>
         </div>
         <button id="btnRenameConv" class="btn btn-ghost desktop-only" data-i18n="conv.rename" data-i18n-title="conv.renameTitle"></button>
@@ -97,7 +99,10 @@
         <p class="hint" data-i18n="set.systemPromptHint"></p>
         <textarea id="systemPrompt" class="scroll-box unlockable" rows="6"></textarea>
         <div class="lock-box lock-only" data-i18n="lock.protected"></div>
-        <div class="row unlockable"><button class="btn btn-small btn-ghost" id="btnResetSystem" data-i18n="set.resetDefault"></button></div>
+        <div class="row unlockable">
+          <button class="btn btn-small" id="btnExpandSystem" data-i18n="expand.button"></button>
+          <button class="btn btn-small btn-ghost" id="btnResetSystem" data-i18n="set.resetDefault"></button>
+        </div>
       </section>
 
       <section class="card">
@@ -107,15 +112,38 @@
         <div class="lock-box lock-only" data-i18n="lock.protected"></div>
         <div class="row">
           <button class="btn btn-small unlockable" id="btnUploadWorld" data-i18n="set.uploadText"></button>
+          <button class="btn btn-small unlockable" id="btnExpandWorld" data-i18n="expand.button"></button>
           <button class="btn btn-small btn-ghost unlockable" id="btnClearWorld" data-i18n="set.clear"></button>
           <span class="muted small" id="worldCount"></span>
         </div>
       </section>
 
       <section class="card">
+        <h3 data-i18n="set.npc"></h3>
+        <p class="hint" data-i18n="set.npcHint"></p>
+        <!-- {{char}} 的值：显示和发送时，内容里的 {{char}} 换成这里填的值。读取酒馆角色卡时自动填上角色名 -->
+        <input type="text" id="charName" class="user-name unlockable" spellcheck="false" autocomplete="off" data-i18n-ph="set.charNamePlaceholder" data-i18n-title="set.charNameTitle">
+        <textarea id="npcText" class="scroll-box unlockable" rows="5" data-i18n-ph="set.npcPlaceholder"></textarea>
+        <div class="lock-box lock-only" data-i18n="lock.protected"></div>
+        <div class="row">
+          <button class="btn btn-small unlockable" id="btnExpandNpc" data-i18n="expand.button"></button>
+          <span class="muted small" id="npcCount"></span>
+        </div>
+      </section>
+
+      <section class="card">
         <h3 data-i18n="set.persona"></h3>
         <p class="hint" data-i18n="set.personaHint"></p>
+        <!-- {{user}} 的值：显示和发送时，内容里的 {{user}} 换成这里填的值 -->
+        <input type="text" id="userName" class="user-name" spellcheck="false" autocomplete="off" data-i18n-ph="set.userNamePlaceholder" data-i18n-title="set.userNameTitle">
         <textarea id="persona" class="scroll-box" rows="5" data-i18n-ph="set.personaPlaceholder"></textarea>
+      </section>
+
+      <section class="card">
+        <h3 data-i18n="set.postHistory"></h3>
+        <textarea id="postHistory" class="scroll-box unlockable" rows="4" data-i18n-ph="set.postHistoryPlaceholder"></textarea>
+        <div class="lock-box lock-only" data-i18n="lock.protected"></div>
+        <p class="hint post-history-hint" data-i18n="set.postHistoryHint"></p>
         <p class="hint per-conv" data-i18n="set.perConvHint"></p>
       </section>
 
@@ -124,11 +152,15 @@
         <p class="hint" data-i18n="set.memoryHint"></p>
         <div class="row nowrap stepper">
           <button class="btn btn-small" id="btnRoundsMinus" data-i18n-title="set.roundsMinus">−</button>
-          <input type="number" id="rounds" min="1" max="40" step="1">
+          <!-- “轮”字在框里、不能选中，只有数字可以修改；数字和“轮”一起在框里居中 -->
+          <label class="unit-input" for="rounds">
+            <input type="number" id="rounds" min="1" max="40" step="1">
+            <span class="unit" data-i18n="set.roundsUnit" aria-hidden="true"></span>
+          </label>
           <button class="btn btn-small" id="btnRoundsPlus" data-i18n-title="set.roundsPlus">＋</button>
-          <span data-i18n="set.roundsUnit"></span>
         </div>
         <p class="hint" id="tokenEstimate"></p>
+        <button class="btn btn-small" id="btnPreviewNext" data-i18n="set.previewNext"></button>
       </section>
 
       <section class="card">
@@ -217,7 +249,8 @@
   <!-- 隐藏的文件选择器 -->
   <input type="file" id="fileWorld" accept=".txt,.md,text/plain,text/markdown" hidden>
   <input type="file" id="fileArt" accept="image/*" hidden>
-  <input type="file" id="fileRestore" accept=".json,application/json" hidden>
+  <input type="file" id="fileRestore" accept=".json,.png,application/json,image/png" hidden>
+  <input type="file" id="fileTavern" accept=".json,.png,application/json,image/png" hidden>
 
   <!-- 弹窗 -->
   <div class="modal" id="modal" hidden>
@@ -273,9 +306,24 @@
     </div>
   </div>
 
-  <!-- 对话列表里右键一个对话时出现在光标右下方的菜单 -->
+  <!-- 对话列表里右键一个对话时出现在光标右下方的菜单：重命名、删除 -->
   <div class="split-menu ctx-menu" id="convCtxMenu" role="menu" hidden>
+    <button id="btnCtxRename" class="split-item" role="menuitem" data-i18n="conv.rename"></button>
     <button id="btnCtxDelete" class="split-item danger" role="menuitem" data-i18n="conv.delete"></button>
+  </div>
+
+  <!-- 放大的编辑窗口（System Prompt / 世界观 / NPC角色）：内容和右侧的输入框同步，点窗口以外的地方关闭。
+       电脑布局盖在聊天区上，手机布局盖在设置面板上（位置由 JS 设置） -->
+  <div class="expand-box" id="expandBox" hidden>
+    <div class="expand-head"><strong id="expandTitle"></strong><span class="muted small" data-i18n="expand.hint"></span></div>
+    <textarea id="expandText"></textarea>
+  </div>
+
+  <!-- 查看下一轮将发送的内容：按发送的顺序列出每一块（带标签的原文和预估 token），点窗口以外的地方关闭 -->
+  <div class="expand-box preview-box" id="previewBox" hidden>
+    <div class="expand-head"><strong data-i18n="preview.title"></strong><span class="muted small" data-i18n="expand.hint"></span></div>
+    <div class="muted small" id="previewTotal"></div>
+    <div class="preview-body" id="previewBody"></div>
   </div>
 
   <div class="toast" id="toast" hidden></div>
@@ -286,6 +334,7 @@
   <script src="js/crypto.js"></script>
   <script src="js/providers.js"></script>
   <script src="js/render.js"></script>
+  <script src="js/stcard.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
