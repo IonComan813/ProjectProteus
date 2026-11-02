@@ -162,8 +162,9 @@ function showUpdateDialog(current, offers) {
     let menu = null;
     const close = (value) => {
       els.dialog.hidden = true;
+      delete els.dialog.dataset.mandatory;
       document.removeEventListener('keydown', onKey, true);
-      document.removeEventListener('mousedown', onOutside, true);
+      document.removeEventListener('pointerdown', onOutside, true);
       resolve(value);
     };
     const closeMenu = () => { if (menu) { menu.hidden = true; toggle.setAttribute('aria-expanded', 'false'); } };
@@ -174,6 +175,7 @@ function showUpdateDialog(current, offers) {
       e.stopPropagation();
       if (menu && !menu.hidden) { closeMenu(); toggle.focus(); }
     };
+    // 菜单打开时，点它以外的任何地方（包括这个窗口里的其他位置）都收起它；再点一次 ▾ 也收起
     const onOutside = (e) => { if (menu && !menu.hidden && !split.contains(e.target)) closeMenu(); };
 
     for (const m of offers.slice().reverse()) {
@@ -189,7 +191,12 @@ function showUpdateDialog(current, offers) {
       const open = menu.hidden;
       menu.hidden = !open;
       toggle.setAttribute('aria-expanded', String(open));
-      if (open) menu.querySelector('.split-item').focus();
+      if (!open) return;
+      // 往下展开；下面放不下（例如手机横屏）时改为往上
+      menu.classList.remove('drop-up');
+      const below = window.innerHeight - split.getBoundingClientRect().bottom;
+      menu.classList.toggle('drop-up', below < menu.offsetHeight + 8);
+      menu.querySelector('.split-item').focus();
     }, 'btn split-toggle');
     toggle.innerHTML = '<span class="caret"></span>';
     toggle.title = t('update.remindMore');
@@ -210,7 +217,8 @@ function showUpdateDialog(current, offers) {
     els.dialogButtons.appendChild(split);
 
     document.addEventListener('keydown', onKey, true);
-    document.addEventListener('mousedown', onOutside, true);
+    document.addEventListener('pointerdown', onOutside, true);
+    els.dialog.dataset.mandatory = '1'; // 安卓的返回键也不能关掉它（见 bindBackButton）
     els.dialog.hidden = false;
     (els.dialogButtons.querySelector('.btn-primary') || els.dialogButtons.firstElementChild).focus();
   });

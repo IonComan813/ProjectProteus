@@ -2210,10 +2210,12 @@ function bindBackButton() {
     for (const id of ['pwDialog', 'textDialog', 'dialog']) {
       if (!els[id].hidden) {
         document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-        els[id].hidden = true;
+        // 必须选一个按钮的窗口（更新提示）：返回键只收起它里面的菜单，不关掉窗口
+        if (!els[id].dataset.mandatory) els[id].hidden = true;
         return;
       }
     }
+    if (!els.allConvBox.hidden) return closeAllConvs();
     // 信息弹窗直接关掉：它没有自己的 Escape 处理，派发 Escape 会连设置面板一起关掉
     if (!els.modal.hidden) { els.modal.hidden = true; return; }
     if (expandSource) return closeExpand();
