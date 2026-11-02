@@ -51,6 +51,8 @@ Nothing to install:
 1. Download the whole folder (**Code → Download ZIP** on the GitHub page, then unzip it)
 2. Double-click `index.html` and open it in Chrome or Edge
 
+The notice below the input box says which commit this copy of the web version comes from: if you downloaded it with **Download ZIP** (or "Source code" on the Releases page), it shows the commit and its date, plus the version when that commit is exactly a release, e.g. "(web version v0.4.0, commit abc1234, 2026-11-02)". GitHub writes this into `js/version.js` when it builds the archive; code obtained with `git clone` doesn't have it and just shows "(web version)".
+
 When the window is narrower than 1000 pixels (including on a phone browser), the mobile layout is used automatically.
 
 ### Where is my data stored?
@@ -299,7 +301,7 @@ When exporting a world card or full backup you can choose to **encrypt** it with
 - After loading it in Proteus, the System Prompt, world, NPC characters, key instructions, opening and artwork are **locked**: they can be used normally but not viewed, edited, copied or downloaded; the opening is displayed as usual, but versions cannot be edited, added or deleted, and whether it is sent to the model cannot be changed (with several versions you can still switch between them before the conversation starts). The user's character, `{{user}}` value and story are not affected
 - Entering the password unlocks it, turning it back into a normal conversation
 - A new conversation created from a locked one, and world cards or full backups exported from it, stay encrypted with the original password. You are reminded before exporting that the original password is still needed to unlock it (you are not asked whether to encrypt in this case; normal conversations in a "Full backup (all conversations)" can still be encrypted)
-- **A forgotten password cannot be recovered**
+- **SillyTavern conversations cannot be encrypted**: exporting their world card or full backup does not ask whether to encrypt and exports plain text; in an encrypted "Full backup (all conversations)" they stay in plain text, like assistant-mode conversations. A SillyTavern card is its author's work, published without a lock, so whoever loads it should not be able to lock it. Use a roleplay conversation for settings you wrote yourself
 
 > **Limits of encryption**: for the model to use these settings, Proteus has to decrypt them on your device and send them to the model API in plain text, and this project is open source. So encryption only prevents viewing the file directly and copying inside the app; **it cannot stop a technically capable person who is determined to get the content** (for example by inspecting the requests sent to the model, or asking the model to repeat the settings).
 

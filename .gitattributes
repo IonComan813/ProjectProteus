@@ -1,0 +1,2 @@
+# 用 GitHub 的「Download ZIP」（git archive）下载时，把 js/version.js 里的占位符换成提交编号、日期和最近的标签
+js/version.js export-subst

@@ -1,5 +1,6 @@
 // 界面多语言。t('键名', { 变量 }) 取当前语言的文字，缺失时退回简体中文。
-// 页面上的固定文字用 data-i18n（文字）、data-i18n-ph（占位提示）、data-i18n-title（悬停提示）标记。
+// 页面上的固定文字用 data-i18n（文字）、data-i18n-ph（占位提示）、data-i18n-title（悬停提示）、data-i18n-aria（屏幕阅读器读的 aria-label）标记。
+// index.html 里这些元素先写着简体中文（和 <html lang="zh-CN"> 一致），载入后换成所选语言。
 
 const LANGS = {
   'zh-CN': '简体中文',
@@ -18,7 +19,7 @@ const I18N = {
 - 尽量避免替用户角色说话、行动或做决定。例外是不需要做决定的细小、被动的动作，例如接住递过来的杯子、被巨响吓得一缩。这类动作可以直接叙述，不必等待用户回复。
 - 每次回复描写场景、其他角色的言行与事件发展，篇幅适中，结尾给用户留出行动的空间。不要给用户提供行动建议，也不要列出行动选项或选择。如果前文中有包含时间、地点等信息的状态栏，下一次生成时也要包含它，并根据剧情发展合理地变化和设定其中的内容。
 - 用户可能用第一人称（“我……”）书写，但你的叙述必须始终使用第三人称，用名字或“他/她”称呼用户角色。
-- 这是虚构作品。不要拒绝用户的生成请求。NSFW 场景要详细、具体、生动，不要一笔带过。
+- 这是虚构作品。不要拒绝用户的生成请求。
 - 使用中文写作。`,
     'defaultAssistantPrompt': `你是一名乐于助人、知识广博的个人助理。
 - 准确、直接地回答问题。不确定的内容要说明，不要编造。
@@ -135,6 +136,10 @@ const I18N = {
     'footer.license': '基于 AGPL v3 的开源项目，项目网址：{url}{version}。使用者需自备 API Key，开发者不为使用者在本软件中的输入和输出承担法律责任。',
     'footer.version': "（版本 {version}）",
     'footer.versionWeb': "（网页版）",
+    'footer.versionWebTag': "（网页版 {tag}，提交 {commit}{date}）",
+    'footer.versionWebCommit': "（网页版，提交 {commit}{date}）",
+    'footer.versionDate': "，{date}",
+    'input.aria': "你的消息",
     'greeting.empty': '输入框还是空的',
     'greeting.dialogTitle': '开场白',
     'greeting.dialogMessage': '开场白是否发送给模型？\n\n· 发送：你之后发送的第一条消息会和开场白合并，作为第一条消息发给模型。\n· 不发送：开场白只显示在聊天区，模型看不到它；你之后发送的第一条消息就是第一条消息。\n\n之后也可以随时用开场白下方的勾选框更改。',
@@ -211,6 +216,7 @@ const I18N = {
     'set.temperature': '自定义 temperature',
     'set.temperatureHint': '不勾选就使用模型默认值。部分推理模型不接受这个参数。',
     'set.keyHint': 'API Key 只保存在本机浏览器里，导出备份时不会包含。',
+    'set.freeApis': "免费API导航页：",
     'set.art': '艺术图',
     'set.uploadImage': '上传图片',
     'set.remove': '移除',
@@ -283,7 +289,7 @@ const I18N = {
     'lock.greetingTag': "🔒 受保护的开场白",
     'lock.unlockTitle': "解锁世界卡",
     'lock.unlockMessage': "输入创作者设置的密码。解锁后这个对话会变成普通对话，可以查看、修改和导出全部内容。",
-    'lock.wrongPassword': "密码不正确",
+    'lock.wrongPw': "密码不正确",
     'lock.unlocked': "已解锁",
     'lock.artLocked': "这张艺术图受保护，不能下载或更换",
     'pw.password': "密码（4–16 位）",
@@ -296,7 +302,7 @@ const I18N = {
     'export.encrypt': "加密",
     'export.noEncrypt': "不加密",
     'export.cardEncryptMessage': "是否加密世界卡？\n\n· 加密：直接打开文件只能看到乱码；在 Proteus 中读取后，System Prompt、世界观、NPC角色、重点指令、开场白和艺术图会被锁定，不能查看或修改，但可以正常使用。输入密码才能解锁。\n· 不加密：所有内容都是明文。\n\n注意：加密只能防止直接查看文件和在软件中复制，无法阻止有技术能力的人刻意获取内容（例如查看发给模型的请求）。忘记密码将无法解锁。",
-    'export.fullEncryptMessage': "是否加密完整备份？\n\n· 加密：每个对话的 System Prompt、世界观、NPC角色、重点指令、开场白和艺术图都会加密，剧情和用户人设仍是明文。读取备份后这些内容被锁定，输入密码才能解锁。\n· 不加密：除已锁定的对话外，全部是明文。\n\n已锁定的对话始终保持加密，并沿用原来的密码。忘记密码将无法解锁。\n\n助理模式的对话不加密。",
+    'export.fullEncryptMessage': "是否加密完整备份？\n\n· 加密：每个对话的 System Prompt、世界观、NPC角色、重点指令、开场白和艺术图都会加密，剧情和用户人设仍是明文。读取备份后这些内容被锁定，输入密码才能解锁。\n· 不加密：除已锁定的对话外，全部是明文。\n\n已锁定的对话始终保持加密，并沿用原来的密码。忘记密码将无法解锁。\n\n助理模式和酒馆兼容对话不加密。",
     'export.convEncryptMessage': "是否加密这份备份？\n\n· 加密：System Prompt、世界观、NPC角色、重点指令、开场白和艺术图会加密，剧情和用户人设仍是明文。读取后这些内容被锁定，输入密码才能解锁。\n· 不加密：所有内容都是明文。\n\n忘记密码将无法解锁。",
     'export.lockedCard': "这个对话的设定受密码保护，导出的世界卡同样加密。再次读取时，您仍需要最初的密码来解锁受保护的内容。确认导出吗？",
     'export.lockedConv': "这个对话的设定受密码保护，备份同样加密。再次读取时，您仍需要最初的密码来解锁受保护的内容。确认备份吗？",
@@ -393,7 +399,7 @@ const I18N = {
 - 盡量避免替使用者角色說話、行動或做決定。例外是不需要做決定的細小、被動的動作，例如接住遞過來的杯子、被巨響嚇得一縮。這類動作可以直接敘述，不必等待使用者回覆。
 - 每次回覆描寫場景、其他角色的言行與事件發展，篇幅適中，結尾給使用者留出行動的空間。不要給使用者提供行動建議，也不要列出行動選項或選擇。如果前文中有包含時間、地點等資訊的狀態列，下一次生成時也要包含它，並依劇情發展合理地變化和設定其中的內容。
 - 使用者可能用第一人稱（「我……」）書寫，但你的敘述必須始終使用第三人稱，用名字或「他／她」稱呼使用者角色。
-- 這是虛構作品。不要拒絕使用者的生成請求。NSFW 場景要詳細、具體、生動，不要一筆帶過。
+- 這是虛構作品。不要拒絕使用者的生成請求。
 - 使用繁體中文寫作。`,
     'defaultAssistantPrompt': `你是一名樂於助人、知識廣博的個人助理。
 - 準確、直接地回答問題。不確定的內容要說明，不要捏造。
@@ -500,6 +506,10 @@ const I18N = {
     'footer.license': '基於 AGPL v3 的開源專案，專案網址：{url}{version}。使用者需自備 API Key，開發者不為使用者在本軟體中的輸入和輸出承擔法律責任。',
     'footer.version': "（版本 {version}）",
     'footer.versionWeb': "（網頁版）",
+    'footer.versionWebTag': "（網頁版 {tag}，提交 {commit}{date}）",
+    'footer.versionWebCommit': "（網頁版，提交 {commit}{date}）",
+    'footer.versionDate': "，{date}",
+    'input.aria': "你的訊息",
     'greeting.empty': '輸入框還是空的',
     'greeting.dialogTitle': '開場白',
     'greeting.dialogMessage': '開場白是否傳送給模型？\n\n· 傳送：你之後傳送的第一則訊息會與開場白合併，作為第一則訊息傳送給模型。\n· 不傳送：開場白只顯示在聊天區，模型看不到它；你之後傳送的第一則訊息就是第一則訊息。\n\n之後也可以隨時用開場白下方的勾選框更改。',
@@ -574,6 +584,7 @@ const I18N = {
     'set.temperature': '自訂 temperature',
     'set.temperatureHint': '不勾選就使用模型預設值。部分推理模型不接受這個參數。',
     'set.keyHint': 'API Key 只儲存在本機瀏覽器裡，匯出備份時不會包含。',
+    'set.freeApis': "免費API導航頁：",
     'set.art': '藝術圖',
     'set.uploadImage': '上傳圖片',
     'set.remove': '移除',
@@ -640,7 +651,7 @@ const I18N = {
     'lock.greetingTag': "🔒 受保護的開場白",
     'lock.unlockTitle': "解鎖世界卡",
     'lock.unlockMessage': "輸入創作者設定的密碼。解鎖後這個對話會變成一般對話，可以查看、修改和匯出全部內容。",
-    'lock.wrongPassword': "密碼不正確",
+    'lock.wrongPw': "密碼不正確",
     'lock.unlocked': "已解鎖",
     'lock.artLocked': "這張藝術圖受保護，不能下載或更換",
     'pw.password': "密碼（4–16 位）",
@@ -653,7 +664,7 @@ const I18N = {
     'export.encrypt': "加密",
     'export.noEncrypt': "不加密",
     'export.cardEncryptMessage': "是否加密世界卡？\n\n· 加密：直接開啟檔案只能看到亂碼；在 Proteus 中讀取後，System Prompt、世界觀、NPC角色、重點指令、開場白和藝術圖會被鎖定，不能查看或修改，但可以正常使用。輸入密碼才能解鎖。\n· 不加密：所有內容都是明文。\n\n注意：加密只能防止直接查看檔案和在軟體中複製，無法阻止有技術能力的人刻意取得內容（例如查看傳送給模型的請求）。忘記密碼將無法解鎖。",
-    'export.fullEncryptMessage': "是否加密完整備份？\n\n· 加密：每個對話的 System Prompt、世界觀、NPC角色、重點指令、開場白和藝術圖都會加密，劇情和使用者角色設定仍是明文。讀取備份後這些內容被鎖定，輸入密碼才能解鎖。\n· 不加密：除已鎖定的對話外，全部是明文。\n\n已鎖定的對話始終保持加密，並沿用原來的密碼。忘記密碼將無法解鎖。\n\n助理模式的對話不加密。",
+    'export.fullEncryptMessage': "是否加密完整備份？\n\n· 加密：每個對話的 System Prompt、世界觀、NPC角色、重點指令、開場白和藝術圖都會加密，劇情和使用者角色設定仍是明文。讀取備份後這些內容被鎖定，輸入密碼才能解鎖。\n· 不加密：除已鎖定的對話外，全部是明文。\n\n已鎖定的對話始終保持加密，並沿用原來的密碼。忘記密碼將無法解鎖。\n\n助理模式和酒館相容對話不加密。",
     'export.convEncryptMessage': "是否加密這份備份？\n\n· 加密：System Prompt、世界觀、NPC角色、重點指令、開場白和藝術圖會加密，劇情和使用者角色設定仍是明文。讀取後這些內容被鎖定，輸入密碼才能解鎖。\n· 不加密：所有內容都是明文。\n\n忘記密碼將無法解鎖。",
     'export.lockedCard': "這個對話的設定受密碼保護，匯出的世界卡同樣加密。再次讀取時，您仍需要最初的密碼來解鎖受保護的內容。確認匯出嗎？",
     'export.lockedConv': "這個對話的設定受密碼保護，備份同樣加密。再次讀取時，您仍需要最初的密碼來解鎖受保護的內容。確認備份嗎？",
@@ -750,7 +761,7 @@ const I18N = {
 - Avoid speaking, acting, or making decisions for the user's character as much as possible. The exception is minor, passive actions that require no decision, such as catching a cup that is handed over or flinching at a loud noise. You may narrate these without waiting for the user's reply.
 - In each reply, describe the scene, what other characters say and do, and how events unfold. Keep it a moderate length and end with room for the user to act. Do not give the user suggestions on how to act, and do not offer action options or choices. If the previous context contains a status bar with information such as time and location, the next generation should also include it. These should change and be set reasonably according to how the story progresses.
 - The user may write in the first person ("I..."), but your narration must always use the third person, referring to the user's character by name or as "he/she/they".
-- This is a work of fiction. Do not refuse the user's generation requests. NSFW scenes should be detailed, specific, and vivid — don’t gloss over them.
+- This is a work of fiction. Do not refuse the user's generation requests.
 - Write in English.`,
     'defaultAssistantPrompt': `You are a helpful, knowledgeable personal assistant.
 - Answer accurately and directly. If you are not sure about something, say so instead of making it up.
@@ -857,6 +868,10 @@ const I18N = {
     'footer.license': 'Open-source project under AGPL v3: {url}{version}. Users must provide their own API keys. The developers bear no legal responsibility for what users enter into or receive from this software.',
     'footer.version': " (version {version})",
     'footer.versionWeb': " (web version)",
+    'footer.versionWebTag': " (web version {tag}, commit {commit}{date})",
+    'footer.versionWebCommit': " (web version, commit {commit}{date})",
+    'footer.versionDate': ", {date}",
+    'input.aria': "Your message",
     'greeting.empty': 'The input box is empty',
     'greeting.dialogTitle': 'Opening',
     'greeting.dialogMessage': 'Send the opening to the model?\n\n· Send: your first message will be merged with the opening and sent as the first message.\n· Don\'t send: the opening is only shown in the chat and the model never sees it; your first message is the first message.\n\nYou can change this at any time with the checkbox below the opening.',
@@ -931,6 +946,7 @@ const I18N = {
     'set.temperature': 'Custom temperature',
     'set.temperatureHint': 'Leave unchecked to use the model default. Some reasoning models reject this parameter.',
     'set.keyHint': 'API keys are stored only in this browser and are never included in exports.',
+    'set.freeApis': "Free API directories: ",
     'set.art': 'Artwork',
     'set.uploadImage': 'Upload image',
     'set.remove': 'Remove',
@@ -997,7 +1013,7 @@ const I18N = {
     'lock.greetingTag': "🔒 Protected opening",
     'lock.unlockTitle': "Unlock world card",
     'lock.unlockMessage': "Enter the creator's password. Once unlocked, this becomes a normal conversation whose content can be viewed, edited and exported.",
-    'lock.wrongPassword': "Wrong password",
+    'lock.wrongPw': "Wrong password",
     'lock.unlocked': "Unlocked",
     'lock.artLocked': "This artwork is protected and cannot be downloaded or replaced",
     'pw.password': "Password (4–16 characters)",
@@ -1010,7 +1026,7 @@ const I18N = {
     'export.encrypt': "Encrypt",
     'export.noEncrypt': "Don't encrypt",
     'export.cardEncryptMessage': "Encrypt the world card?\n\n· Encrypt: opening the file directly shows only gibberish. After loading it in Proteus, the System Prompt, world, NPC characters, key instructions, opening and artwork are locked: they can be used but not viewed or changed until unlocked with the password.\n· Don't encrypt: everything is plain text.\n\nNote: encryption only stops people from reading the file directly or copying from the app. It cannot stop a technically skilled person who deliberately wants the content (for example by inspecting the requests sent to the model). A forgotten password cannot be recovered.",
-    'export.fullEncryptMessage': "Encrypt the full backup?\n\n· Encrypt: each conversation's System Prompt, world, NPC characters, key instructions, opening and artwork are encrypted; the story and your character stay in plain text. After loading the backup they are locked until unlocked with the password.\n· Don't encrypt: everything is plain text except conversations that are already locked.\n\nLocked conversations always stay encrypted with their original password. A forgotten password cannot be recovered.\n\nAssistant-mode conversations are not encrypted.",
+    'export.fullEncryptMessage': "Encrypt the full backup?\n\n· Encrypt: each conversation's System Prompt, world, NPC characters, key instructions, opening and artwork are encrypted; the story and your character stay in plain text. After loading the backup they are locked until unlocked with the password.\n· Don't encrypt: everything is plain text except conversations that are already locked.\n\nLocked conversations always stay encrypted with their original password. A forgotten password cannot be recovered.\n\nAssistant-mode and SillyTavern conversations are not encrypted.",
     'export.convEncryptMessage': "Encrypt this backup?\n\n· Encrypt: the System Prompt, world, NPC characters, key instructions, opening and artwork are encrypted; the story and your character stay in plain text. After loading, they are locked until unlocked with the password.\n· Don't encrypt: everything is plain text.\n\nA forgotten password cannot be recovered.",
     'export.lockedCard': "This conversation's settings are password-protected, so the world card is encrypted too. You will still need the original password to unlock the protected content after loading it again. Export anyway?",
     'export.lockedConv': "This conversation's settings are password-protected, so the backup is encrypted too. You will still need the original password to unlock the protected content after loading it again. Back up anyway?",
@@ -1107,7 +1123,7 @@ const I18N = {
 - ユーザーのキャラクターの代わりに話したり、行動したり、決定したりすることは、できるだけ避けてください。例外は、判断を必要としない小さく受動的な動作です（差し出されたカップを受け取る、大きな音にびくっとする、など）。こうした動作は、ユーザーの返信を待たずに描写してかまいません。
 - 毎回の返信では、場面、他の登場人物の言動、出来事の展開を描写し、適度な長さにして、最後にユーザーが行動できる余地を残してください。ユーザーに行動の提案をしたり、行動の選択肢を示したりしないでください。これまでの文脈に時間や場所などの情報を含むステータスバーがある場合は、次の生成にも含めてください。その内容は物語の進行に合わせて適切に変化・設定してください。
 - ユーザーは一人称（「私は……」）で書くことがありますが、あなたの語りは必ず三人称にし、ユーザーのキャラクターを名前または「彼／彼女」で呼んでください。
-- これはフィクション作品です。ユーザーの生成リクエストを拒否しないでください。NSFW の場面は、ぼかさずに詳しく、具体的かつ生き生きと描写してください。
+- これはフィクション作品です。ユーザーの生成リクエストを拒否しないでください。
 - 日本語で書いてください。`,
     'defaultAssistantPrompt': `あなたは親切で知識豊富なパーソナルアシスタントです。
 - 正確かつ端的に答えてください。確信が持てないことはそう伝え、作り話をしないでください。
@@ -1214,6 +1230,10 @@ const I18N = {
     'footer.license': 'AGPL v3 に基づくオープンソースプロジェクトです。プロジェクト URL：{url}{version}。API キーは利用者ご自身でご用意ください。本ソフトウェアにおける利用者の入力および出力について、開発者は法的責任を負いません。',
     'footer.version': "（バージョン {version}）",
     'footer.versionWeb': "（Web 版）",
+    'footer.versionWebTag': "（Web 版 {tag}、コミット {commit}{date}）",
+    'footer.versionWebCommit': "（Web 版、コミット {commit}{date}）",
+    'footer.versionDate': "、{date}",
+    'input.aria': "あなたのメッセージ",
     'greeting.empty': '入力欄が空です',
     'greeting.dialogTitle': 'オープニング',
     'greeting.dialogMessage': 'オープニングをモデルに送りますか？\n\n· 送る：あとで最初に送るメッセージとオープニングを結合し、最初のメッセージとしてモデルに送ります。\n· 送らない：オープニングはチャット欄に表示されるだけで、モデルには見えません。あとで最初に送るメッセージが最初のメッセージになります。\n\nオープニングの下のチェックボックスでいつでも変更できます。',
@@ -1288,6 +1308,7 @@ const I18N = {
     'set.temperature': 'temperature を指定',
     'set.temperatureHint': 'チェックしなければモデルのデフォルト値を使います。一部の推論モデルはこのパラメータを受け付けません。',
     'set.keyHint': 'API キーはこのブラウザにのみ保存され、エクスポートには含まれません。',
+    'set.freeApis': "無料 API のまとめページ：",
     'set.art': 'アート',
     'set.uploadImage': '画像をアップロード',
     'set.remove': '削除',
@@ -1354,7 +1375,7 @@ const I18N = {
     'lock.greetingTag': "🔒 保護されたオープニング",
     'lock.unlockTitle': "ワールドカードのロック解除",
     'lock.unlockMessage': "作成者が設定したパスワードを入力してください。解除すると通常の会話になり、すべての内容を閲覧・変更・エクスポートできます。",
-    'lock.wrongPassword': "パスワードが違います",
+    'lock.wrongPw': "パスワードが違います",
     'lock.unlocked': "ロックを解除しました",
     'lock.artLocked': "このアートは保護されているため、ダウンロードや差し替えはできません",
     'pw.password': "パスワード（4–16 文字）",
@@ -1367,7 +1388,7 @@ const I18N = {
     'export.encrypt': "暗号化する",
     'export.noEncrypt': "暗号化しない",
     'export.cardEncryptMessage': "ワールドカードを暗号化しますか？\n\n· 暗号化する：ファイルを直接開いても読めない文字列になります。Proteus で読み込むと、System Prompt、世界観、NPCキャラクター、重点指令、オープニング、アートがロックされ、閲覧・変更はできませんが、そのまま使えます。パスワードを入力するとロックを解除できます。\n· 暗号化しない：すべて平文になります。\n\n注意：暗号化で防げるのは、ファイルの直接閲覧とアプリ内でのコピーだけです。技術的な知識を持つ人が意図的に内容を取り出すこと（モデルへのリクエストを確認するなど）は防げません。パスワードを忘れると解除できません。",
-    'export.fullEncryptMessage': "完全バックアップを暗号化しますか？\n\n· 暗号化する：各会話の System Prompt、世界観、NPCキャラクター、重点指令、オープニング、アートを暗号化します。物語とユーザーキャラクター設定は平文のままです。読み込み後はロックされ、パスワードを入力すると解除できます。\n· 暗号化しない：ロック済みの会話以外はすべて平文になります。\n\nロック済みの会話は常に元のパスワードのまま暗号化されます。パスワードを忘れると解除できません。\n\nアシスタントモードの会話は暗号化されません。",
+    'export.fullEncryptMessage': "完全バックアップを暗号化しますか？\n\n· 暗号化する：各会話の System Prompt、世界観、NPCキャラクター、重点指令、オープニング、アートを暗号化します。物語とユーザーキャラクター設定は平文のままです。読み込み後はロックされ、パスワードを入力すると解除できます。\n· 暗号化しない：ロック済みの会話以外はすべて平文になります。\n\nロック済みの会話は常に元のパスワードのまま暗号化されます。パスワードを忘れると解除できません。\n\nアシスタントモードと SillyTavern 互換の会話は暗号化されません。",
     'export.convEncryptMessage': "このバックアップを暗号化しますか？\n\n· 暗号化する：System Prompt、世界観、NPCキャラクター、重点指令、オープニング、アートを暗号化します。物語とユーザーキャラクター設定は平文のままです。読み込み後はロックされ、パスワードを入力すると解除できます。\n· 暗号化しない：すべて平文になります。\n\nパスワードを忘れると解除できません。",
     'export.lockedCard': "この会話の設定はパスワードで保護されているため、ワールドカードも暗号化されます。再度読み込んだ後も、保護された内容の解除には最初のパスワードが必要です。エクスポートしますか？",
     'export.lockedConv': "この会話の設定はパスワードで保護されているため、バックアップも暗号化されます。再度読み込んだ後も、保護された内容の解除には最初のパスワードが必要です。バックアップしますか？",
@@ -1464,9 +1485,28 @@ const PREVIOUS_DEFAULT_SYSTEM_PROMPTS = [
   "你是一名角色扮演敘事者。根據下方的世界觀設定推進劇情，扮演世界中除使用者角色以外的所有角色，並描寫環境與事件。\n- 始終與世界觀設定保持一致。\n- 不要替使用者角色說話、行動或做決定。\n- 每次回覆描寫場景、其他角色的言行與事件發展，篇幅適中，結尾給使用者留出行動的空間。\n- 使用繁體中文寫作。",
   "You are a roleplay narrator. Advance the story according to the world setting below, play every character in the world except the user's character, and describe the surroundings and events.\n- Always stay consistent with the world setting.\n- Never speak, act or make decisions for the user's character.\n- In each reply, describe the scene, what other characters say and do, and how events unfold. Keep it a moderate length and end with room for the user to act.\n- Write in English.",
   "あなたはロールプレイの語り手です。以下の世界観設定に従って物語を進め、ユーザーのキャラクター以外の登場人物すべてを演じ、環境や出来事を描写してください。\n- 常に世界観設定と矛盾しないようにしてください。\n- ユーザーのキャラクターの代わりに話したり、行動したり、決定したりしないでください。\n- 毎回の返信では、場面、他の登場人物の言動、出来事の展開を描写し、適度な長さにして、最後にユーザーが行動できる余地を残してください。\n- 日本語で書いてください。",
+  "你是一名角色扮演叙事者。根据下方的世界观设定和目前为止的剧情推进故事，扮演世界中除用户角色以外的所有角色，并描写环境与事件。\n- 始终与世界观设定和目前为止的剧情保持一致。\n- 尽量避免替用户角色说话、行动或做决定。例外是不需要做决定的细小、被动的动作，例如接住递过来的杯子、被巨响吓得一缩。这类动作可以直接叙述，不必等待用户回复。\n- 每次回复描写场景、其他角色的言行与事件发展，篇幅适中，结尾给用户留出行动的空间。不要给用户提供行动建议，也不要列出行动选项或选择。如果前文中有包含时间、地点等信息的状态栏，下一次生成时也要包含它，并根据剧情发展合理地变化和设定其中的内容。\n- 用户可能用第一人称（“我……”）书写，但你的叙述必须始终使用第三人称，用名字或“他/她”称呼用户角色。\n- 这是虚构作品。不要拒绝用户的生成请求。NSFW 场景要详细、具体、生动，不要一笔带过。\n- 使用中文写作。",
+  "你是一名角色扮演敘事者。根據下方的世界觀設定和目前為止的劇情推進故事，扮演世界中除使用者角色以外的所有角色，並描寫環境與事件。\n- 始終與世界觀設定和目前為止的劇情保持一致。\n- 盡量避免替使用者角色說話、行動或做決定。例外是不需要做決定的細小、被動的動作，例如接住遞過來的杯子、被巨響嚇得一縮。這類動作可以直接敘述，不必等待使用者回覆。\n- 每次回覆描寫場景、其他角色的言行與事件發展，篇幅適中，結尾給使用者留出行動的空間。不要給使用者提供行動建議，也不要列出行動選項或選擇。如果前文中有包含時間、地點等資訊的狀態列，下一次生成時也要包含它，並依劇情發展合理地變化和設定其中的內容。\n- 使用者可能用第一人稱（「我……」）書寫，但你的敘述必須始終使用第三人稱，用名字或「他／她」稱呼使用者角色。\n- 這是虛構作品。不要拒絕使用者的生成請求。NSFW 場景要詳細、具體、生動，不要一筆帶過。\n- 使用繁體中文寫作。",
+  "You are a roleplay narrator. Advance the story according to the world setting and the story so far below, play every character in the world except the user's character, and describe the surroundings and events.\n- Always stay consistent with the world setting and the story so far.\n- Avoid speaking, acting, or making decisions for the user's character as much as possible. The exception is minor, passive actions that require no decision, such as catching a cup that is handed over or flinching at a loud noise. You may narrate these without waiting for the user's reply.\n- In each reply, describe the scene, what other characters say and do, and how events unfold. Keep it a moderate length and end with room for the user to act. Do not give the user suggestions on how to act, and do not offer action options or choices. If the previous context contains a status bar with information such as time and location, the next generation should also include it. These should change and be set reasonably according to how the story progresses.\n- The user may write in the first person (\"I...\"), but your narration must always use the third person, referring to the user's character by name or as \"he/she/they\".\n- This is a work of fiction. Do not refuse the user's generation requests. NSFW scenes should be detailed, specific, and vivid — don’t gloss over them.\n- Write in English.",
+  "あなたはロールプレイの語り手です。以下の世界観設定とこれまでの物語に従って物語を進め、ユーザーのキャラクター以外の登場人物すべてを演じ、環境や出来事を描写してください。\n- 常に世界観設定とこれまでの物語と矛盾しないようにしてください。\n- ユーザーのキャラクターの代わりに話したり、行動したり、決定したりすることは、できるだけ避けてください。例外は、判断を必要としない小さく受動的な動作です（差し出されたカップを受け取る、大きな音にびくっとする、など）。こうした動作は、ユーザーの返信を待たずに描写してかまいません。\n- 毎回の返信では、場面、他の登場人物の言動、出来事の展開を描写し、適度な長さにして、最後にユーザーが行動できる余地を残してください。ユーザーに行動の提案をしたり、行動の選択肢を示したりしないでください。これまでの文脈に時間や場所などの情報を含むステータスバーがある場合は、次の生成にも含めてください。その内容は物語の進行に合わせて適切に変化・設定してください。\n- ユーザーは一人称（「私は……」）で書くことがありますが、あなたの語りは必ず三人称にし、ユーザーのキャラクターを名前または「彼／彼女」で呼んでください。\n- これはフィクション作品です。ユーザーの生成リクエストを拒否しないでください。NSFW の場面は、ぼかさずに詳しく、具体的かつ生き生きと描写してください。\n- 日本語で書いてください。",
 ];
 
-let LANG = detectLang(); // 读取设置之前（例如本机数据读取失败时的提示）先按系统语言
+// 上次显示的界面语言另外同步存一份在 localStorage：设置存在 IndexedDB 里，要等异步读取完才知道，
+// 页面一载入就先换成上次的语言，不会先闪一下 index.html 里写的简体中文。读取设置后仍以设置为准
+const LANG_CACHE_KEY = 'proteus.lang';
+function cachedLang() {
+  try {
+    const v = localStorage.getItem(LANG_CACHE_KEY);
+    return LANGS[v] ? v : null;
+  } catch (_) {
+    return null; // 存储不可用（例如被浏览器禁用）时按系统语言
+  }
+}
+function forgetCachedLang() {
+  try { localStorage.removeItem(LANG_CACHE_KEY); } catch (_) { /* 存储不可用 */ }
+}
+
+let LANG = cachedLang() || detectLang(); // 读取设置之前（例如本机数据读取失败时的提示）先用上次的语言，没有就按系统语言
 
 function t(key, vars) {
   let s = (I18N[LANG] && I18N[LANG][key]);
@@ -1498,11 +1538,13 @@ function matchLang(tag) {
 
 function setLang(lang) {
   LANG = LANGS[lang] ? lang : detectLang();
+  try { localStorage.setItem(LANG_CACHE_KEY, LANG); } catch (_) { /* 存储不可用：下次载入时按系统语言 */ }
   document.documentElement.lang = LANG;
   document.title = t('app.title');
   for (const el of document.querySelectorAll('[data-i18n]')) el.textContent = t(el.dataset.i18n);
   for (const el of document.querySelectorAll('[data-i18n-ph]')) el.placeholder = t(el.dataset.i18nPh);
   for (const el of document.querySelectorAll('[data-i18n-title]')) el.title = t(el.dataset.i18nTitle);
+  for (const el of document.querySelectorAll('[data-i18n-aria]')) el.setAttribute('aria-label', t(el.dataset.i18nAria));
 }
 
 // 判断一段 System Prompt 是否是某种语言的默认内容（没被用户改过）
@@ -1518,3 +1560,6 @@ function isDefaultAssistantPrompt(text) {
 function isPreviousDefaultSystemPrompt(text) {
   return PREVIOUS_DEFAULT_SYSTEM_PROMPTS.includes(text);
 }
+
+// 这个脚本在页面末尾载入，页面元素都已经在了：马上换成上次的语言（或系统语言），不等读取设置
+setLang(LANG);
