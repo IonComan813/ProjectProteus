@@ -248,10 +248,11 @@ function withMacros(text, conv = state.conv) {
   return out;
 }
 
-// 加在这一次的用户消息末尾的重点指令（带标签）；没有内容时为空
+// 加在这一次的用户消息末尾的重点指令：标签、一句说明（告诉模型这是剧情之外直接对它说的，界面上不显示），然后是重点指令全文；
+// 没有内容时为空
 function postHistoryBlock(conv) {
   const text = !isAssistant(conv) && conv.postHistory ? conv.postHistory.trim() : '';
-  return text ? `${t('sys.postHistory')}\n${text}` : '';
+  return text ? `${t('sys.postHistory')}\n${t('sys.postHistoryIntro')}\n${text}` : '';
 }
 
 // 真正发给模型的内容：system 部分和记忆范围内的消息（context 的最后一条是这一次的用户消息）
@@ -868,18 +869,24 @@ function updateComposer() {
   updateEstimate();
 }
 
-// 记忆长度下方：下一次请求大约多少 token
-// 粗略估计下一次请求的 token 数：总数（固定设定 + 记忆范围内的消息，不含你还没写的下一条回复），
-// 和其中固定设定（system 部分和重点指令）的部分
+// 记忆长度下方：下一次请求大约多少 token（粗略估计）。总数和「查看下一轮将发送的内容」顶部的总数是同一个：
+// 用同一份内容（nextRequestBlocks：输入框里的文字算作这一次的消息、合并连续同一角色的消息、补“前情省略”），
+// 同样一块一块地估算再相加。括号里是其中固定设定（system 部分和重点指令）的部分
 function updateEstimate() {
-  const msgs = state.conv.messages;
-  const last = msgs[msgs.length - 1];
-  const list = last && last.role === 'user' ? msgs : msgs.concat([{ role: 'user', versions: [''], cur: 0 }]);
-  const req = requestOf(state.conv, list);
+  const { system, messages, postHistory } = nextRequestBlocks();
+  const sys = system.reduce((a, x) => a + estimateTokens(x.text), 0);
+  const total = sys + messages.reduce((a, m) => a + estimateTokens(m.content), 0);
   els.tokenEstimate.textContent = t('set.tokenEstimate', {
-    tokens: (estimateTokens(req.system) + req.messages.reduce((a, x) => a + estimateTokens(x.content), 0)).toLocaleString(),
-    sys: (estimateTokens(req.system) + estimateTokens(req.postHistory)).toLocaleString(),
+    tokens: total.toLocaleString(),
+    sys: (sys + estimateTokens(postHistory)).toLocaleString(),
   });
+}
+
+// 在输入框里打字时稍等一下再更新
+let estimateTimer = null;
+function updateEstimateSoon() {
+  clearTimeout(estimateTimer);
+  estimateTimer = setTimeout(() => { if (state.conv) updateEstimate(); }, 250);
 }
 
 // ---------------- 滚动 ----------------
@@ -2341,7 +2348,7 @@ function nextRequestBlocks() {
   if (PROVIDERS[state.settings.provider].format === 'anthropic' && messages.length && messages[0].role !== 'user') {
     messages.unshift({ role: 'user', content: t('greet.omitted') });
   }
-  return { system, messages, pending };
+  return { system, messages, pending, postHistory: req.postHistory };
 }
 
 function openPreview() {
@@ -2756,6 +2763,7 @@ function bindChat() {
   els.btnGreetingReload.addEventListener('click', reloadGreetingPreview);
   els.btnGreetingConfirm.addEventListener('click', confirmGreeting);
   els.btnGreetingCancel.addEventListener('click', exitGreetingMode);
+  els.input.addEventListener('input', updateEstimateSoon);
   els.input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.isComposing) {
       e.preventDefault();

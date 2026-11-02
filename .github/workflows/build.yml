@@ -19,7 +19,7 @@
 # 没有添加时：只打包不发布的运行改用临时的调试密钥签名（能安装，但以后的版本无法直接覆盖更新）；
 # 要发布到 Release 的运行直接失败。
 
-name: Build desktop app
+name: Build native app
 
 on:
   push:

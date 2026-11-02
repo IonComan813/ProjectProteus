@@ -195,7 +195,7 @@ User messages and model replies, alternating:
   …your first message…
   ```
   When the opening is not sent, the first message is sent as is, without labels
-- **Key instructions**: if there are any, they are added to the end of the last user message (your current message): a blank line, then the label `[Key Instructions]` on its own line, then the full key instructions. If the box is empty nothing is added
+- **Key instructions**: if there are any, they are added to the end of the last user message (your current message): a blank line, then the label `[Key Instructions]` on its own line, then a fixed sentence telling the model that these are instructions sent to it directly, outside the story, rather than your actions in the story (not shown anywhere in the interface except the request preview), then the full key instructions. If the box is empty nothing is added
 - **Earlier story omitted**: the Anthropic format requires the first message to be from the user. If the range happens to start with a model reply, a user message reading `(Earlier story omitted)` is added in front. This doesn't happen in a normally alternating story
 - If two messages in a row ever come from the same side, they are merged into one (separated by a blank line) so the API doesn't reject the request
 
@@ -221,10 +221,11 @@ Memory length 1 round, the opening set to be sent, and you are sending your 3rd 
 [user]       3rd message (this one)
              (blank line)
              [Key Instructions]
+             Below are instructions the user especially wants you to note and follow. …(fixed sentence)
              …key instructions…
 ```
 
-Without key instructions the last three lines are left out. With a memory length of 2 rounds, round 1 is in range too, and the first user message takes the `[Opening] … [User]` form shown above.
+Without key instructions the last four lines are left out. With a memory length of 2 rounds, round 1 is in range too, and the first user message takes the `[Opening] … [User]` form shown above.
 
 ### Label language
 
@@ -259,7 +260,7 @@ Range, versions and merging of same-side messages work as above; there is no ope
 ### Memory range
 
 Older messages are not sent, so the model can't "see" them. A dashed line in the story marks the edge of the memory range; messages above it are still shown, the model just can't see them.
-You can edit the number in the memory length box directly or adjust it with − / ＋. Below it is a rough estimate of how many tokens the next request will use.
+You can edit the number in the memory length box directly or adjust it with − / ＋. Below it is a rough estimate of how many tokens the next request will use. It is worked out from exactly the same content as the window below and matches the total at its top, including the text currently in the input box (as your next message).
 
 Further down, "View what the next request will send" opens a large window (over the chat on a computer, over the settings panel on a phone) listing each part of the next request in the order it is sent: the System Prompt, world, NPC characters and user's character in the system settings, then every message within the memory range. It shows the text actually sent, labels included and nothing shortened, with `{{user}}` and `{{char}}` already replaced; each part has its estimated tokens on the right of its title, and the total is at the top. This is the logical content, not the raw API request (address, headers, JSON).
 
@@ -457,7 +458,7 @@ The output is in the `dist/` folder.
   ```
 
 - **Publishing a test version**: use a tag with a suffix, such as `v0.4.0-beta.1`, and put it on the commit to test, which can be on any branch (on the "Draft a new release" page, choose that branch as the "Target"). A release created by such a tag is marked as a **pre-release**: it does not become the "Latest" release, and its notes start with a line saying it is a test version (also when you create the release on the web page yourself). To give a version its own notes, add `.github/release-notes/<tag>.md` (for example `v0.4.0-beta.1.md`) in that commit: they are put at the start of the release notes. On Android, `0.4.0-beta.1` has the same version code as `0.4.0`, so the final `0.4.0` can update it in place; but a lower version released later (say `0.3.4`) cannot be installed over it
-- **Just checking that it builds**: on the repository's Actions page choose "Build desktop app" → "Run workflow". This builds without publishing; the installers are in the Artifacts at the bottom of that run's page and are kept for 30 days.
+- **Just checking that it builds**: on the repository's Actions page choose "Build native app" → "Run workflow". This builds without publishing; the installers are in the Artifacts at the bottom of that run's page and are kept for 30 days.
 
 The download instructions on a release page come from `.github/release-notes.md` (in English). A line saying which commit the installers were built from is added to the end of the release notes automatically; it is also updated when the installers of an existing release are rebuilt from a chosen branch and replaced. That commit is the source code of those installers.
 

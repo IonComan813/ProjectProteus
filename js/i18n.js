@@ -312,6 +312,7 @@ const I18N = {
     'art.none': "还没有艺术图",
     // 多个开场白、重点指令、{{user}} 的值、回到顶部、读取酒馆卡
     'sys.postHistory': "【重点指令】",
+    'sys.postHistoryIntro': "如下为用户特别希望你注意和遵守的指令，它们并非用户在剧情中的行动的一部分，而是在叙事之外直接发给你的",
     'msg.jumpTop': "↑ 回到顶部",
     'msg.addGreetingVersion': "新增",
     'msg.addGreetingVersionTitle': "再写一个开场白作为新的版本。对话开始前可以用 ‹ › 切换，发出第一条消息时用的是当前显示的那个",
@@ -668,6 +669,7 @@ const I18N = {
     'art.none': "還沒有藝術圖",
     // 多个开场白、重点指令、{{user}} 的值、回到顶部、读取酒馆卡
     'sys.postHistory': "【重點指令】",
+    'sys.postHistoryIntro': "如下為使用者特別希望你注意和遵守的指令，它們並非使用者在劇情中的行動的一部分，而是在敘事之外直接發給你的",
     'msg.jumpTop': "↑ 回到頂部",
     'msg.addGreetingVersion': "新增",
     'msg.addGreetingVersionTitle': "再寫一個開場白作為新的版本。對話開始前可以用 ‹ › 切換，送出第一則訊息時用的是目前顯示的那個",
@@ -1024,6 +1026,7 @@ const I18N = {
     'art.none': "No artwork yet",
     // 多个开场白、重点指令、{{user}} 的值、回到顶部、读取酒馆卡
     'sys.postHistory': "[Key Instructions]",
+    'sys.postHistoryIntro': "Below are instructions the user especially wants you to note and follow. They are not part of the user's actions in the story; they are sent to you directly, outside the narrative",
     'msg.jumpTop': "↑ Back to top",
     'msg.addGreetingVersion': "Add",
     'msg.addGreetingVersionTitle': "Write another opening as a new version. Before the conversation starts you can switch between them with ‹ ›; the one shown when you send your first message is used",
@@ -1380,6 +1383,7 @@ const I18N = {
     'art.none': "まだアートがありません",
     // 多个开场白、重点指令、{{user}} 的值、回到顶部、读取酒馆卡
     'sys.postHistory': "【重点指令】",
+    'sys.postHistoryIntro': "以下はユーザーが特に注意して守ってほしい指示です。これらはユーザーの物語の中での行動の一部ではなく、物語の外から直接あなたに送られたものです",
     'msg.jumpTop': "↑ 先頭へ",
     'msg.addGreetingVersion': "追加",
     'msg.addGreetingVersionTitle': "別のオープニングを新しいバージョンとして書きます。会話が始まる前は ‹ › で切り替えられ、最初のメッセージを送ったときに表示されているものが使われます",
