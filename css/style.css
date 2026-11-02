@@ -486,6 +486,8 @@ body.resizing iframe { pointer-events: none; }
   color: #6c6e76;
 }
 .composer-footer a { color: inherit; }
+.free-apis a { color: inherit; overflow-wrap: anywhere; }
+.free-apis a:hover { color: var(--accent); }
 .composer-footer a:hover { color: var(--accent); }
 .hint.per-conv { margin: 8px 0 0; }
 .hint.post-history-hint { margin: 8px 0 0; }
