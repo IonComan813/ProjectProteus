@@ -65,8 +65,14 @@ Switching computers, reinstalling your system or (for the web version) clearing 
 
 The native apps (desktop and Android) check the update server for a new version each time they start:
 
-- You are told about a new **release**, and about a new **test version** if it is also newer than the latest release. When there are both, they are listed in one window: choose which to download, or "Not now"
-- Your browser then downloads the installer for this device (Windows installer / portable, Mac Apple silicon / Intel, Linux or Android). Install it as usual when it finishes; your conversations and settings are kept
+- You are told about a new **release**, and about a new **test version** if it is also newer than the latest release. When there are both, they are listed in one window: choose which to download
+- If you don't want to update now:
+  - "Not now": no update this time; you are told again at the next start
+  - "Remind me tomorrow": nothing is shown when you open the app during the next day, even if a newer version comes out. The ▾ next to it also has "Remind me in 3 days"
+  - "Skip this version" in the ▾ menu: the versions listed are not shown again; you are told when a newer version number comes out
+- The installer for this device is downloaded (Windows installer / portable, Mac Apple silicon / Intel, Linux or Android); your conversations and settings are kept when you install the new version:
+  - **Desktop**: downloaded inside the app. You choose where to save it first (the Downloads folder by default), and the taskbar shows the progress. When it finishes you are asked whether to close the app and run the installer (Windows installer), open the installer (Mac dmg; then drag Proteus into Applications to replace the old version) or start the new version (Linux AppImage). The Windows portable version downloads a zip: you can open its folder, then unzip it and replace the old folder after closing the app
+  - **Android**: downloaded by the system browser; tap the notification to install when it finishes
 - Version order: a test version comes before the release with the same number, e.g. `0.4.0-beta.2` < `0.4.0` < `0.4.1-beta.1`
 - Nothing is shown when the update server can't be reached. The web version does not check for updates
 
@@ -431,7 +437,8 @@ js/update.js      Checking for updates when a native app starts
 js/version.js     The web version's version info (filled in by GitHub for Download ZIP)
 js/app.js         Interface logic, conversation management, context assembly
 js/vendor/        Third-party libraries (marked: Markdown parser, MIT license, full text in marked.LICENSE.md)
-electron/main.js  Entry point of the Windows / macOS / Linux apps (window, security settings, removing CORS restrictions)
+electron/main.js  Entry point of the Windows / macOS / Linux apps (window, security settings, removing CORS restrictions, downloading updates)
+electron/preload.js  Native features offered to the page (for now only downloading updates)
 android/          Android project (Capacitor); capacitor.config.json is its configuration
 assets/           Source images for the Android icon and splash screen
 scripts/          Small build scripts (including third-party-notices.js, which checks third-party licenses and generates the notices)
