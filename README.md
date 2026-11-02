@@ -385,7 +385,7 @@ Proteus runs on your own computer. API keys are stored only locally and never pa
 |---|---|
 | Anthropic (Claude) | Calls Claude directly |
 | OpenAI | |
-| Google Gemini | Uses Gemini's OpenAI-compatible API; get an API key from [Google AI Studio](https://aistudio.google.com/). On the free tier, larger models are often busy (HTTP 503) or slow to respond, so the default is `gemini-3.5-flash-lite`; if you get a 503, wait a moment and click "Get reply" or "Regenerate" |
+| Google Gemini | Uses Gemini's OpenAI-compatible API; get an API key from [Google AI Studio](https://aistudio.google.com/). On the free tier, larger models are often busy (HTTP 503) or slow to respond, so a small model such as `gemini-3.5-flash-lite` is a good start; if you get a 503, wait a moment and click "Get reply" or "Regenerate" |
 | Other OpenAI-compatible (most relays) | OpenRouter, DeepSeek, various relays, etc. Enter the API address yourself; it usually ends with `/v1` (for OpenRouter: `https://openrouter.ai/api/v1`) |
 | Other Anthropic-compatible (some relays) | Relays that offer Claude's native format |
 
