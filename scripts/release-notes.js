@@ -28,6 +28,8 @@ const { execFileSync } = require('child_process');
 
 const LANGS = ['zh-CN', 'zh-TW', 'en', 'ja'];
 const FALLBACK = { 'zh-TW': 'zh-CN', ja: 'en' };
+// 用固定位置的 git（GitHub 的 Ubuntu 运行环境里在这里），不按 PATH 去找；本机没有时才按 PATH 找
+const GIT = fs.existsSync('/usr/bin/git') ? '/usr/bin/git' : 'git';
 const START = '<!-- proteus-changes -->';
 const END = '<!-- /proteus-changes -->';
 
@@ -98,7 +100,7 @@ function check(eventFile) {
 function previousTag(tag) {
   const { compareVersions } = require('../js/update.js');
   const stable = !tag.includes('-');
-  const tags = execFileSync('git', ['tag', '--list', 'v*'], { encoding: 'utf8' }).split('\n').map((s) => s.trim()).filter(Boolean);
+  const tags = execFileSync(GIT, ['tag', '--list', 'v*'], { encoding: 'utf8' }).split('\n').map((s) => s.trim()).filter(Boolean);
   let best = null;
   for (const t of tags) {
     if (stable && t.includes('-')) continue;
@@ -128,7 +130,7 @@ async function collect(tag, out) {
     result.from = prev;
     // 这两个版本之间的提交（第一个版本：最多看最近 300 个提交）
     const range = prev ? [`${prev}..${tag}`] : ['--max-count=300', tag];
-    const commits = execFileSync('git', ['rev-list', ...range], { encoding: 'utf8' }).split('\n').filter(Boolean);
+    const commits = execFileSync(GIT, ['rev-list', ...range], { encoding: 'utf8' }).split('\n').filter(Boolean);
     // 每个提交属于哪些已合并的 PR（普通合并、压缩合并、变基合并都查得到）
     const prs = new Map();
     for (const sha of commits) {
@@ -177,7 +179,12 @@ function apply(mdFile, changesFile) {
 if (require.main === module) {
   const [cmd, ...args] = process.argv.slice(2);
   if (cmd === 'check') check(args[0]);
-  else if (cmd === 'collect') collect(args[0], args[1]);
+  else if (cmd === 'collect') {
+    collect(args[0], args[1]).catch((e) => { // collect 自己处理读取 PR 时的错误，到这里的是写文件之类的错误
+      console.error(e);
+      process.exit(1);
+    });
+  }
   else if (cmd === 'apply') apply(args[0], args[1]);
   else {
     console.error('usage: release-notes.js check <event.json> | collect <tag> <out.json> | apply <notes.md> <changes.json>');
