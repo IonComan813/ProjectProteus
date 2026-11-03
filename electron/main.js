@@ -288,6 +288,17 @@ function setupUpdateDownloads() {
     if (item) item.cancel();
   });
 
+  // 开源协议的原文（首次打开时的协议窗口用；页面是 file:// 打开的，自己读不了文件）
+  ipcMain.handle('license-text', (e) => {
+    if (!win || e.sender.id !== win.webContents.id) return '';
+    try { return fs.readFileSync(path.join(ROOT, 'LICENSE'), 'utf8'); } catch (_) { return ''; }
+  });
+  // 拒绝开源协议时退出软件（macOS 上只关窗口不会退出）
+  ipcMain.handle('quit-app', (e) => {
+    if (!win || e.sender.id !== win.webContents.id) return;
+    app.quit();
+  });
+
   // 安装下载好的更新：页面显示「下载完成，正在启动安装程序…」，等没有正在生成的回复、保存好对话后调用
   ipcMain.handle('install-update', (e) => {
     if (!win || e.sender.id !== win.webContents.id) return false;

@@ -28,6 +28,8 @@ The Windows / macOS / Linux apps come with a built-in Chromium engine, so no sep
 - **No CORS restrictions**: relay endpoints that don't allow direct browser access work too
 - **Data kept separate from your browser**: clearing browser data won't delete it, and other web pages can't read Proteus's data
 
+**Open-source license**: the Windows installer asks you to accept the AGPL v3 license at the first installation. The portable, macOS, Linux and Android versions have no installer, so the license is shown the first time you open them, and "Accept" becomes available once you have scrolled to the end; "Decline" closes the app, and you can choose again next time. If there is a new version, the update window appears only after you accept. Later updates don't ask again.
+
 > The native apps are not code-signed (paid certificates), and the Android app is not installed from an app store, so you may see a warning on first install or launch:
 >
 > - **Windows** may show "Windows protected your PC" on first run: click "**More info**" → "**Run anyway**"
@@ -38,7 +40,7 @@ The Windows / macOS / Linux apps come with a built-in Chromium engine, so no sep
 
 Download `Proteus-<version>-android.apk` on your phone and tap it to install. The first time, Android will ask you to allow your browser (or file manager) to install unknown apps; just follow the prompt.
 
-- The first time you open it, the open-source license (AGPL v3) is shown; you need to choose "Accept" to use the app. "Decline" closes it, and you can choose again next time. If there is a new version, the update window appears only after you accept
+- The first time you open it, the open-source license is shown; see "Open-source license" above
 - The interface uses a mobile layout: the artwork becomes a dimmed background behind the chat; tap ⚙ at the top right to open the settings
 - The back button first closes any open menu, window or the settings panel; when there is nothing left to close, "Press back again to exit Proteus" appears in the middle of the screen, and pressing back again within 2 seconds exits
 - Exporting a story, world card or backup opens the system share menu, so you can save it to Files, a cloud drive, or send it to someone

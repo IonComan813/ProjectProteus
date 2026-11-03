@@ -674,6 +674,8 @@ textarea:focus, input:focus, select:focus { outline: 1px solid var(--accent); bo
 #updateBox:focus { outline: none; }
 /* 下载失败、手动中止后的三个按钮：竖着排、一样宽 */
 .dialog-buttons.stacked { flex-direction: column; align-items: stretch; }
+/* 开源协议窗口：「滚动到末尾后才能同意」的提示，靠左，按钮靠右 */
+.license-hint { margin-right: auto; align-self: center; }
 /* 下载更新的进度条：屏幕上方居中，盖在聊天区上、在下拉列表（20）和弹窗下面 */
 .update-progress {
   position: fixed;
