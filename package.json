@@ -84,6 +84,12 @@
       "createStartMenuShortcut": true,
       "shortcutName": "海神Proteus",
       "license": "LICENSE",
+      "installerLanguages": [
+        "en_US",
+        "zh_CN",
+        "zh_TW",
+        "ja_JP"
+      ],
       "artifactName": "Proteus-Setup-${version}-win-x64.${ext}"
     },
     "linux": {

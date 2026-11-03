@@ -23,6 +23,9 @@
             </intent-filter>
         </activity>
 
+        <!-- 安装更新的结果（UpdateInstallReceiver）：需要用户确认时打开系统的确认界面 -->
+        <receiver android:name=".UpdateInstallReceiver" android:exported="false" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -35,4 +38,8 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- 在软件里下载并安装更新（第一次安装更新时，系统会要求允许海神安装应用）；
+         安卓 12 及以上，海神自己装过的版本再更新时不需要用户确认 -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
 </manifest>

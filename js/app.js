@@ -2316,7 +2316,8 @@ function showExitHint() {
 function bindBackButton() {
   if (!NATIVE) return;
   nativePlugin('App').addListener('backButton', () => {
-    // 更新提示盖在所有东西上面，而且必须选一个按钮：返回键只收起它里面的 ▾ 菜单（由它自己的 Esc 处理），不关掉窗口
+    // 更新提示（以及下载失败、手动中止的提示）盖在所有东西上面，而且必须选一个按钮：
+    // 返回键只收起它里面的 ▾ 菜单（由它自己的 Esc 处理），不关掉窗口
     if (!els.updateDialog.hidden) {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
       return;
@@ -3193,6 +3194,28 @@ async function boot() {
   await loadArt();
 }
 
+// 首次打开时的开源协议说明。AGPL v3 不要求同意才能使用（第 9 条：接收和运行本软件不需要接受协议，
+// 修改或分发本软件即表示接受协议），所以这里只让用户阅读：一个「我已知晓」按钮，没有拒绝。
+// 窗口不能用返回键、Esc 或点外面关闭，点「我已知晓」后记在数据库里，以后不再显示（清除软件数据后会再显示）。
+// Windows 安装版第一次安装时，安装程序里已经显示过协议（build/installer.nsh），不再显示；
+// 其他版本（网页版、安卓、macOS、Linux、Windows 免安装版）都显示
+async function showLicenseNotice() {
+  if (IN_NATIVE_APP && updateFileKey() === 'win-setup') return;
+  if (await DB.get('licenseAcknowledged')) return;
+  const desktop = window.proteusDesktop;
+  let text = '';
+  try {
+    text = desktop && desktop.licenseText ? await desktop.licenseText() : await (await fetch('LICENSE')).text();
+  } catch (_) { /* 只显示说明和网址 */ }
+  // 读不到原文时（例如网页版直接打开本地的 index.html），告诉用户全文在哪里
+  const dlg = openMandatoryDialog(t('license.title'), t('license.intro', { url: PROJECT_URL }) + '\n\n' + (text ? text.trim() : t('license.fullTextAt')));
+  els.updateButtons.append(button(t('license.acknowledge'), () => dlg.close(), 'btn btn-primary'));
+  els.updateMessage.scrollTop = 0;
+  dlg.show();
+  await dlg.done;
+  await DB.set('licenseAcknowledged', true);
+}
+
 function init() {
   for (const el of document.querySelectorAll('[id]')) els[el.id] = el;
   els.langSelect.innerHTML = Object.entries(LANGS).map(([k, name]) => `<option value="${k}">${name}</option>`).join('');
@@ -3209,8 +3232,11 @@ function init() {
     showError(t('boot.failed', { msg: e.message }));
     throw e;
   });
-  // 启动时立刻检查更新（只在原生应用里），和读取数据同时进行；有要提示的版本时等数据读完就显示（读取数据失败时不显示）
-  void checkForUpdates(version, booted);
+  // 第一次打开时先显示开源协议说明（见 showLicenseNotice）
+  const licensed = booted.then(showLicenseNotice);
+  // 启动时立刻检查更新（只在原生应用里），和读取数据同时进行；有要提示的版本时等数据读完、
+  // 开源协议说明关掉后再显示（读取数据失败时不显示）
+  void checkForUpdates(version, licensed);
 }
 
 document.addEventListener('DOMContentLoaded', init);

@@ -28,6 +28,8 @@ The Windows / macOS / Linux apps come with a built-in Chromium engine, so no sep
 - **No CORS restrictions**: relay endpoints that don't allow direct browser access work too
 - **Data kept separate from your browser**: clearing browser data won't delete it, and other web pages can't read Proteus's data
 
+**Open-source license**: Proteus is released under the AGPL v3. You don't need to accept the license to use the software; modifying or distributing it means you accept the license (section 9 of the AGPL v3). So the license is shown for your information only: the Windows installer shows it on its first page, and you click "Next" to continue (the installer follows the system language: English, Simplified Chinese, Traditional Chinese or Japanese, and English for other languages); the portable, macOS, Linux, Android and web versions show it the first time you open them, and once you click "Acknowledge" it isn't shown again. If there is a new version, the update window appears after that. Later updates don't show the license again.
+
 > The native apps are not code-signed (paid certificates), and the Android app is not installed from an app store, so you may see a warning on first install or launch:
 >
 > - **Windows** may show "Windows protected your PC" on first run: click "**More info**" → "**Run anyway**"
@@ -38,6 +40,7 @@ The Windows / macOS / Linux apps come with a built-in Chromium engine, so no sep
 
 Download `Proteus-<version>-android.apk` on your phone and tap it to install. The first time, Android will ask you to allow your browser (or file manager) to install unknown apps; just follow the prompt.
 
+- The first time you open it, the open-source license is shown; see "Open-source license" above
 - The interface uses a mobile layout: the artwork becomes a dimmed background behind the chat; tap ⚙ at the top right to open the settings
 - The back button first closes any open menu, window or the settings panel; when there is nothing left to close, "Press back again to exit Proteus" appears in the middle of the screen, and pressing back again within 2 seconds exits
 - Exporting a story, world card or backup opens the system share menu, so you can save it to Files, a cloud drive, or send it to someone
@@ -72,10 +75,19 @@ The native apps (desktop and Android) check the update server for a new version 
   - "Skip this version" in the ▾ menu: the versions listed are not shown again; you are told when a newer version number comes out. After skipping, the next check is also on the next day
 - You have to choose one of the buttons: Esc or clicking outside does not close this window
 - The check starts as soon as the app starts, and the window appears as soon as the version information arrives. It opens on top of any other window or dialog, which stay as they were after you choose; it also appears while a reply is being generated, and the reply keeps coming in
-- Once a download has started, the app also doesn't check again that day (not even after installing the new version); if you cancel the save dialog, you are asked again at the next start
+- After you choose to download, everything happens by itself: the download runs inside the app (no save dialog) with a progress bar at the top of the screen (version, percentage, downloaded / total size); the × on its right stops the download. When it finishes, the progress bar shows "Download finished, starting the installer…" and the update is installed without asking again. If a reply is being generated, it waits until the reply is finished and the conversation saved
+- Once the download has finished, the app doesn't check again that day (not even after installing the new version)
+- If the installer is blocked and can't run, nothing is shown and the app keeps running
+- If the download fails, "Download failed" appears: the download was interrupted or timed out, which may be a network problem or security software blocking it. It counts as timed out after 60 seconds without receiving any data; a download that is just slow but still receiving data doesn't time out. If you pressed ×, "Download stopped" appears instead. Both windows need one of these buttons:
+  - "Check for updates again": reads the version information again and shows the update window again
+  - "Download it from the GitHub Release page": opens that version's release page in your browser; the app doesn't check again that day
+  - "Check again next time the app starts"
 - The installer for this device is downloaded (Windows installer / portable, Mac Apple silicon / Intel, Linux or Android); your conversations and settings are kept when you install the new version:
-  - **Desktop**: downloaded inside the app. You choose where to save it first (the Downloads folder by default), and the taskbar shows the progress. When it finishes you are asked whether to close the app and run the installer (Windows installer), open the installer (Mac dmg; then drag Proteus into Applications to replace the old version) or start the new version (Linux AppImage). The Windows portable version downloads a zip: you can open its folder, then unzip it and replace the old folder after closing the app
-  - **Android**: downloaded by the system browser; tap the notification to install when it finishes
+  - **Windows installer version**: the app closes and the installer runs silently into the same folder (with the location and "just me / all users" choice from the first installation), without the license and option pages, then opens the new version. For an "all users" installation Windows still asks once for administrator permission. The installer is kept in the updates folder inside the app data and deleted at the next start. The open-source license was already accepted at the first manual installation
+  - **Linux (AppImage)**: the AppImage you are using is replaced by the new version (same path), which is opened before the old one closes
+  - **macOS (dmg)**: downloaded to the Downloads folder and opened, then the app closes; drag Proteus into Applications to replace the old version
+  - **Windows portable version (zip)**: downloaded to the Downloads folder and its folder opened; after closing the app, unzip it and replace the old folder
+  - **Android**: installed directly with the system installer; the app closes while installing, then open it again. The package is deleted as soon as the system has it. The first time you update this way, Android asks you to allow Proteus to install unknown apps and to confirm the installation; on Android 12 and later, later updates need no confirmation
 - Version order: a test version comes before the release with the same number, e.g. `0.4.0-beta.2` < `0.4.0` < `0.4.1-beta.1`
 - Nothing is shown when the update server can't be reached. The web version does not check for updates
 
@@ -441,8 +453,8 @@ js/version.js     The web version's version info (filled in by GitHub for Downlo
 js/app.js         Interface logic, conversation management, context assembly
 js/vendor/        Third-party libraries (marked: Markdown parser, MIT license, full text in marked.LICENSE.md)
 electron/main.js  Entry point of the Windows / macOS / Linux apps (window, security settings, removing CORS restrictions, downloading updates)
-electron/preload.js  Native features offered to the page (for now only downloading updates)
-android/          Android project (Capacitor); capacitor.config.json is its configuration
+electron/preload.js  Native features offered to the page (for now only downloading and installing updates)
+android/          Android project (Capacitor); capacitor.config.json is its configuration; UpdateDownloaderPlugin.java downloads and installs updates inside the app (UpdateInstallReceiver.java handles the cases that need the user to confirm)
 assets/           Source images for the Android icon and splash screen
 scripts/          Small build scripts (including third-party-notices.js, which checks third-party licenses and generates the notices)
 build/icon.png    App icon

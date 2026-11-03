@@ -2,10 +2,15 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('proteusDesktop', {
-  // 下载更新的安装包：先让用户选择保存位置，选好后才开始下载，完成后问是否关闭软件并运行安装程序。
-  // 返回 'started'、'cancelled'（取消了保存）或 false（没有开始）
+  // 下载更新的安装包（不问保存位置）。返回 'started' 或 false（没有开始）
   downloadUpdate: (url) => ipcRenderer.invoke('download-update', url),
-  // 下载进度：callback({ state: 'progress' | 'done' | 'failed' | 'cancelled', percent })
+  // 停止正在进行的下载（进度条上的 ×，或者太久没有收到数据）
+  cancelUpdate: () => ipcRenderer.invoke('cancel-update'),
+  // 安装下载好的更新（Windows 安装版静默安装后启动新版本，软件随即关闭）。返回 true 表示已经开始
+  installUpdate: () => ipcRenderer.invoke('install-update'),
+  // 开源协议的原文（首次打开时的协议说明用）
+  licenseText: () => ipcRenderer.invoke('license-text'),
+  // 下载进度和结果：callback({ state: 'progress', received, total }) / ({ state: 'done', kind }) / ({ state: 'failed' | 'aborted' })
   onUpdateDownload: (callback) => {
     ipcRenderer.on('update-download', (_e, info) => callback(info));
   },
