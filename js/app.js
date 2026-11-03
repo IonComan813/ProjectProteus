@@ -2931,7 +2931,8 @@ function bindSettings() {
 
   // 查看下一轮将发送的内容
   els.btnPreviewNext.addEventListener('click', openPreview);
-  document.addEventListener('mousedown', (e) => { if (!els.previewBox.hidden && !els.previewBox.contains(e.target) && !insideDialog(e.target)) closePreview(); }, true);
+  // 「点在外面就关闭」都用 pointerdown：点在不可用的输入框上（例如助理模式下的世界观）时浏览器不发 mousedown 和 click
+  document.addEventListener('pointerdown', (e) => { if (!els.previewBox.hidden && !els.previewBox.contains(e.target) && !insideDialog(e.target)) closePreview(); }, true);
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !els.previewBox.hidden) { e.stopPropagation(); closePreview(); }
   }, true);
@@ -2941,7 +2942,15 @@ function bindSettings() {
     expandSource.dispatchEvent(new Event('input')); // 和直接在右侧输入一样保存、更新字数
   });
   // 点在放大窗口以外的地方就关闭（按 Esc 也可以）
-  document.addEventListener('mousedown', (e) => { if (expandSource && !els.expandBox.contains(e.target) && !insideDialog(e.target)) closeExpand(); }, true);
+  document.addEventListener('pointerdown', (e) => { if (expandSource && !els.expandBox.contains(e.target) && !insideDialog(e.target)) closeExpand(); }, true);
+  // 点在消息内容上：每条消息显示在一个 iframe 里，外层页面收不到里面的鼠标事件，但焦点会移进那个 iframe、页面失去焦点。
+  // 这时也算点在外面，关闭放大窗口和预览窗口。切到别的程序时页面也会失去焦点，但焦点不在 iframe 上，不关闭（切回来还能接着编辑）
+  window.addEventListener('blur', () => setTimeout(() => {
+    const f = document.activeElement;
+    if (!f || f.tagName !== 'IFRAME') return;
+    if (!els.previewBox.hidden && !els.previewBox.contains(f)) closePreview();
+    if (expandSource && !els.expandBox.contains(f)) closeExpand();
+  }, 0));
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && expandSource) { e.stopPropagation(); closeExpand(); }
   }, true);
@@ -3069,8 +3078,9 @@ function bindChat() {
   });
   // 有输入框或确认框打开时（例如正在重命名），对话列表不受点击、Esc 和窗口大小变化影响
   const dialogOpen = () => !els.dialog.hidden || !els.textDialog.hidden || !els.pwDialog.hidden || !els.modal.hidden || !els.updateDialog.hidden;
-  // 点在列表和右键菜单以外：都收起；点在列表里（右键菜单以外）：只收起右键菜单
-  document.addEventListener('mousedown', (e) => {
+  // 点在列表和右键菜单以外：都收起；点在列表里（右键菜单以外）：只收起右键菜单。
+  // 用 pointerdown：点在不可用的输入框上时浏览器不发 mousedown
+  document.addEventListener('pointerdown', (e) => {
     if (els.convCtxMenu.contains(e.target) || dialogOpen()) return;
     closeConvCtxMenu();
     if (!els.convPicker.contains(e.target)) closeConvMenu();
@@ -3115,7 +3125,8 @@ function bindChat() {
     const i = items.indexOf(document.activeElement);
     items[(i + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length].focus();
   });
-  document.addEventListener('click', (e) => { if (!els.newConvGroup.contains(e.target) && !insideDialog(e.target)) closeNewConvMenu(); });
+  // 点在菜单以外就收起。用 pointerdown：点在不可用的输入框上时浏览器不发 click
+  document.addEventListener('pointerdown', (e) => { if (!els.newConvGroup.contains(e.target) && !insideDialog(e.target)) closeNewConvMenu(); });
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !els.newConvMenu.hidden) { e.stopPropagation(); closeNewConvMenu(); els.btnNewConv.focus(); }
   }, true);
