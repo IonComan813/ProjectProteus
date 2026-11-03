@@ -496,6 +496,18 @@ npm run android:apk  # 打包安卓版（需要安装 Android SDK 和 JDK 21）
 - **发布测试版**：用带后缀的标签，例如 `v0.4.0-beta.1`，打在要测试的那次提交上，可以是任何分支（在「Draft a new release」页面把「Target」选成那个分支）。这样的标签新建的 Release 会标为**预发布（Pre-release）**：不会成为「最新版本（Latest）」，说明开头会注明是测试版（在网页上自己新建 Release 时也一样）。想给某个版本写专门的说明，在那次提交里加上 `.github/release-notes/<标签>.md`（例如 `v0.4.0-beta.1.md`），它会放在 Release 说明的最前面。安卓版里 `0.4.0-beta.1` 和 `0.4.0` 的版本号（versionCode）相同，所以正式的 `0.4.0` 可以直接覆盖更新它；但之后发布的更低版本（例如 `0.3.4`）不能装在它上面
 - **只想试试能不能打包**：在仓库的 Actions 页面选「Build native app」→「Run workflow」。只打包不发布，安装包在那次运行页面底部的 Artifacts 里，保留 30 天。
 
+**更新说明**：每个 PR 的正文开头写一段简短的更新说明，四种语言各一行，格式见 `scripts/release-notes.js` 开头的说明，例如：
+
+```
+## 更新说明
+- zh-CN: 修复了特定窗口无法按照预期关闭的问题
+- zh-TW: 修復了特定視窗無法按照預期關閉的問題
+- en: Fixed some windows not closing as expected
+- ja: 一部のウィンドウが想定どおりに閉じない問題を修正しました
+```
+
+用户感觉不到的改动写一行「- 无」。PR 检查（`.github/workflows/pr-notes-check.yml`）会检查正文开头有没有这一段，没有或格式不对时显示失败。发布版本时，打包工作流收集这个版本和上一个版本之间合并的 PR 的说明（正式版从上一个正式版算起，测试版从上一个版本算起），中英双语的一段放在 Release 说明的最前面，四种语言的写进更新服务器上的 `version.json`。软件提示更新时显示这些说明：正式版和测试版各自最多显示两个版本，跳过的版本更多时提示到 GitHub Release 页面查看。
+
 Release 页面上的下载说明来自 `.github/release-notes.md`（英文）。Release 说明的最后会自动写上「The installers on this page were built from commit xxx」（本页安装包构建自哪次提交），用所选分支重新打包、替换已有 Release 的安装包时也会更新这一行，源代码以这次提交为准。
 
 每次打包前会先检查打进安装包的第三方组件的许可证（`scripts/third-party-notices.js`）：遇到不认识或和 AGPL v3 不兼容的许可证时打包失败，需要人工确认后在脚本里登记；通过后生成 `THIRD_PARTY_NOTICES.txt` 放进安装包。

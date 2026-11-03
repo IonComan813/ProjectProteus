@@ -495,6 +495,18 @@ The output is in the `dist/` folder.
 - **Publishing a test version**: use a tag with a suffix, such as `v0.4.0-beta.1`, and put it on the commit to test, which can be on any branch (on the "Draft a new release" page, choose that branch as the "Target"). A release created by such a tag is marked as a **pre-release**: it does not become the "Latest" release, and its notes start with a line saying it is a test version (also when you create the release on the web page yourself). To give a version its own notes, add `.github/release-notes/<tag>.md` (for example `v0.4.0-beta.1.md`) in that commit: they are put at the start of the release notes. On Android, `0.4.0-beta.1` has the same version code as `0.4.0`, so the final `0.4.0` can update it in place; but a lower version released later (say `0.3.4`) cannot be installed over it
 - **Just checking that it builds**: on the repository's Actions page choose "Build native app" → "Run workflow". This builds without publishing; the installers are in the Artifacts at the bottom of that run's page and are kept for 30 days.
 
+**Release notes**: every PR starts its description with short release notes, one line per language in four languages; the format is described at the top of `scripts/release-notes.js`, for example:
+
+```
+## 更新说明
+- zh-CN: 修复了特定窗口无法按照预期关闭的问题
+- zh-TW: 修復了特定視窗無法按照預期關閉的問題
+- en: Fixed some windows not closing as expected
+- ja: 一部のウィンドウが想定どおりに閉じない問題を修正しました
+```
+
+Changes users won't notice get a single line "- 无" (or "- none"). A PR check (`.github/workflows/pr-notes-check.yml`) fails when the description doesn't start with this block or its format is wrong. When a version is published, the build workflow collects the notes of the PRs merged since the previous version (since the previous release for a release, since the previous version of either kind for a test version), puts a Chinese and English section at the top of the release notes, and writes all four languages into `version.json` on the update server. The app shows these notes in its update window: up to two versions each for releases and test versions, and a pointer to the GitHub Releases page when more versions were skipped.
+
 The download instructions on a release page come from `.github/release-notes.md` (in English). A line saying which commit the installers were built from is added to the end of the release notes automatically; it is also updated when the installers of an existing release are rebuilt from a chosen branch and replaced. That commit is the source code of those installers.
 
 Before each build, the licenses of the third-party components that go into the installers are checked (`scripts/third-party-notices.js`): an unknown license, or one incompatible with AGPL v3, fails the build until it has been reviewed and registered in the script; otherwise `THIRD_PARTY_NOTICES.txt` is generated and included in the installers.

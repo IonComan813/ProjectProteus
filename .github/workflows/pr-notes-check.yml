@@ -1,0 +1,20 @@
+# 检查每个 PR 的正文开头有没有「## 更新说明」（格式见 scripts/release-notes.js 开头的说明）。
+# 发布版本时，打包工作流（build.yml）收集这些说明，写进 Release 页面和软件的更新提示。
+# 没有写、或者格式不对时这项检查失败（PR 页面上显示红叉）；改好 PR 正文后会自动重新检查。
+# 用户感觉不到的改动写一行「- 无」。
+name: PR release notes
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # PR 正文从事件文件里读，不放进命令行（正文是任何人都能写的内容）
+      - run: node scripts/release-notes.js check "$GITHUB_EVENT_PATH"
