@@ -3194,6 +3194,26 @@ async function boot() {
   await loadArt();
 }
 
+// 安卓版是直接安装 apk 的，没有安装程序里的协议页面（电脑版的 Windows 安装程序第一次安装时要同意协议）：
+// 第一次打开时显示 AGPL v3 协议，必须选「同意」或「拒绝」，不能用返回键、Esc 或点外面关闭。
+// 拒绝就退出软件，下次打开时再问。同意后记在数据库里（清除软件数据后会再问）
+async function askLicense() {
+  if (!NATIVE || (await DB.get('licenseAccepted'))) return;
+  let text = '';
+  try { text = await (await fetch('LICENSE')).text(); } catch (_) { /* 只显示说明和网址 */ }
+  const dlg = openMandatoryDialog(t('license.title'), t('license.intro', { url: PROJECT_URL }) + (text ? '\n\n' + text.trim() : ''));
+  els.updateButtons.appendChild(button(t('license.decline'), () => dlg.close(false), 'btn btn-ghost'));
+  els.updateButtons.appendChild(button(t('license.accept'), () => dlg.close(true), 'btn btn-primary'));
+  els.updateMessage.scrollTop = 0;
+  dlg.show();
+  if (await dlg.done) {
+    await DB.set('licenseAccepted', true);
+    return;
+  }
+  nativePlugin('App').exitApp();
+  await new Promise(() => {}); // 正在退出：后面的事（例如更新提示）都不做
+}
+
 function init() {
   for (const el of document.querySelectorAll('[id]')) els[el.id] = el;
   els.langSelect.innerHTML = Object.entries(LANGS).map(([k, name]) => `<option value="${k}">${name}</option>`).join('');
@@ -3210,8 +3230,11 @@ function init() {
     showError(t('boot.failed', { msg: e.message }));
     throw e;
   });
-  // 启动时立刻检查更新（只在原生应用里），和读取数据同时进行；有要提示的版本时等数据读完就显示（读取数据失败时不显示）
-  void checkForUpdates(version, booted);
+  // 安卓版第一次打开时先同意开源协议（见 askLicense）
+  const licensed = booted.then(askLicense);
+  // 启动时立刻检查更新（只在原生应用里），和读取数据同时进行；有要提示的版本时等数据读完、
+  // 同意了开源协议后再显示（读取数据失败时不显示）
+  void checkForUpdates(version, licensed);
 }
 
 document.addEventListener('DOMContentLoaded', init);

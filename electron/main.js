@@ -146,45 +146,28 @@ function allowCors() {
 }
 
 // ---- 下载更新 ----
-// 页面（js/update.js）请求下载某个安装包时：先让用户选择保存位置，选好后才开始下载，任务栏显示进度，
-// 下载完成后按安装包的类型问用户：关闭软件并运行安装程序（Windows 安装版）、打开 dmg（macOS）、
-// 启动新的 AppImage（Linux），或者打开所在文件夹（Windows 免安装版的 zip，需要自己解压替换）。
-const UPDATE_TEXT = {
-  'zh-CN': {
-    save: '保存更新安装包', later: '稍后',
-    exe: ['安装程序已下载。现在关闭 Proteus 并运行安装程序吗？', '关闭并安装'],
-    dmg: ['安装包已下载。现在关闭 Proteus 并打开它吗？打开后把 Proteus 拖进「应用程序」文件夹，替换旧版本即可。', '关闭并打开'],
-    appimage: ['新版本已下载。现在关闭 Proteus 并启动新版本吗？之后可以删除旧的 AppImage 文件。', '关闭并启动新版本'],
-    zip: ['免安装版已下载。关闭 Proteus 后解压，用新的文件夹替换旧的即可，对话和设定不受影响。', '打开所在文件夹'],
-  },
-  'zh-TW': {
-    save: '儲存更新安裝檔', later: '稍後',
-    exe: ['安裝程式已下載。現在關閉 Proteus 並執行安裝程式嗎？', '關閉並安裝'],
-    dmg: ['安裝檔已下載。現在關閉 Proteus 並開啟它嗎？開啟後把 Proteus 拖進「應用程式」檔案夾，取代舊版本即可。', '關閉並開啟'],
-    appimage: ['新版本已下載。現在關閉 Proteus 並啟動新版本嗎？之後可以刪除舊的 AppImage 檔案。', '關閉並啟動新版本'],
-    zip: ['免安裝版已下載。關閉 Proteus 後解壓縮，用新的資料夾取代舊的即可，對話和設定不受影響。', '開啟所在資料夾'],
-  },
-  en: {
-    save: 'Save the update', later: 'Later',
-    exe: ['The installer has been downloaded. Close Proteus and run it now?', 'Close and install'],
-    dmg: ['The installer has been downloaded. Close Proteus and open it now? Then drag Proteus into the Applications folder to replace the old version.', 'Close and open'],
-    appimage: ['The new version has been downloaded. Close Proteus and start the new version now? You can delete the old AppImage afterwards.', 'Close and start'],
-    zip: ['The portable version has been downloaded. After closing Proteus, unzip it and replace the old folder with the new one; your conversations and settings are not affected.', 'Show in folder'],
-  },
-  ja: {
-    save: '更新ファイルを保存', later: 'あとで',
-    exe: ['インストーラーをダウンロードしました。Proteus を閉じてインストーラーを実行しますか？', '閉じてインストール'],
-    dmg: ['インストーラーをダウンロードしました。Proteus を閉じて開きますか？開いたら Proteus を「アプリケーション」フォルダにドラッグして、古いバージョンと置き換えてください。', '閉じて開く'],
-    appimage: ['新しいバージョンをダウンロードしました。Proteus を閉じて新しいバージョンを起動しますか？古い AppImage はあとで削除できます。', '閉じて起動'],
-    zip: ['ポータブル版をダウンロードしました。Proteus を閉じてから展開し、古いフォルダを新しいフォルダに置き換えてください。会話と設定はそのまま残ります。', 'フォルダを表示'],
-  },
-};
-const updateText = () => UPDATE_TEXT[pageLang] || UPDATE_TEXT['zh-CN'];
-
-const pendingUpdates = new Map(); // 页面请求下载、还没开始的安装包：地址 → 用户选好的保存位置
+// 页面（js/update.js）请求下载某个安装包时直接开始下载，不问保存位置：
+//   Windows 安装版（exe）、Linux（AppImage）放在软件数据文件夹的 updates 里，装好后（下次启动时）删掉；
+//   macOS（dmg）和 Windows 免安装版（zip）要用户自己替换，放在「下载」文件夹里。
+// 任务栏显示进度。下载完成后告诉页面，页面在没有正在生成的回复时调用 install-update：
+//   Windows 安装版：关闭软件，静默运行安装程序（/S --updated --force-run）。安装程序按注册表里上次的安装位置和方式
+//     （只给自己 / 所有用户）安装到原来的文件夹，不再显示协议和选项页面，装好后自动启动新版本。
+//     装在「所有用户」时 Windows 仍会弹出管理员权限确认。
+//   Linux（AppImage）：用新文件替换正在运行的 AppImage（同一个路径），启动新版本后关闭软件。
+//   macOS（dmg）：打开安装包后关闭软件，由用户把 Proteus 拖进「应用程序」替换旧版本。
+//   Windows 免安装版（zip）：打开所在文件夹，由用户关闭软件后解压替换。
+// 运行安装程序失败时不提示（安全软件一般会自己提示），软件也不关闭。
+const pendingUpdates = new Map(); // 页面请求下载、还没开始的安装包：地址 → 保存位置
 const stoppedUpdates = new Set(); // 还没开始下载就被停止的安装包地址：之后开始了也立刻取消
 let activeUpdate = null; // 正在下载的安装包（DownloadItem）
 let updateFinished = true; // 这次下载是否已经把结果告诉了页面（每次下载只告诉一次）
+let downloadedUpdate = null; // 下载好、等着安装的文件
+
+const updatesDir = () => path.join(app.getPath('userData'), 'updates');
+const updateKind = (file) => {
+  const ext = path.extname(file).toLowerCase();
+  return ext === '.exe' ? 'exe' : ext === '.dmg' ? 'dmg' : ext === '.appimage' ? 'appimage' : 'zip';
+};
 
 function sendUpdateState(info) {
   if (win) win.webContents.send('update-download', info);
@@ -197,60 +180,99 @@ function finishUpdate(state, item = activeUpdate) {
   updateFinished = true;
   activeUpdate = null;
   if (win) win.setProgressBar(-1);
-  sendUpdateState({ state });
+  sendUpdateState(state === 'done' ? { state, kind: updateKind(downloadedUpdate) } : { state });
 }
 
-// 下载完成后问是否关闭软件并运行安装程序。运行失败时不提示（安全软件一般会自己提示），软件也不关闭，
-// 用户可以自己到保存的文件夹里打开安装包
-async function afterUpdateDownload(file) {
-  const text = updateText();
-  const ext = path.extname(file).toLowerCase();
-  const kind = ext === '.exe' ? 'exe' : ext === '.dmg' ? 'dmg' : ext === '.appimage' ? 'appimage' : 'zip';
-  const [message, action] = text[kind];
-  const { response } = await dialog.showMessageBox(win, {
-    type: 'question', message, buttons: [action, text.later], defaultId: 0, cancelId: 1,
+// 启动一个程序（不等它结束）。真正启动了返回 true；被拦下（例如安全软件不让运行）返回 false，不会让主进程出错
+function launch(file, args) {
+  return new Promise((resolve) => {
+    try {
+      const child = spawn(file, args, { detached: true, stdio: 'ignore' });
+      child.once('spawn', () => { child.unref(); resolve(true); });
+      child.once('error', () => resolve(false));
+    } catch (_) {
+      resolve(false);
+    }
   });
-  if (response !== 0) return;
+}
+
+// 安装下载好的更新（见上面的说明）。返回 true 表示已经开始安装（免安装版是已经打开文件夹），软件马上关闭；
+// 返回 false 表示没能开始（不提示，软件也不关闭）
+async function installDownloadedUpdate() {
+  const file = downloadedUpdate;
+  if (!file || !fs.existsSync(file)) return false;
+  const kind = updateKind(file);
   if (kind === 'zip') {
     shell.showItemInFolder(file);
-    return;
+    return true; // 免安装版：软件不关闭，用户自己关闭后解压替换
   }
-  try {
-    if (kind === 'appimage') {
-      fs.chmodSync(file, 0o700); // 只给自己读、写、运行的权限：启动新版本不需要让其他用户也能运行
-      spawn(file, [], { detached: true, stdio: 'ignore' }).unref();
-    } else {
-      const error = await shell.openPath(file);
-      if (error) return;
+  let started = false;
+  if (kind === 'exe') {
+    started = await launch(file, ['--updated', '/S', '--force-run']);
+  } else if (kind === 'dmg') {
+    started = !(await shell.openPath(file));
+  } else {
+    const current = process.env.APPIMAGE; // 正在运行的 AppImage 的路径
+    let target = file;
+    if (current && fs.existsSync(current)) {
+      try {
+        // 先复制到同一个文件夹，再改名替换（改名是一步完成的；正在运行的旧文件不受影响）
+        const next = current + '.new';
+        fs.copyFileSync(file, next);
+        fs.chmodSync(next, (fs.statSync(current).mode & 0o777) | 0o700);
+        fs.renameSync(next, current);
+        fs.rmSync(file, { force: true });
+        target = current;
+      } catch (_) {
+        target = file; // 原来的文件夹写不进去：直接运行下载的新版本
+      }
     }
-  } catch (_) {
-    return;
+    try { if (target === file) fs.chmodSync(file, 0o700); } catch (_) { /* 运行时会失败 */ }
+    started = await launch(target, []);
   }
-  app.quit();
+  if (!started) return false;
+  downloadedUpdate = null;
+  setTimeout(() => app.quit(), 300);
+  return true;
+}
+
+// 启动后清理 updates 文件夹里上次留下的安装包（安装程序可能还没退出，删不掉就等下次）
+function cleanUpdates() {
+  setTimeout(() => {
+    if (!updateFinished || downloadedUpdate) return;
+    let names = [];
+    try { names = fs.readdirSync(updatesDir()); } catch (_) { return; }
+    for (const name of names) {
+      try { fs.rmSync(path.join(updatesDir(), name), { force: true }); } catch (_) { /* 下次再删 */ }
+    }
+  }, 20000);
 }
 
 function setupUpdateDownloads() {
-  // 先让用户选好保存位置，再开始下载（不用 Electron 默认的做法：那样会一边弹“另存为”一边已经在下载）。
-  // 返回 'started'（开始下载）、'cancelled'（用户取消了保存）或 false（请求不合规定）。
-  // 下载的进度和结果通过 update-download 消息告诉页面：progress（已收到 / 总字节数）、done、failed、aborted
-  ipcMain.handle('download-update', async (e, url) => {
+  cleanUpdates();
+  // 开始下载。返回 'started' 或 false（请求不合规定、已经在下载）。
+  // 下载的进度和结果通过 update-download 消息告诉页面：progress（已收到 / 总字节数）、done（附带安装包类型）、failed、aborted
+  ipcMain.handle('download-update', (e, url) => {
     // 只接受这个窗口的请求（preload 只在主页面里运行，消息显示用的沙箱小窗口调用不到），而且只下载 https 地址上的安装包
     if (!win || e.sender.id !== win.webContents.id) return false;
     if (typeof url !== 'string' || !/^https:\/\/[^\s]+\.(exe|zip|dmg|AppImage)$/i.test(url)) return false;
     if (!updateFinished) return false; // 同一时间只下载一个
     let name;
-    try { name = decodeURIComponent(new URL(url).pathname.split('/').pop()); } catch (_) { return false; }
-    const ext = path.extname(name).slice(1);
-    const { canceled, filePath } = await dialog.showSaveDialog(win, {
-      title: updateText().save,
-      defaultPath: path.join(app.getPath('downloads'), name),
-      filters: [{ name: ext, extensions: [ext] }],
-    });
-    if (canceled || !filePath) return 'cancelled';
+    try { name = path.basename(decodeURIComponent(new URL(url).pathname)); } catch (_) { return false; }
+    const kind = updateKind(name);
+    const dir = kind === 'exe' || kind === 'appimage' ? updatesDir() : app.getPath('downloads');
+    const filePath = path.join(dir, name);
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+      fs.rmSync(filePath, { force: true });
+    } catch (_) {
+      return false;
+    }
     pendingUpdates.clear();
     stoppedUpdates.delete(url);
     pendingUpdates.set(url, filePath);
     updateFinished = false;
+    downloadedUpdate = null;
     win.webContents.downloadURL(url);
     return 'started';
   });
@@ -266,11 +288,17 @@ function setupUpdateDownloads() {
     if (item) item.cancel();
   });
 
+  // 安装下载好的更新：页面显示「下载完成，正在启动安装程序…」，等没有正在生成的回复、保存好对话后调用
+  ipcMain.handle('install-update', (e) => {
+    if (!win || e.sender.id !== win.webContents.id) return false;
+    return installDownloadedUpdate();
+  });
+
   session.defaultSession.on('will-download', (_e, item) => {
     const url = item.getURLChain()[0] || item.getURL();
     if (stoppedUpdates.delete(url)) { item.cancel(); return; } // 页面已经停止的那次下载（停止时还没开始）
     if (!pendingUpdates.has(url)) return; // 其他下载（例如导出备份）照常处理
-    item.setSavePath(pendingUpdates.get(url)); // 用户已经选好的位置：不再弹“另存为”
+    item.setSavePath(pendingUpdates.get(url)); // 不弹「另存为」
     pendingUpdates.delete(url);
     activeUpdate = item;
     item.on('updated', (_ev, state) => {
@@ -288,8 +316,8 @@ function setupUpdateDownloads() {
     });
     item.once('done', (_ev, state) => {
       if (state === 'completed') {
+        downloadedUpdate = item.getSavePath();
         finishUpdate('done', item);
-        void afterUpdateDownload(item.getSavePath());
       } else {
         finishUpdate(state === 'cancelled' ? 'aborted' : 'failed', item); // 例如服务器或安全软件拒绝（HTTP 403）
       }

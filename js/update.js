@@ -89,7 +89,8 @@ function setUpdateSnooze(z) {
   saveSettingsSoon();
 }
 
-// 启动时调用，不等读取数据：version 是取得当前版本号（写进 state.version）的 Promise，booted 是读取数据的 Promise。
+// 启动时调用，不等读取数据：version 是取得当前版本号（写进 state.version）的 Promise，
+// booted 是读取数据（安卓版还要同意开源协议）的 Promise。
 // 是否需要检查（稍后提醒、今天是否已经检查过）直接从数据库里的设置判断，和读取数据同时请求更新服务器；
 // 要显示提示、记下检查日期时才等数据读完（读取失败就不提示）
 async function checkForUpdates(version, booted) {
@@ -155,14 +156,13 @@ async function offerUpdates(offers, key) {
 }
 
 // 下载选中的版本。下载完成（或交给了浏览器）：今天不再检查，装好新版本后当天再打开也不检查。
-// 取消了「另存为」：下次启动再提示。下载失败、超时或者用户点了 ×：弹窗让用户选择
+// 下载失败、超时或者用户点了 ×：弹窗让用户选择
 //   再次检查更新：重新读取版本信息、再显示一次更新提示
 //   前往 GitHub Release 页面手动下载：打开这个版本的 Release 页面，今天不再检查
 //   下次启动时再检查更新：什么都不做
 async function installUpdate(m, key) {
   const result = await downloadUpdate(`${UPDATE_BASE_URL}/${m.channel}/${encodeURIComponent(m.files[key])}`, m.version);
   if (result === 'done' || result === 'browser') return markUpdateChecked();
-  if (result === 'cancelled') return toast(t('update.saveCancelled'));
   const next = await showDownloadStopped(result === 'aborted');
   if (next === 'retry') {
     const found = await findUpdates(key, updateSnooze().skip || {});
@@ -298,14 +298,15 @@ function openExternal(url) {
 }
 
 // ---- 下载安装包 ----
-// 电脑版：在软件里下载，先选择保存位置，完成后问是否关闭软件并运行安装程序（electron/main.js）。
-// 安卓版：在软件里下载到应用自己的缓存文件夹，完成后打开系统的安装界面（UpdateDownloaderPlugin.java）。
+// 电脑版：在软件里下载，不问保存位置（electron/main.js）。
+// 安卓版：在软件里下载到应用自己的缓存文件夹（UpdateDownloaderPlugin.java）。
 // 都没有时（例如旧的安卓外壳）交给系统浏览器下载。
 // 下载时屏幕上方显示进度条，右边的 × 可以停止下载。连续 UPDATE_STALL_MS 没有收到任何数据就当作超时、停止下载；
 // 只是下载得慢（数据一直在来）不算超时。
-// 返回 'done'（下载完成）/ 'browser'（交给了浏览器）/ 'cancelled'（取消了「另存为」）/ 'failed'（中断或超时）/ 'aborted'（用户点了 ×）
+// 下载完成后进度条那里显示「下载完成，正在启动安装程序…」，直接安装（见 startInstall），不再询问。
+// 返回 'done'（下载完成）/ 'browser'（交给了浏览器）/ 'failed'（中断或超时）/ 'aborted'（用户点了 ×）
 const UPDATE_STALL_MS = 60 * 1000;
-let updateDownloader = null; // { cancel() }：正在进行的下载
+let updateDownloader = null; // 正在进行的下载（watchDownload 返回的对象）
 let desktopProgressBound = false;
 
 async function downloadUpdate(url, version) {
@@ -315,19 +316,20 @@ async function downloadUpdate(url, version) {
     // 结果由主进程的 update-download 消息告诉页面：先注册好，再开始下载
     let finish;
     const ended = new Promise((r) => { finish = r; });
+    let kind = 'exe';
     if (!desktopProgressBound) {
       desktopProgressBound = true;
       desktop.onUpdateDownload((info) => { if (updateDownloader) updateDownloader.onEvent(info); });
     }
-    const dl = watchDownload(version, () => desktop.cancelUpdate(), finish);
+    const dl = watchDownload(version, () => desktop.cancelUpdate(), (r, info) => { if (info && info.kind) kind = info.kind; finish(r); });
     updateDownloader = dl;
-    const started = await desktop.downloadUpdate(url); // 先弹「另存为」，选好位置才开始
-    if (started === 'started') {
+    if (await desktop.downloadUpdate(url) === 'started') {
       dl.begin();
-      return ended;
+      const result = await ended;
+      if (result === 'done') void startInstall(kind, () => desktop.installUpdate());
+      return result;
     }
     dl.stop();
-    if (started === 'cancelled') return 'cancelled'; // 下次启动时再提示
   } else if (android && url.endsWith('.apk')) {
     let finish;
     const ended = new Promise((r) => { finish = r; });
@@ -341,11 +343,7 @@ async function downloadUpdate(url, version) {
         .then((r) => dl.onEvent({ state: r && r.state === 'done' ? 'done' : r && r.state === 'aborted' ? 'aborted' : 'failed' }),
           () => dl.onEvent({ state: 'failed' }));
       const result = await ended;
-      if (result === 'done') {
-        toast(t('update.downloaded'));
-        // 打开系统的安装界面。打不开时不提示（用户可以到 GitHub Release 页面手动下载）
-        android.install().catch(() => {});
-      }
+      if (result === 'done') void startInstall('apk', () => android.install().then(() => true, () => false));
       return result;
     } catch (_) {
       dl.stop(); // 没有这个原生功能（旧的安卓外壳）：交给浏览器
@@ -358,7 +356,24 @@ async function downloadUpdate(url, version) {
   return 'browser';
 }
 
-// 显示进度条、监视下载有没有卡住。cancel() 让下载停下（停下后由下载那边发出 aborted），finish(结果) 在结束时调用。
+// 下载完成后安装：进度条那里显示「下载完成，正在启动安装程序…」（按安装包类型），
+// 等正在生成的回复写完、保存好对话，再开始安装。Windows 安装版、Linux、macOS 安装开始后软件随即关闭；
+// 安卓版安装时系统会关闭软件。没能开始安装（例如被安全软件拦下）时不提示，过一会儿收起进度条
+async function startInstall(kind, install) {
+  const text = kind === 'dmg' ? 'update.openingDmg' : kind === 'zip' ? 'update.zipReady' : kind === 'apk' ? 'update.installingAndroid' : 'update.installing';
+  while (state.generating) {
+    showUpdateMessage(t('update.installAfterReply'));
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  showUpdateMessage(t(text));
+  await flushConvSave();
+  await new Promise((r) => setTimeout(r, 800)); // 让用户看到这句话
+  let ok = false;
+  try { ok = await install(); } catch (_) { /* 不提示 */ }
+  setTimeout(hideUpdateProgress, ok && kind !== 'zip' ? 20000 : 12000);
+}
+
+// 显示进度条、监视下载有没有卡住。cancel() 让下载停下（停下后由下载那边发出 aborted），finish(结果, 消息) 在结束时调用。
 // begin() 开始显示进度条和计时（电脑版在「另存为」选好以后）；onEvent 处理 progress / done / failed / aborted
 function watchDownload(version, cancel, finish) {
   let lastBytes = -1;
@@ -367,14 +382,14 @@ function watchDownload(version, cancel, finish) {
   let finished = false;
   let timer = null;
   let grace = null;
-  const end = (state) => {
+  const end = (state, info) => {
     if (finished) return;
     finished = true;
     clearInterval(timer);
     clearTimeout(grace);
-    hideUpdateProgress();
+    if (state !== 'done') hideUpdateProgress(); // 下载完成时进度条留着，显示「正在启动安装程序…」
     if (updateDownloader === dl) updateDownloader = null;
-    finish(state === 'aborted' && timedOut ? 'failed' : state);
+    finish(state === 'aborted' && timedOut ? 'failed' : state, info);
   };
   const stopNow = (byTimeout) => {
     if (finished || grace) return; // 已经在停了
@@ -399,7 +414,7 @@ function watchDownload(version, cancel, finish) {
         if (info.received !== lastBytes) { lastBytes = info.received; lastChange = Date.now(); }
         showUpdateProgress(version, info.received, info.total);
       } else if (info.state === 'done' || info.state === 'failed' || info.state === 'aborted') {
-        end(info.state);
+        end(info.state, info);
       }
     },
     stop() { finished = true; clearInterval(timer); hideUpdateProgress(); if (updateDownloader === dl) updateDownloader = null; },
@@ -419,6 +434,19 @@ function showUpdateProgress(version, received, total, waiting) {
   els.updateProgressFill.style.width = percent == null ? '' : percent + '%';
   els.updateProgressStop.title = t('update.stop');
   els.updateProgressStop.setAttribute('aria-label', t('update.stop'));
+  els.updateProgressStop.hidden = false;
+  els.updateProgress.classList.remove('message');
+  els.updateProgress.hidden = false;
+}
+
+// 下载完成后，进度条那里只显示一句话（进度条满格，没有 ×）
+function showUpdateMessage(text) {
+  els.updateProgressText.textContent = text;
+  els.updateProgressSize.textContent = '';
+  els.updateProgressBar.classList.remove('indeterminate');
+  els.updateProgressFill.style.width = '100%';
+  els.updateProgressStop.hidden = true;
+  els.updateProgress.classList.add('message');
   els.updateProgress.hidden = false;
 }
 
