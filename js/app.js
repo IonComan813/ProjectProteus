@@ -3075,6 +3075,13 @@ function bindChat() {
     closeConvCtxMenu();
     if (!els.convPicker.contains(e.target)) closeConvMenu();
   });
+  // 点在消息内容上（每条消息显示在一个 iframe 里，外层页面收不到里面的鼠标事件）或者切到软件窗口以外时，
+  // 页面会失去焦点：也收起对话列表、右键菜单和「＋ 新对话」菜单。有输入框或确认框打开时不收起（同上）
+  window.addEventListener('blur', () => {
+    if (dialogOpen()) return;
+    closeConvMenu();
+    closeNewConvMenu();
+  });
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape' || dialogOpen()) return;
     if (!els.convCtxMenu.hidden) { e.stopPropagation(); closeConvCtxMenu(); if (els.allConvBox.hidden) els.convSelect.focus(); }
