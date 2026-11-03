@@ -28,7 +28,7 @@ The Windows / macOS / Linux apps come with a built-in Chromium engine, so no sep
 - **No CORS restrictions**: relay endpoints that don't allow direct browser access work too
 - **Data kept separate from your browser**: clearing browser data won't delete it, and other web pages can't read Proteus's data
 
-**Open-source license**: the Windows installer asks you to accept the AGPL v3 license at the first installation. The portable, macOS, Linux and Android versions have no installer, so the license is shown the first time you open them, and "Accept" becomes available once you have scrolled to the end; "Decline" closes the app, and you can choose again next time. If there is a new version, the update window appears only after you accept. Later updates don't ask again.
+**Open-source license**: the Windows installer asks you to accept the AGPL v3 license at the first installation. The portable, macOS, Linux, Android and web versions have no installer, so the license is shown the first time you open them, and "Accept" becomes available once you have scrolled to the end. "Decline" closes the native apps, and you can choose again next time; the web version can't be used then, and you can choose again after reloading the page. If there is a new version, the update window appears only after you accept. Later updates don't ask again.
 
 > The native apps are not code-signed (paid certificates), and the Android app is not installed from an app store, so you may see a warning on first install or launch:
 >

@@ -3195,28 +3195,28 @@ async function boot() {
 }
 
 // 首次打开时的开源协议窗口。Windows 安装版第一次安装时已经在安装程序里同意过协议，不再显示；
-// 其他原生应用（安卓、macOS、Linux、Windows 免安装版）没有安装程序里的协议页面，第一次打开时显示 AGPL v3 协议：
-// 必须选「同意」或「拒绝」，不能用返回键、Esc 或点外面关闭；要滚动到协议末尾才能点「同意」（内容不用滚动时直接可以点）。
-// 拒绝就退出软件，下次打开时再问。同意后记在数据库里（清除软件数据后会再问）。网页版不显示
+// 其他版本（网页版、安卓、macOS、Linux、Windows 免安装版）第一次打开时显示 AGPL v3 协议：
+// 必须选「同意」或「拒绝」，不能用返回键、Esc 或点外面关闭；滚动到协议末尾之前「同意」是灰的（内容不用滚动时直接可以点）。
+// 拒绝：原生应用退出软件，下次打开时再问；网页版不能关掉浏览器标签页，页面换成一句说明，刷新后再问。
+// 同意后记在数据库里（清除软件数据后会再问）
 async function askLicense() {
-  if (!IN_NATIVE_APP || updateFileKey() === 'win-setup' || (await DB.get('licenseAccepted'))) return;
+  if (IN_NATIVE_APP && updateFileKey() === 'win-setup') return;
+  if (await DB.get('licenseAccepted')) return;
   const desktop = window.proteusDesktop;
   let text = '';
   try {
     text = desktop && desktop.licenseText ? await desktop.licenseText() : await (await fetch('LICENSE')).text();
   } catch (_) { /* 只显示说明和网址 */ }
-  const dlg = openMandatoryDialog(t('license.title'), t('license.intro', { url: PROJECT_URL }) + (text ? '\n\n' + text.trim() : ''));
-  const hint = document.createElement('span');
-  hint.className = 'muted small license-hint';
-  hint.textContent = t('license.scrollHint');
+  const intro = t('license.intro', { url: PROJECT_URL }) + t(IN_NATIVE_APP ? 'license.declineNote' : 'license.declineNoteWeb');
+  // 读不到原文时（例如网页版直接打开本地的 index.html），告诉用户全文在哪里
+  const dlg = openMandatoryDialog(t('license.title'), intro + '\n\n' + (text ? text.trim() : t('license.fullTextAt')));
   const accept = button(t('license.accept'), () => dlg.close(true), 'btn btn-primary');
-  els.updateButtons.append(hint, button(t('license.decline'), () => dlg.close(false), 'btn btn-ghost'), accept);
+  els.updateButtons.append(button(t('license.decline'), () => dlg.close(false), 'btn btn-ghost'), accept);
   // 滚动到末尾（差几像素也算）后才能同意；一旦可以就不再变回去
   const box = els.updateMessage;
   const check = () => {
     if (box.scrollTop + box.clientHeight < box.scrollHeight - 8) return;
     accept.disabled = false;
-    hint.hidden = true;
     box.removeEventListener('scroll', check);
     window.removeEventListener('resize', check);
   };
@@ -3233,7 +3233,16 @@ async function askLicense() {
   }
   if (desktop && desktop.quitApp) desktop.quitApp();
   else if (NATIVE) nativePlugin('App').exitApp();
-  await new Promise(() => {}); // 正在退出：后面的事（例如更新提示）都不做
+  else {
+    // 网页版：页面换成一句说明和「重新选择」（刷新页面）
+    const box2 = document.createElement('div');
+    box2.className = 'license-declined';
+    const p = document.createElement('p');
+    p.textContent = t('license.declinedWeb');
+    box2.append(p, button(t('license.again'), () => location.reload(), 'btn btn-primary'));
+    document.body.replaceChildren(box2);
+  }
+  await new Promise(() => {}); // 不再继续（例如更新提示）
 }
 
 function init() {
@@ -3252,7 +3261,7 @@ function init() {
     showError(t('boot.failed', { msg: e.message }));
     throw e;
   });
-  // 原生应用第一次打开时先同意开源协议（见 askLicense）
+  // 第一次打开时先同意开源协议（见 askLicense）
   const licensed = booted.then(askLicense);
   // 启动时立刻检查更新（只在原生应用里），和读取数据同时进行；有要提示的版本时等数据读完、
   // 同意了开源协议后再显示（读取数据失败时不显示）
