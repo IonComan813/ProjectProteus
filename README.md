@@ -299,7 +299,7 @@ You can edit the number in the memory length box directly or adjust it with − 
 - It keeps separate records per relay (API address) and per model on that relay. The same model name on different relays, or on a relay and the official API, is counted separately; a relay whose addresses in the two compatible modes differ only by a trailing `/v1` counts as one relay. A model used for the first time on a relay starts from what the relay's other models have shown
 - Chinese/Japanese/Korean text and other text are calibrated separately (languages convert to tokens at different rates), and a fixed overhead added by a relay is learned too
 - Within a conversation, the next request is estimated from the actual usage of that conversation's last request plus the part that changed since, so it is usually close after one request. Below the estimate you also see the actual input and output tokens of the conversation's last request
-- Once there is real data, "rough estimate" in the hint changes to "calibrated from actual usage"; with no data on this device yet but data shared by other users, it says "calibrated from usage shared by other users". Only numbers are recorded, never conversation content; "Clear app data" deletes them, and "Full backup (all conversations)" includes them so you can carry on on another device
+- Once there is real data (from this device or shared by other users), "rough estimate" in the hint changes to "calibrated from actual usage". Only numbers are recorded, never conversation content; "Clear app data" deletes them, and "Full backup (all conversations)" includes them so you can carry on on another device
 - Reading usage: in the Anthropic format (official and compatible relays) the input is `input_tokens` plus the tokens written to and read from the cache; in the OpenAI format (OpenAI official, Gemini and compatible relays) it is `prompt_tokens`. Streaming replies in the OpenAI format only report usage when the request includes `stream_options` (Gemini's OpenAI-compatible API supports it too). A few APIs reject that parameter; Proteus then resends once without it and remembers the address so it isn't added again. If such an API doesn't report usage either, the estimate stays rough
 
 **When the actual usage is wildly different from the estimate**: when the actual figure is under 1/5 of the rough estimate or over 50 times it, it is shown but not used for calibration, nor to correct the conversation's next estimate. Such figures are usually not a tokenizer difference (models and languages differ by tens of percent at most) but a problem with how the API reports usage:
@@ -316,7 +316,7 @@ Two other cases also differ a lot, but the figures are real and are used for cal
 
 ### Sharing token calibration data
 
-When the native app starts, it downloads calibration coefficients shared by other users (by relay domain and model name). The first time you use a model on a relay, the estimate is already fairly accurate as long as someone else has used it; once there is data on this device, that takes over. While "Share token calibration data" under "App data" in the settings panel is ticked (the default), this device's calibration is uploaded anonymously too:
+When the native app starts, it downloads calibration coefficients shared by other users (by relay domain and model name). The first time you use a model on a relay, the estimate is already fairly accurate as long as someone else has used it; once there is data on this device, that takes over. All of this happens silently in the background; you only see the resulting estimate. While "Share token calibration data anonymously" under "App data" in the settings panel is ticked (the default), this device's calibration is uploaded anonymously too:
 
 - **When**: once a model has had at least 2 requests on this device and the last estimate was within 10% (or it has had 5 requests), it is uploaded if the shared data doesn't have that model yet or differs by more than 15%. Each model is uploaded at most once every 7 days
 - **What**: the relay's domain (no path), the model name, the three coefficients and how much data they come from, plus a randomly generated device ID (only so that a device's data replaces its earlier data instead of adding to it). API keys, API paths and conversation content are **never** uploaded. IP addresses, localhost, local network domains (`.local`, `.lan`, `.internal`, etc.) and non-https addresses are not uploaded
@@ -524,6 +524,8 @@ The output is in the `dist/` folder.
   git push origin v0.2.0
   ```
 
+- **Publishing without tagging locally**: on the Actions page, run "Tag and release" (`.github/workflows/release-tag.yml`), pick the branch (usually `main`) and enter the version tag (e.g. `v0.4.8-beta.1`). It tags the latest commit on that branch and starts the build workflow to publish that version, with the same result as pushing the tag
+
 - **Publishing a test version**: use a tag with a suffix, such as `v0.4.0-beta.1`, and put it on the commit to test, which can be on any branch (on the "Draft a new release" page, choose that branch as the "Target"). A release created by such a tag is marked as a **pre-release**: it does not become the "Latest" release, and its notes start with a line saying it is a test version (also when you create the release on the web page yourself). To give a version its own notes, add `.github/release-notes/<tag>.md` (for example `v0.4.0-beta.1.md`) in that commit: they are put at the start of the release notes. On Android, `0.4.0-beta.1` has the same version code as `0.4.0`, so the final `0.4.0` can update it in place; but a lower version released later (say `0.3.4`) cannot be installed over it
 - **Just checking that it builds**: on the repository's Actions page choose "Build native app" → "Run workflow". This builds without publishing; the installers are in the Artifacts at the bottom of that run's page and are kept for 30 days.
 
@@ -576,7 +578,7 @@ Set up three things first:
 | Secret | `R2_SECRET_ACCESS_KEY` | The token's Secret Access Key |
 | Variable | `UPDATE_BASE_URL` | The public address from step 1, without a trailing `/` |
 
-Without the two secrets the upload is skipped with a warning; without `UPDATE_BASE_URL` the installers built don't check for updates (`scripts/set-update-url.js` writes the address into `js/update.js` at build time).
+Without the two secrets the upload is skipped with a warning; without `UPDATE_BASE_URL` the installers built don't check for updates (`scripts/set-server-url.js` writes the address into `js/update.js` at build time).
 
 #### Server for shared calibration data (Cloudflare Worker)
 
@@ -592,7 +594,7 @@ The server for [sharing token calibration data](#sharing-token-calibration-data)
 | Variable | `CLOUDFLARE_ACCOUNT_ID` | Your Cloudflare account ID |
 
 3. Run "Calibration worker" on the Actions page (after that it deploys automatically when `worker/calibration` changes on main); the first run creates the bucket
-4. Put the Worker's address (e.g. `https://proteus-calibration.<subdomain>.workers.dev`, no trailing `/`) in the repository variable `CALIB_BASE_URL`. Installers built after that download and upload calibration data (`scripts/set-calib-url.js` writes it into `js/tokens.js` at build time)
+4. Put the Worker's address (e.g. `https://proteus-calibration.<subdomain>.workers.dev`, no trailing `/`) in the repository variable `CALIB_BASE_URL`. Installers built after that download and upload calibration data (`scripts/set-server-url.js` writes it into `js/tokens.js` at build time)
 
 You can also deploy by hand with `npx wrangler deploy` in `worker/calibration` (after `npx wrangler r2 bucket create projectproteus-calibration` and `npx wrangler secret put IP_SALT`). The Worker's API and anti-abuse rules are described at the top of `worker/calibration/src/index.js`.
 

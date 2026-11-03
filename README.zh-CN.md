@@ -299,7 +299,7 @@ Anthropic 格式（Claude 官方、Anthropic 兼容的中转站）放在请求�
 - 按中转站（接口地址）和中转站下的模型分别记录。不同中转站的同名模型、中转站和官方接口的同名模型分开计算；同一个中转站在两种兼容模式下的地址只差结尾的 `/v1` 时算作同一个中转站。在一个中转站里第一次用的模型，先沿用这个中转站其他模型的结果
 - 中日韩文字和其他文字分别校准（不同语言换算成 token 的比例不同），也会学到中转站额外加的固定开销
 - 同一个对话里，下一次请求按这个对话上一次请求的实际用量加上两次之间变化的部分估算，所以发过一次之后通常就很接近了。估算下方同时显示这个对话上一次请求的实际输入和输出 token
-- 有了实际数据后，提示里的「粗略估计」变成「按实际用量校准」；本机还没有数据、只有其他用户共享的数据时显示「按其他用户共享的实际用量校准」。只记录数字，不记录对话内容；「清除软件数据」时一起删除，「完整备份（全部对话）」里一起备份，换设备后接着用
+- 有了实际数据（本机的，或者其他用户共享的）后，提示里的「粗略估计」变成「按实际用量校准」。只记录数字，不记录对话内容；「清除软件数据」时一起删除，「完整备份（全部对话）」里一起备份，换设备后接着用
 - 读取用量：Anthropic 格式（官方和兼容的中转站）的输入用量是 `input_tokens` 加上写入、读取缓存的 token；OpenAI 格式（OpenAI 官方、Gemini 和兼容的中转站）是 `prompt_tokens`。OpenAI 格式的流式回复要在请求里加 `stream_options` 才会报告用量（Gemini 的 OpenAI 兼容接口也支持）。个别接口不认这个参数会报错，这时 Proteus 去掉它自动重发一次，并记住这个接口地址以后不再加；这样的接口如果也不报告用量，就一直显示粗略估计
 
 **什么时候实际用量会和估算差得极远**：实际值不到粗略估算的 1/5，或者超过 50 倍时，这次的数字只显示出来，不用来校准，也不用来修正这个对话的下一次估算。这样的数字通常不是分词的差别（不同模型、不同语言的分词差别一般在几成以内），而是接口报告的方式有问题：
@@ -316,7 +316,7 @@ Anthropic 格式（Claude 官方、Anthropic 兼容的中转站）放在请求�
 
 ### 共享 token 校准数据
 
-原生应用启动时从服务器下载其他用户共享的校准系数（按中转站的域名和模型名）。第一次在某个中转站用某个模型时，只要别人用过，估算一开始就比较准；有了本机的数据后以本机为主。设置面板「软件数据」里的「共享 token 校准数据」勾选时（默认勾选），本机的校准也会匿名上传：
+原生应用启动时从服务器下载其他用户共享的校准系数（按中转站的域名和模型名）。第一次在某个中转站用某个模型时，只要别人用过，估算一开始就比较准；有了本机的数据后以本机为主。整个过程在后台静默进行，界面上只显示最终的估算。设置面板「软件数据」里的「匿名共享 token 校准数据」勾选时（默认勾选），本机的校准也会匿名上传：
 
 - **什么时候上传**：某个模型在本机至少请求过 2 次、而且最近一次的估算误差在 10% 以内（或者已经请求过 5 次）时，如果共享数据里还没有这个模型，或者和共享数据相差 15% 以上，就上传。同一个模型 7 天内最多上传一次
 - **上传什么**：中转站的域名（不含路径）、模型名、三个系数和数据量，以及一个随机生成的设备编号（只用来让同一台设备的数据替换而不是叠加）。**不上传** API Key、接口路径、对话内容。IP 地址、localhost、内网域名（`.local`、`.lan`、`.internal` 等）和非 https 的地址不上传
@@ -525,6 +525,8 @@ npm run android:apk  # 打包安卓版（需要安装 Android SDK 和 JDK 21）
   git push origin v0.2.0
   ```
 
+- **不在本机打标签也能发布**：在 Actions 页面运行「Tag and release」（`.github/workflows/release-tag.yml`），选好分支（一般是 `main`），填写版本标签（例如 `v0.4.8-beta.1`）。它在那个分支的最新提交上打标签，再启动打包工作流发布这个版本，结果和推送标签一样
+
 - **发布测试版**：用带后缀的标签，例如 `v0.4.0-beta.1`，打在要测试的那次提交上，可以是任何分支（在「Draft a new release」页面把「Target」选成那个分支）。这样的标签新建的 Release 会标为**预发布（Pre-release）**：不会成为「最新版本（Latest）」，说明开头会注明是测试版（在网页上自己新建 Release 时也一样）。想给某个版本写专门的说明，在那次提交里加上 `.github/release-notes/<标签>.md`（例如 `v0.4.0-beta.1.md`），它会放在 Release 说明的最前面。安卓版里 `0.4.0-beta.1` 和 `0.4.0` 的版本号（versionCode）相同，所以正式的 `0.4.0` 可以直接覆盖更新它；但之后发布的更低版本（例如 `0.3.4`）不能装在它上面
 - **只想试试能不能打包**：在仓库的 Actions 页面选「Build native app」→「Run workflow」。只打包不发布，安装包在那次运行页面底部的 Artifacts 里，保留 30 天。
 
@@ -577,7 +579,7 @@ keytool -genkeypair -v -keystore proteus.jks -alias proteus -keyalg RSA -keysize
 | Secret | `R2_SECRET_ACCESS_KEY` | 令牌的 Secret Access Key |
 | Variable | `UPDATE_BASE_URL` | 第 1 步得到的公开地址，结尾不带 `/` |
 
-没有添加两个 Secret 时，跳过上传，只给出警告；没有 `UPDATE_BASE_URL` 时，打出的安装包不检查更新（打包时由 `scripts/set-update-url.js` 把地址写进 `js/update.js`）。
+没有添加两个 Secret 时，跳过上传，只给出警告；没有 `UPDATE_BASE_URL` 时，打出的安装包不检查更新（打包时由 `scripts/set-server-url.js` 把地址写进 `js/update.js`）。
 
 #### 共享校准数据的服务器（Cloudflare Worker）
 
@@ -593,7 +595,7 @@ keytool -genkeypair -v -keystore proteus.jks -alias proteus -keyalg RSA -keysize
 | Variable | `CLOUDFLARE_ACCOUNT_ID` | Cloudflare 账户 ID |
 
 3. 在 Actions 页面运行「Calibration worker」（以后 main 上 `worker/calibration` 有改动时自动部署），第一次会创建存储桶
-4. 把 Worker 的地址（例如 `https://proteus-calibration.<子域>.workers.dev`，结尾不带 `/`）填进仓库变量 `CALIB_BASE_URL`。之后打包的安装包才下载和上传校准数据（打包时由 `scripts/set-calib-url.js` 写进 `js/tokens.js`）
+4. 把 Worker 的地址（例如 `https://proteus-calibration.<子域>.workers.dev`，结尾不带 `/`）填进仓库变量 `CALIB_BASE_URL`。之后打包的安装包才下载和上传校准数据（打包时由 `scripts/set-server-url.js` 写进 `js/tokens.js`）
 
 也可以在 `worker/calibration` 里用 `npx wrangler deploy` 手动部署（先 `npx wrangler r2 bucket create projectproteus-calibration` 和 `npx wrangler secret put IP_SALT`）。Worker 的接口和防滥用规则见 `worker/calibration/src/index.js` 开头的说明。
 

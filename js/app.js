@@ -1089,9 +1089,9 @@ function updateEstimate() {
   els.tokenEstimate.textContent = text;
 }
 
-// 估算的来源（tokens.js 的 source）→ 提示文字
-const ESTIMATE_KEY = { local: 'set.tokenEstimateCalib', cloud: 'set.tokenEstimateCloud' };
-const PREVIEW_TOTAL_KEY = { local: 'preview.totalCalib', cloud: 'preview.totalCloud' };
+// 估算的来源（tokens.js 的 source）→ 提示文字。共享数据在后台静默拉取，界面上不单独说明，和本机的数据一样显示为“按实际用量校准”
+const ESTIMATE_KEY = { local: 'set.tokenEstimateCalib', cloud: 'set.tokenEstimateCalib' };
+const PREVIEW_TOTAL_KEY = { local: 'preview.totalCalib', cloud: 'preview.totalCalib' };
 
 // 在输入框里打字时稍等一下再更新
 let estimateTimer = null;

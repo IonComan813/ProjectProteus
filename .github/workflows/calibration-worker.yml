@@ -37,7 +37,7 @@ jobs:
 
       - name: Deploy
         if: steps.check.outputs.ok == 'true'
-        uses: cloudflare/wrangler-action@v3
+        uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3.15.0
         env:
           IP_SALT: ${{ secrets.CALIB_IP_SALT }}
         with:
