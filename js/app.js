@@ -64,13 +64,6 @@ function escapeHtml(s) {
   return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
-// 粗略估算 token 数：中日韩文字约 1 字 1 token，其他约 4 个字符 1 token
-function estimateTokens(s) {
-  if (!s) return 0;
-  const cjk = (s.match(/[　-鿿가-힯＀-￯]/g) || []).length;
-  return Math.round(cjk + (s.length - cjk) / 4);
-}
-
 function fmtTime(t) {
   const d = new Date(t);
   const p = (n) => String(n).padStart(2, '0');
@@ -218,6 +211,20 @@ function providerCfg() {
     useTemperature: s.useTemperature,
     temperature: s.temperature,
   };
+}
+
+// token 校准按“中转站（接口地址）→ 模型”记录（tokens.js）。当前服务商对应的中转站、模型和系数
+function calibKey(cfg = providerCfg()) {
+  return { relay: TokenCalib.relayOf(baseOf(cfg)), model: cfg.model };
+}
+function currentCoef() {
+  const k = calibKey();
+  return TokenCalib.coefOf(k.relay, k.model);
+}
+
+// 一段文字大约多少 token：按当前中转站和模型的实际用量校准过（没有数据时就是粗略估算）
+function tokensOf(text, coef = currentCoef()) {
+  return TokenCalib.textTokens(text, coef);
 }
 
 // ---------------- 上下文拼装 ----------------
@@ -1060,17 +1067,25 @@ function updateComposer() {
   updateEstimate();
 }
 
-// 记忆长度下方：下一次请求大约多少 token（粗略估计）。总数和「查看下一轮将发送的内容」顶部的总数是同一个：
-// 用同一份内容（nextRequestBlocks：输入框里的文字算作这一次的消息、合并连续同一角色的消息、补“前情省略”），
-// 同样一块一块地估算再相加。括号里是其中固定设定（system 部分和重点指令）的部分
+// 记忆长度下方：下一次请求大约多少 token。总数和「查看下一轮将发送的内容」顶部的总数是同一个：
+// 用同一份内容（nextEstimate：输入框里的文字算作这一次的消息、合并连续同一角色的消息、补“前情省略”）。
+// 括号里是其中固定设定（system 部分和重点指令）的部分。
+// 有这个中转站和模型的实际用量时按它校准（否则是粗略估计），这个对话上一次请求的实际用量也显示出来
 function updateEstimate() {
-  const { system, messages, postHistory } = nextRequestBlocks();
-  const sys = system.reduce((a, x) => a + estimateTokens(x.text), 0);
-  const total = sys + messages.reduce((a, m) => a + estimateTokens(m.content), 0);
-  els.tokenEstimate.textContent = t('set.tokenEstimate', {
-    tokens: total.toLocaleString(),
-    sys: (sys + estimateTokens(postHistory)).toLocaleString(),
+  const { system, postHistory, estimate, coef } = nextEstimate();
+  const sys = system.reduce((a, x) => a + tokensOf(x.text, coef), 0) + tokensOf(postHistory, coef);
+  let text = t(estimate.calibrated ? 'set.tokenEstimateCalib' : 'set.tokenEstimate', {
+    tokens: estimate.tokens.toLocaleString(),
+    sys: sys.toLocaleString(),
   });
+  const last = estimate.last;
+  if (last) {
+    text += '\n' + t(last.output ? 'set.tokenLast' : 'set.tokenLastIn', {
+      input: last.input.toLocaleString(),
+      output: (last.output || 0).toLocaleString(),
+    });
+  }
+  els.tokenEstimate.textContent = text;
 }
 
 // 在输入框里打字时稍等一下再更新
@@ -1446,10 +1461,15 @@ async function runGeneration(m, context) {
   };
 
   logConv = conv;
+  const cfg = providerCfg();
+  let calib = null; // 这次请求的中转站、模型和内容的特征，收到实际用量后用来校准 token 估算
+  let usage = null;
   try {
     const req = requestOf(conv, context);
-    result = await streamChat(providerCfg(), req.system, req.messages, {
+    calib = { ...calibKey(cfg), x: TokenCalib.requestFeatures(req.system, finalMessages(PROVIDERS[cfg.provider].format, req.messages)) };
+    result = await streamChat(cfg, req.system, req.messages, {
       signal: controller.signal,
+      onUsage: (u) => { usage = u; },
       onText: (text) => {
         m.versions[ver] += text;
         if (!pendingPaint) { pendingPaint = true; requestAnimationFrame(paint); }
@@ -1463,6 +1483,8 @@ async function runGeneration(m, context) {
     if (e.name === 'AbortError') aborted = true;
     else error = e;
   }
+  // 接口报告了输入用量（中途停止或出错时也可能已经报告了）：记下来校准以后的估算
+  if (calib && usage && usage.input) TokenCalib.observe(calib.relay, calib.model, calib.x, usage.input, usage.output, conv.id);
 
   state.generating = null;
   const text = m.versions[ver];
@@ -1850,6 +1872,8 @@ function exportLog() {
     `${x.request.method} ${x.request.url}`,
     // 安卓版改用原生请求发出时注明（不受跨域限制，回复一次性返回）
     ...(x.request.via === 'native' ? ['(sent by the Android app\'s native HTTP client)'] : []),
+    // 带 stream_options 的第一次请求被拒绝、去掉它重发过时注明第一次的回复
+    ...(x.request.retry ? [`(first sent with stream_options and got HTTP ${x.request.retry.status}; resent without it)`, x.request.retry.text] : []),
     JSON.stringify(headers, null, 2),
     '',
     JSON.stringify(body, null, 2),
@@ -1985,7 +2009,7 @@ async function createCardConv(x) {
 // 先确认，再用角色卡新建对话。reason 是为什么没有加入当前对话（i18n 键名，没有时为 null）
 async function importCardAsNew(x, reason) {
   let message = t('restore.stCardConfirm', { name: x.name, greetings: x.greetings.length, art: x.art ? t('restore.stCardArt') : '' });
-  if (x.entries.length) message += '\n\n' + t('restore.stBookNote', { n: x.entries.length, tokens: estimateTokens(x.bookText).toLocaleString() });
+  if (x.entries.length) message += '\n\n' + t('restore.stBookNote', { n: x.entries.length, tokens: tokensOf(x.bookText).toLocaleString() });
   if (reason) message = t(reason) + '\n\n' + message;
   if (!(await ask(message + '\n\n' + t('restore.continue')))) return;
   await createCardConv(x);
@@ -1993,7 +2017,7 @@ async function importCardAsNew(x, reason) {
 
 // 用世界书新建一个酒馆兼容对话
 async function importBookAsNew(b, reason) {
-  let message = t('restore.stBookConfirm', { name: b.name, n: b.n, tokens: estimateTokens(b.text).toLocaleString() });
+  let message = t('restore.stBookConfirm', { name: b.name, n: b.n, tokens: tokensOf(b.text).toLocaleString() });
   if (reason) message = t(reason) + '\n\n' + message;
   if (!(await ask(message))) return;
   if (state.generating) return toast(t('conv.stopFirst'));
@@ -2027,7 +2051,7 @@ async function confirmReplaceBlock(text, messageKey) {
 
 // 世界书加入当前对话：放进「世界观」
 async function mergeBook(conv, b) {
-  if (!(await ask(t('restore.stBookMerge', { name: b.name, n: b.n, tokens: estimateTokens(b.text).toLocaleString() })))) return;
+  if (!(await ask(t('restore.stBookMerge', { name: b.name, n: b.n, tokens: tokensOf(b.text).toLocaleString() })))) return;
   if (!canMergeInto(conv) || conv.tavern.book != null) return;
   if (!(await confirmReplaceBlock(conv.worldText, 'restore.stReplaceWorld'))) return;
   if (!canMergeInto(conv) || conv.tavern.book != null) return;
@@ -2556,19 +2580,23 @@ function nextRequestBlocks() {
   }
 
   // 消息：和真正发出时一样合并连续同一角色的消息，Anthropic 格式开头补“前情省略”
-  const messages = mergeSameRole(req.messages);
-  if (PROVIDERS[state.settings.provider].format === 'anthropic' && messages.length && messages[0].role !== 'user') {
-    messages.unshift({ role: 'user', content: t('greet.omitted') });
-  }
-  return { system, messages, pending, postHistory: req.postHistory };
+  const messages = finalMessages(PROVIDERS[state.settings.provider].format, req.messages);
+  return { system, messages, pending, postHistory: req.postHistory, systemText: req.system };
+}
+
+// 下一次请求的内容和预估的 token 数（tokens.js 的 predict：按实际用量校准，并用这个对话上一次请求的实际用量修正）
+function nextEstimate() {
+  const blocks = nextRequestBlocks();
+  const k = calibKey();
+  const x = TokenCalib.requestFeatures(blocks.systemText, blocks.messages);
+  return { ...blocks, estimate: TokenCalib.predict(k.relay, k.model, x, state.conv.id), coef: TokenCalib.coefOf(k.relay, k.model) };
 }
 
 function openPreview() {
   const conv = state.conv;
-  const { system, messages, pending } = nextRequestBlocks();
+  const { system, messages, pending, estimate, coef } = nextEstimate();
   const body = els.previewBody;
   body.replaceChildren();
-  let total = 0;
   const group = (title) => {
     const g = document.createElement('div');
     g.className = 'preview-group';
@@ -2576,8 +2604,7 @@ function openPreview() {
     body.appendChild(g);
   };
   const block = (title, text, note) => {
-    const tokens = estimateTokens(text);
-    total += tokens;
+    const tokens = tokensOf(text, coef);
     const b = document.createElement('div');
     b.className = 'preview-block';
     const head = document.createElement('div');
@@ -2609,7 +2636,8 @@ function openPreview() {
     const lastOne = i === messages.length - 1;
     block(m.role === 'user' ? t('msg.you') : reply, m.content, lastOne && pending ? t('preview.emptyInput') : '');
   });
-  els.previewTotal.textContent = t('preview.total', { tokens: total.toLocaleString() });
+  // 总数和设置面板里的一样（含消息格式的开销，并按这个对话上一次的实际用量修正），所以不一定等于各块相加
+  els.previewTotal.textContent = t(estimate.calibrated ? 'preview.totalCalib' : 'preview.total', { tokens: estimate.tokens.toLocaleString() });
   els.previewBox.hidden = false;
   placeExpand(els.previewBox);
   body.scrollTop = 0;
@@ -2673,7 +2701,7 @@ function closeExpand() {
 
 // 世界观和 NPC角色下方的字数
 function updateWorldCount() {
-  const count = (text) => (text ? t('set.worldCount', { chars: text.length.toLocaleString(), tokens: estimateTokens(text).toLocaleString() }) : '');
+  const count = (text) => (text ? t('set.worldCount', { chars: text.length.toLocaleString(), tokens: tokensOf(text).toLocaleString() }) : '');
   els.worldCount.textContent = count(state.conv.worldText);
   els.npcCount.textContent = count(state.conv.npcText);
 }
@@ -2911,6 +2939,8 @@ function bindSettings() {
     await DB.destroy();
     forgetCachedLang();
     forgetNativeOrigins();
+    forgetNoUsageOption();
+    TokenCalib.forget();
     location.reload();
   });
 

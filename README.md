@@ -292,7 +292,15 @@ Range, versions and merging of same-side messages work as above; there is no ope
 ### Memory range
 
 Older messages are not sent, so the model can't "see" them. A dashed line in the story marks the edge of the memory range; messages above it are still shown, the model just can't see them.
-You can edit the number in the memory length box directly or adjust it with − / ＋. Below it is a rough estimate of how many tokens the next request will use. It is worked out from exactly the same content as the window below and matches the total at its top, including the text currently in the input box (as your next message).
+You can edit the number in the memory length box directly or adjust it with − / ＋. Below it is an estimate of how many tokens the next request will use. It is worked out from exactly the same content as the window below and matches the total at its top, including the text currently in the input box (as your next message).
+
+**The token estimate calibrates itself from actual usage**: at first it is a rough estimate (about 1 token per Chinese, Japanese or Korean character, and 1 token per 4 other characters). After each request, Proteus reads the input usage reported by the API and corrects later estimates automatically; there is nothing to set up:
+
+- It keeps separate records per relay (API address) and per model on that relay. The same model name on different relays, or on a relay and the official API, is counted separately; a relay whose addresses in the two compatible modes differ only by a trailing `/v1` counts as one relay. A model used for the first time on a relay starts from what the relay's other models have shown
+- Chinese/Japanese/Korean text and other text are calibrated separately (languages convert to tokens at different rates), and a fixed overhead added by a relay is learned too
+- Within a conversation, the next request is estimated from the actual usage of that conversation's last request plus the part that changed since, so it is usually close after one request. Below the estimate you also see the actual input and output tokens of the conversation's last request
+- Once there is real data, "rough estimate" in the hint changes to "calibrated from actual usage". Only numbers are recorded, never conversation content; "Clear app data" deletes them as well
+- Streaming replies in the OpenAI format only report usage when the request includes `stream_options`. A few APIs reject that parameter; Proteus then resends once without it and remembers the address so it isn't added again. If such an API doesn't report usage either, the estimate stays rough
 
 Further down, "View what the next request will send" opens a large window (over the chat on a computer, over the settings panel on a phone) listing each part of the next request in the order it is sent: the System Prompt, world, NPC characters and user's character in the system settings, then every message within the memory range. It shows the text actually sent, labels included and nothing shortened, with `{{user}}` and `{{char}}` already replaced; each part has its estimated tokens on the right of its title, and the total is at the top. This is the logical content, not the raw API request (address, headers, JSON).
 
@@ -445,6 +453,7 @@ css/style.css     Styles
 js/i18n.js        Interface languages (Simplified Chinese, Traditional Chinese, English, Japanese) and the default System Prompt
 js/db.js          Local storage (the browser's IndexedDB)
 js/crypto.js      World card encryption
+js/tokens.js      Token estimates, calibrated from the usage the API reports
 js/providers.js   Communication with the model APIs
 js/render.js      Message display (Markdown/HTML, sandboxed)
 js/stcard.js      Loading SillyTavern character cards and lorebooks

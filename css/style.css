@@ -569,7 +569,7 @@ body.resizing iframe { pointer-events: none; }
 /* 卡片最后一行（说明文字等）不再留下边距，和以按钮结尾的卡片一样，只留卡片自己的内边距 */
 .card > :last-child { margin-bottom: 0; }
 /* “下一次请求约 … token”和上面的轮数选择稍微隔开一点 */
-#tokenEstimate { margin-top: 8px; }
+#tokenEstimate { margin-top: 8px; white-space: pre-line; }
 .scroll-box {
   width: 100%;
   resize: vertical;
