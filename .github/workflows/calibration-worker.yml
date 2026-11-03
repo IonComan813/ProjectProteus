@@ -1,0 +1,50 @@
+# 部署共享 token 校准数据的 Cloudflare Worker（worker/calibration）。main 上 worker/calibration 有改动时自动部署，也可以手动运行。
+# 需要在仓库 Settings → Secrets and variables → Actions 里添加：
+#   Secrets：CLOUDFLARE_API_TOKEN（Cloudflare 的 API 令牌，权限：Workers Scripts 编辑、Workers R2 Storage 编辑）
+#            CALIB_IP_SALT（任意一长串随机字符，Worker 用它给 IP 地址加盐求哈希；以后不要再改，改了以前的票会被当成别人的）
+#   Variables：CLOUDFLARE_ACCOUNT_ID（Cloudflare 账户 ID）
+# 没有添加时跳过部署（只给出警告）。部署后把 Worker 的地址填进仓库变量 CALIB_BASE_URL，之后打包的安装包才共享校准数据。
+name: Calibration worker
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['worker/calibration/**', '.github/workflows/calibration-worker.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check settings
+        id: check
+        env:
+          TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          SALT: ${{ secrets.CALIB_IP_SALT }}
+          ACCOUNT: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$TOKEN" ] || [ -z "$SALT" ] || [ -z "$ACCOUNT" ]; then
+            echo "::warning::CLOUDFLARE_API_TOKEN / CALIB_IP_SALT / CLOUDFLARE_ACCOUNT_ID are not set: not deploying the calibration worker."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Deploy
+        if: steps.check.outputs.ok == 'true'
+        uses: cloudflare/wrangler-action@v3
+        env:
+          IP_SALT: ${{ secrets.CALIB_IP_SALT }}
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: worker/calibration
+          # 存储桶第一次部署时创建（已经有了时这一步的报错忽略）
+          preCommands: npx wrangler r2 bucket create projectproteus-calibration || true
+          secrets: |
+            IP_SALT

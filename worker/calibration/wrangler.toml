@@ -1,0 +1,23 @@
+# 共享 token 校准数据的 Cloudflare Worker（说明见 src/index.js 开头和 README 的「共享 token 校准数据」）。
+# 部署：.github/workflows/calibration-worker.yml，或者在这个目录里运行 npx wrangler deploy
+name = "proteus-calibration"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+
+# 和放安装包的 projectproteus-releases 分开：这个 Worker 接收任何人发来的数据，不能碰到安装包
+[[r2_buckets]]
+binding = "CALIB"
+bucket_name = "projectproteus-calibration"
+
+# 每小时汇总一次，写出公开的 public/v1.json
+[triggers]
+crons = ["23 * * * *"]
+
+# 推送的频率限制：每个 IP 每分钟最多 10 次（没有这个绑定时不限制）
+[[ratelimits]]
+name = "PUSH_LIMIT"
+namespace_id = "1001"
+simple = { limit = 10, period = 60 }
+
+# 还需要一个机密 IP_SALT（任意一长串随机字符）：IP 地址只以加盐后的哈希记录，用来让同一个 IP 只算一票。
+#   npx wrangler secret put IP_SALT

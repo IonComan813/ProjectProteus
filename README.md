@@ -61,7 +61,7 @@ When the window is narrower than 1000 pixels (including on a phone browser), the
 
 ### Where is my data stored?
 
-All data (settings, conversations, images, API keys) is stored **only on this device**: the native apps keep it in their own data folder, and the web version keeps it in the browser you opened it with. Data is not shared between devices, or between the native apps and the web version; use "Full backup (all conversations)" to move it.
+All data (settings, conversations, images, API keys) is stored **only on this device**: the native apps keep it in their own data folder, and the web version keeps it in the browser you opened it with. Data is not shared between devices, or between the native apps and the web version; use "Full backup (all conversations)" to move it. The only thing that leaves this device is the token calibration numbers the native apps share anonymously (relay domain, model name and a few coefficients, never conversation content or API keys), which you can turn off in the settings; see [Sharing token calibration data](#sharing-token-calibration-data).
 
 Switching computers, reinstalling your system or (for the web version) clearing browser data will make your existing content disappear, so export a "Full backup (all conversations)" regularly from "Export / Backup…" on the right.
 
@@ -299,8 +299,30 @@ You can edit the number in the memory length box directly or adjust it with − 
 - It keeps separate records per relay (API address) and per model on that relay. The same model name on different relays, or on a relay and the official API, is counted separately; a relay whose addresses in the two compatible modes differ only by a trailing `/v1` counts as one relay. A model used for the first time on a relay starts from what the relay's other models have shown
 - Chinese/Japanese/Korean text and other text are calibrated separately (languages convert to tokens at different rates), and a fixed overhead added by a relay is learned too
 - Within a conversation, the next request is estimated from the actual usage of that conversation's last request plus the part that changed since, so it is usually close after one request. Below the estimate you also see the actual input and output tokens of the conversation's last request
-- Once there is real data, "rough estimate" in the hint changes to "calibrated from actual usage". Only numbers are recorded, never conversation content; "Clear app data" deletes them as well
-- Streaming replies in the OpenAI format only report usage when the request includes `stream_options`. A few APIs reject that parameter; Proteus then resends once without it and remembers the address so it isn't added again. If such an API doesn't report usage either, the estimate stays rough
+- Once there is real data, "rough estimate" in the hint changes to "calibrated from actual usage"; with no data on this device yet but data shared by other users, it says "calibrated from usage shared by other users". Only numbers are recorded, never conversation content; "Clear app data" deletes them, and "Full backup (all conversations)" includes them so you can carry on on another device
+- Reading usage: in the Anthropic format (official and compatible relays) the input is `input_tokens` plus the tokens written to and read from the cache; in the OpenAI format (OpenAI official, Gemini and compatible relays) it is `prompt_tokens`. Streaming replies in the OpenAI format only report usage when the request includes `stream_options` (Gemini's OpenAI-compatible API supports it too). A few APIs reject that parameter; Proteus then resends once without it and remembers the address so it isn't added again. If such an API doesn't report usage either, the estimate stays rough
+
+**When the actual usage is wildly different from the estimate**: when the actual figure is under 1/5 of the rough estimate or over 50 times it, it is shown but not used for calibration, nor to correct the conversation's next estimate. Such figures are usually not a tokenizer difference (models and languages differ by tens of percent at most) but a problem with how the API reports usage:
+
+- **Only the uncached part is reported**: the most common case. Once the cache is hit, some relays converting the Anthropic format to the OpenAI format fill in only the uncached `input_tokens` (or drop the cache fields), so a request of tens of thousands of tokens looks like a few dozen
+- **Fake numbers**: always 0 or 1, or a fixed value unrelated to the request; some account pools and reverse-engineered channels don't count at all
+- **Billing quota instead of tokens**: figures converted with a price multiplier, which can be dozens of times the real tokens
+- **The API changed the content**: the relay truncated or compressed the context (for example OpenRouter's middle-out), so far less was processed than sent
+
+Two other cases also differ a lot, but the figures are real and are used for calibration as usual:
+
+- **The relay adds a long hidden system prompt** (for example channels resold from Claude Code or Cursor accounts, often with prompts of ten thousand tokens or more): short conversations come out ten or twenty times the estimate; the fixed overhead c learns this, and it matters less as the conversation grows
+- **The relay counts with a different tokenizer** (for example counting Claude with OpenAI's tiktoken): off by 10–40%, which is why each relay is calibrated separately
+
+### Sharing token calibration data
+
+When the native app starts, it downloads calibration coefficients shared by other users (by relay domain and model name). The first time you use a model on a relay, the estimate is already fairly accurate as long as someone else has used it; once there is data on this device, that takes over. While "Share token calibration data" under "App data" in the settings panel is ticked (the default), this device's calibration is uploaded anonymously too:
+
+- **When**: once a model has had at least 2 requests on this device and the last estimate was within 10% (or it has had 5 requests), it is uploaded if the shared data doesn't have that model yet or differs by more than 15%. Each model is uploaded at most once every 7 days
+- **What**: the relay's domain (no path), the model name, the three coefficients and how much data they come from, plus a randomly generated device ID (only so that a device's data replaces its earlier data instead of adding to it). API keys, API paths and conversation content are **never** uploaded. IP addresses, localhost, local network domains (`.local`, `.lan`, `.internal`, etc.) and non-https addresses are not uploaded
+- **What is published**: the server aggregates once an hour. Each IP counts as one vote per model, and a model is only published with **at least 3 votes**, using the median; a private relay domain used only by you never appears in the published data
+- Downloading and uploading happen silently, with no message on success or failure; without a connection only this device's data is used. The web version and installers built without a server address configured neither download nor upload
+- Someone could push wrong numbers on purpose, so the server rate-limits by IP, takes the median and limits the coefficient ranges, and the app only uses shared data as a starting point: after a request or two the estimate is based mainly on this device's actual usage
 
 Further down, "View what the next request will send" opens a large window (over the chat on a computer, over the settings panel on a phone) listing each part of the next request in the order it is sent: the System Prompt, world, NPC characters and user's character in the system settings, then every message within the memory range. It shows the text actually sent, labels included and nothing shortened, with `{{user}}` and `{{char}}` already replaced; each part has its estimated tokens on the right of its title, and the total is at the top. This is the logical content, not the raw API request (address, headers, JSON).
 
@@ -318,7 +340,7 @@ Further down, "View what the next request will send" opens a large window (over 
 | Chat (TXT / Markdown) (assistant mode) | All messages in the current conversation | System Prompt |
 | World card (JSON, can be encrypted) | The current conversation's System Prompt, world, NPC characters, key instructions, opening (all versions, and whether it is sent to the model), artwork | User's character, `{{user}}` value, story |
 | Full backup (this conversation) (JSON, can be encrypted) | Everything in the current conversation: System Prompt, world, NPC characters, user's character, `{{user}}` value, key instructions, opening (all versions, and whether it is sent to the model), story (including every version of every reply), artwork | App settings |
-| Full backup (all conversations) (JSON, can be encrypted) | Every conversation (with all its content) and the app settings (memory length, Model & API, interface language, layout, etc.) | API keys |
+| Full backup (all conversations) (JSON, can be encrypted) | Every conversation (with all its content), the app settings (memory length, Model & API, interface language, layout, etc.) and the token calibration data (merged with this device's on loading) | API keys; shared calibration data downloaded from the server |
 | Log (last request) (TXT) | The request actually sent to the model the last time (API address, headers, JSON body) and the raw response received, for troubleshooting. Only the last request since the app was opened; not saved | API keys; locked settings from encrypted world cards (shown as "(protected content)") |
 
 In an assistant chat only the chat, full backup (all conversations) and log are offered, see [Assistant mode](#assistant-mode).
@@ -453,7 +475,7 @@ css/style.css     Styles
 js/i18n.js        Interface languages (Simplified Chinese, Traditional Chinese, English, Japanese) and the default System Prompt
 js/db.js          Local storage (the browser's IndexedDB)
 js/crypto.js      World card encryption
-js/tokens.js      Token estimates, calibrated from the usage the API reports
+js/tokens.js      Token estimates, calibrated from the usage the API reports; downloads and uploads shared calibration data
 js/providers.js   Communication with the model APIs
 js/render.js      Message display (Markdown/HTML, sandboxed)
 js/stcard.js      Loading SillyTavern character cards and lorebooks
@@ -466,6 +488,7 @@ electron/preload.js  Native features offered to the page (for now only downloadi
 android/          Android project (Capacitor); capacitor.config.json is its configuration; UpdateDownloaderPlugin.java downloads and installs updates inside the app (UpdateInstallReceiver.java handles the cases that need the user to confirm)
 assets/           Source images for the Android icon and splash screen
 scripts/          Small build scripts (including third-party-notices.js, which checks third-party licenses and generates the notices)
+worker/calibration/  Server for shared token calibration data (Cloudflare Worker + R2), see "Server for shared calibration data"
 build/icon.png    App icon
 package.json      Dependencies, and the packaging configuration for the Windows / macOS / Linux apps
 ```
@@ -554,6 +577,24 @@ Set up three things first:
 | Variable | `UPDATE_BASE_URL` | The public address from step 1, without a trailing `/` |
 
 Without the two secrets the upload is skipped with a warning; without `UPDATE_BASE_URL` the installers built don't check for updates (`scripts/set-update-url.js` writes the address into `js/update.js` at build time).
+
+#### Server for shared calibration data (Cloudflare Worker)
+
+The server for [sharing token calibration data](#sharing-token-calibration-data) is in `worker/calibration`: a Cloudflare Worker that keeps its data in a **separate** bucket, `projectproteus-calibration`. It doesn't share `projectproteus-releases` with the installers, and the app never writes to R2 directly: write credentials shipped in the app could be extracted by anyone and used to replace the installers. The Worker only accepts validated numbers and writes them to its own bucket.
+
+1. In Cloudflare, under My Profile → API Tokens, create a token with "Workers Scripts: Edit" and "Workers R2 Storage: Edit"
+2. In the repository's Settings → Secrets and variables → Actions, add:
+
+| Type | Name | Content |
+|---|---|---|
+| Secret | `CLOUDFLARE_API_TOKEN` | The token from step 1 |
+| Secret | `CALIB_IP_SALT` | Any long random string (e.g. `openssl rand -hex 32`). The Worker only stores salted hashes of IPs; don't change it later, or earlier votes will count as someone else's |
+| Variable | `CLOUDFLARE_ACCOUNT_ID` | Your Cloudflare account ID |
+
+3. Run "Calibration worker" on the Actions page (after that it deploys automatically when `worker/calibration` changes on main); the first run creates the bucket
+4. Put the Worker's address (e.g. `https://proteus-calibration.<subdomain>.workers.dev`, no trailing `/`) in the repository variable `CALIB_BASE_URL`. Installers built after that download and upload calibration data (`scripts/set-calib-url.js` writes it into `js/tokens.js` at build time)
+
+You can also deploy by hand with `npx wrangler deploy` in `worker/calibration` (after `npx wrangler r2 bucket create projectproteus-calibration` and `npx wrangler secret put IP_SALT`). The Worker's API and anti-abuse rules are described at the top of `worker/calibration/src/index.js`.
 
 #### Android smoke test
 
