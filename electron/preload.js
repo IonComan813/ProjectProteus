@@ -8,10 +8,8 @@ contextBridge.exposeInMainWorld('proteusDesktop', {
   cancelUpdate: () => ipcRenderer.invoke('cancel-update'),
   // 安装下载好的更新（Windows 安装版静默安装后启动新版本，软件随即关闭）。返回 true 表示已经开始
   installUpdate: () => ipcRenderer.invoke('install-update'),
-  // 开源协议的原文（首次打开时的协议窗口用）
+  // 开源协议的原文（首次打开时的协议说明用）
   licenseText: () => ipcRenderer.invoke('license-text'),
-  // 退出软件（拒绝开源协议时）
-  quitApp: () => ipcRenderer.invoke('quit-app'),
   // 下载进度和结果：callback({ state: 'progress', received, total }) / ({ state: 'done', kind }) / ({ state: 'failed' | 'aborted' })
   onUpdateDownload: (callback) => {
     ipcRenderer.on('update-download', (_e, info) => callback(info));

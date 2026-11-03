@@ -90,7 +90,7 @@ function setUpdateSnooze(z) {
 }
 
 // 启动时调用，不等读取数据：version 是取得当前版本号（写进 state.version）的 Promise，
-// booted 是读取数据（第一次打开时还要同意开源协议）的 Promise。
+// booted 是读取数据（第一次打开时还要看完开源协议说明）的 Promise。
 // 是否需要检查（稍后提醒、今天是否已经检查过）直接从数据库里的设置判断，和读取数据同时请求更新服务器；
 // 要显示提示、记下检查日期时才等数据读完（读取失败就不提示）
 async function checkForUpdates(version, booted) {
