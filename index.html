@@ -228,6 +228,9 @@
 
       <section class="card">
         <h3 data-i18n="set.localData">软件数据</h3>
+        <label class="field-inline remember-keys">
+          <input type="checkbox" id="shareCalib"> <span data-i18n="set.shareCalib">匿名共享 token 校准数据（不含对话内容和 API Key）</span>
+        </label>
         <p class="hint" data-i18n="set.clearAllHint"></p>
         <button class="btn btn-small danger" id="btnClearAll" data-i18n="set.clearAll">清除软件数据</button>
       </section>
@@ -359,6 +362,7 @@
   <script src="js/i18n.js"></script>
   <script src="js/db.js"></script>
   <script src="js/crypto.js"></script>
+  <script src="js/tokens.js"></script>
   <script src="js/providers.js"></script>
   <script src="js/render.js"></script>
   <script src="js/stcard.js"></script>

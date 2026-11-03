@@ -20,6 +20,7 @@ const ROUNDS_MAX = 40;
 const DEFAULT_SETTINGS = {
   lang: null,          // null = 按系统语言自动选择（不支持的语言用英语）
   rememberKeys: true,  // false = API Key 只在本次打开期间有效，不写入本机存储（公用电脑）
+  shareCalib: true,    // 把本机的 token 校准数据（中转站域名、模型名、系数）匿名共享给其他用户（tokens.js）
   rounds: 12,
   artWidth: null,      // 左栏宽度（像素），null = 自动
   inputHeight: 88,     // 输入框高度（像素）
@@ -62,13 +63,6 @@ function uid() {
 
 function escapeHtml(s) {
   return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
-
-// 粗略估算 token 数：中日韩文字约 1 字 1 token，其他约 4 个字符 1 token
-function estimateTokens(s) {
-  if (!s) return 0;
-  const cjk = (s.match(/[　-鿿가-힯＀-￯]/g) || []).length;
-  return Math.round(cjk + (s.length - cjk) / 4);
 }
 
 function fmtTime(t) {
@@ -218,6 +212,20 @@ function providerCfg() {
     useTemperature: s.useTemperature,
     temperature: s.temperature,
   };
+}
+
+// token 校准按“中转站（接口地址）→ 模型”记录（tokens.js）。当前服务商对应的中转站、模型和系数
+function calibKey(cfg = providerCfg()) {
+  return { relay: TokenCalib.relayOf(baseOf(cfg)), model: cfg.model };
+}
+function currentCoef() {
+  const k = calibKey();
+  return TokenCalib.coefOf(k.relay, k.model);
+}
+
+// 一段文字大约多少 token：按当前中转站和模型的实际用量校准过（没有数据时就是粗略估算）
+function tokensOf(text, coef = currentCoef()) {
+  return TokenCalib.textTokens(text, coef);
 }
 
 // ---------------- 上下文拼装 ----------------
@@ -1060,18 +1068,30 @@ function updateComposer() {
   updateEstimate();
 }
 
-// 记忆长度下方：下一次请求大约多少 token（粗略估计）。总数和「查看下一轮将发送的内容」顶部的总数是同一个：
-// 用同一份内容（nextRequestBlocks：输入框里的文字算作这一次的消息、合并连续同一角色的消息、补“前情省略”），
-// 同样一块一块地估算再相加。括号里是其中固定设定（system 部分和重点指令）的部分
+// 记忆长度下方：下一次请求大约多少 token。总数和「查看下一轮将发送的内容」顶部的总数是同一个：
+// 用同一份内容（nextEstimate：输入框里的文字算作这一次的消息、合并连续同一角色的消息、补“前情省略”）。
+// 括号里是其中固定设定（system 部分和重点指令）的部分。
+// 有这个中转站和模型的实际用量时按它校准（否则是粗略估计），这个对话上一次请求的实际用量也显示出来
 function updateEstimate() {
-  const { system, messages, postHistory } = nextRequestBlocks();
-  const sys = system.reduce((a, x) => a + estimateTokens(x.text), 0);
-  const total = sys + messages.reduce((a, m) => a + estimateTokens(m.content), 0);
-  els.tokenEstimate.textContent = t('set.tokenEstimate', {
-    tokens: total.toLocaleString(),
-    sys: (sys + estimateTokens(postHistory)).toLocaleString(),
+  const { system, postHistory, estimate, coef } = nextEstimate();
+  const sys = system.reduce((a, x) => a + tokensOf(x.text, coef), 0) + tokensOf(postHistory, coef);
+  let text = t(ESTIMATE_KEY[estimate.source] || 'set.tokenEstimate', {
+    tokens: estimate.tokens.toLocaleString(),
+    sys: sys.toLocaleString(),
   });
+  const last = estimate.last;
+  if (last) {
+    text += '\n' + t(last.output ? 'set.tokenLast' : 'set.tokenLastIn', {
+      input: last.input.toLocaleString(),
+      output: (last.output || 0).toLocaleString(),
+    });
+  }
+  els.tokenEstimate.textContent = text;
 }
+
+// 估算的来源（tokens.js 的 source）→ 提示文字。共享数据在后台静默拉取，界面上不单独说明，和本机的数据一样显示为“按实际用量校准”
+const ESTIMATE_KEY = { local: 'set.tokenEstimateCalib', cloud: 'set.tokenEstimateCalib' };
+const PREVIEW_TOTAL_KEY = { local: 'preview.totalCalib', cloud: 'preview.totalCalib' };
 
 // 在输入框里打字时稍等一下再更新
 let estimateTimer = null;
@@ -1446,10 +1466,15 @@ async function runGeneration(m, context) {
   };
 
   logConv = conv;
+  const cfg = providerCfg();
+  let calib = null; // 这次请求的中转站、模型和内容的特征，收到实际用量后用来校准 token 估算
+  let usage = null;
   try {
     const req = requestOf(conv, context);
-    result = await streamChat(providerCfg(), req.system, req.messages, {
+    calib = { ...calibKey(cfg), x: TokenCalib.requestFeatures(req.system, finalMessages(PROVIDERS[cfg.provider].format, req.messages)) };
+    result = await streamChat(cfg, req.system, req.messages, {
       signal: controller.signal,
+      onUsage: (u) => { usage = u; },
       onText: (text) => {
         m.versions[ver] += text;
         if (!pendingPaint) { pendingPaint = true; requestAnimationFrame(paint); }
@@ -1463,6 +1488,8 @@ async function runGeneration(m, context) {
     if (e.name === 'AbortError') aborted = true;
     else error = e;
   }
+  // 接口报告了输入用量（中途停止或出错时也可能已经报告了）：记下来校准以后的估算
+  if (calib && usage && usage.input) TokenCalib.observe(calib.relay, calib.model, calib.x, usage.input, usage.output, conv.id);
 
   state.generating = null;
   const text = m.versions[ver];
@@ -1816,6 +1843,7 @@ async function backup() {
     exportedAt: new Date().toISOString(),
     settings: { ...state.settings, apiKeys: {} },
     conversations,
+    tokenCalib: TokenCalib.exportData(new Set(state.conversations.map((c) => c.id))), // token 校准数据，换设备后接着用
     arts,
   };
   download(`${t('export.backupPrefix')}-${dateStamp()}.json`, JSON.stringify(data, null, 2), 'application/json');
@@ -1850,6 +1878,8 @@ function exportLog() {
     `${x.request.method} ${x.request.url}`,
     // 安卓版改用原生请求发出时注明（不受跨域限制，回复一次性返回）
     ...(x.request.via === 'native' ? ['(sent by the Android app\'s native HTTP client)'] : []),
+    // 带 stream_options 的第一次请求被拒绝、去掉它重发过时注明第一次的回复
+    ...(x.request.retry ? [`(first sent with stream_options and got HTTP ${x.request.retry.status}; resent without it)`, x.request.retry.text] : []),
     JSON.stringify(headers, null, 2),
     '',
     JSON.stringify(body, null, 2),
@@ -1985,7 +2015,7 @@ async function createCardConv(x) {
 // 先确认，再用角色卡新建对话。reason 是为什么没有加入当前对话（i18n 键名，没有时为 null）
 async function importCardAsNew(x, reason) {
   let message = t('restore.stCardConfirm', { name: x.name, greetings: x.greetings.length, art: x.art ? t('restore.stCardArt') : '' });
-  if (x.entries.length) message += '\n\n' + t('restore.stBookNote', { n: x.entries.length, tokens: estimateTokens(x.bookText).toLocaleString() });
+  if (x.entries.length) message += '\n\n' + t('restore.stBookNote', { n: x.entries.length, tokens: tokensOf(x.bookText).toLocaleString() });
   if (reason) message = t(reason) + '\n\n' + message;
   if (!(await ask(message + '\n\n' + t('restore.continue')))) return;
   await createCardConv(x);
@@ -1993,7 +2023,7 @@ async function importCardAsNew(x, reason) {
 
 // 用世界书新建一个酒馆兼容对话
 async function importBookAsNew(b, reason) {
-  let message = t('restore.stBookConfirm', { name: b.name, n: b.n, tokens: estimateTokens(b.text).toLocaleString() });
+  let message = t('restore.stBookConfirm', { name: b.name, n: b.n, tokens: tokensOf(b.text).toLocaleString() });
   if (reason) message = t(reason) + '\n\n' + message;
   if (!(await ask(message))) return;
   if (state.generating) return toast(t('conv.stopFirst'));
@@ -2027,7 +2057,7 @@ async function confirmReplaceBlock(text, messageKey) {
 
 // 世界书加入当前对话：放进「世界观」
 async function mergeBook(conv, b) {
-  if (!(await ask(t('restore.stBookMerge', { name: b.name, n: b.n, tokens: estimateTokens(b.text).toLocaleString() })))) return;
+  if (!(await ask(t('restore.stBookMerge', { name: b.name, n: b.n, tokens: tokensOf(b.text).toLocaleString() })))) return;
   if (!canMergeInto(conv) || conv.tavern.book != null) return;
   if (!(await confirmReplaceBlock(conv.worldText, 'restore.stReplaceWorld'))) return;
   if (!canMergeInto(conv) || conv.tavern.book != null) return;
@@ -2227,6 +2257,8 @@ async function restore(file) {
       await DB.putConversation(storable(normalizeConv(c)));
       await importArt(c.id, arts[c.id]);
     }
+    // token 校准数据和本机的合并（不清掉本机的：本机的数据同样有效）
+    TokenCalib.importData(data.tokenCalib);
   } catch (e) {
     console.error(e);
     await boot();
@@ -2426,6 +2458,8 @@ function fillSettingsForm() {
   els.temperature.value = s.temperature;
   els.langSelect.value = LANG;
   els.rememberKeys.checked = s.rememberKeys !== false;
+  els.shareCalib.checked = s.shareCalib !== false;
+  TokenCalib.setSharing(s.shareCalib !== false);
   fillProviderFields();
 }
 
@@ -2556,19 +2590,23 @@ function nextRequestBlocks() {
   }
 
   // 消息：和真正发出时一样合并连续同一角色的消息，Anthropic 格式开头补“前情省略”
-  const messages = mergeSameRole(req.messages);
-  if (PROVIDERS[state.settings.provider].format === 'anthropic' && messages.length && messages[0].role !== 'user') {
-    messages.unshift({ role: 'user', content: t('greet.omitted') });
-  }
-  return { system, messages, pending, postHistory: req.postHistory };
+  const messages = finalMessages(PROVIDERS[state.settings.provider].format, req.messages);
+  return { system, messages, pending, postHistory: req.postHistory, systemText: req.system };
+}
+
+// 下一次请求的内容和预估的 token 数（tokens.js 的 predict：按实际用量校准，并用这个对话上一次请求的实际用量修正）
+function nextEstimate() {
+  const blocks = nextRequestBlocks();
+  const k = calibKey();
+  const x = TokenCalib.requestFeatures(blocks.systemText, blocks.messages);
+  return { ...blocks, estimate: TokenCalib.predict(k.relay, k.model, x, state.conv.id), coef: TokenCalib.coefOf(k.relay, k.model) };
 }
 
 function openPreview() {
   const conv = state.conv;
-  const { system, messages, pending } = nextRequestBlocks();
+  const { system, messages, pending, estimate, coef } = nextEstimate();
   const body = els.previewBody;
   body.replaceChildren();
-  let total = 0;
   const group = (title) => {
     const g = document.createElement('div');
     g.className = 'preview-group';
@@ -2576,8 +2614,7 @@ function openPreview() {
     body.appendChild(g);
   };
   const block = (title, text, note) => {
-    const tokens = estimateTokens(text);
-    total += tokens;
+    const tokens = tokensOf(text, coef);
     const b = document.createElement('div');
     b.className = 'preview-block';
     const head = document.createElement('div');
@@ -2609,7 +2646,8 @@ function openPreview() {
     const lastOne = i === messages.length - 1;
     block(m.role === 'user' ? t('msg.you') : reply, m.content, lastOne && pending ? t('preview.emptyInput') : '');
   });
-  els.previewTotal.textContent = t('preview.total', { tokens: total.toLocaleString() });
+  // 总数和设置面板里的一样（含消息格式的开销，并按这个对话上一次的实际用量修正），所以不一定等于各块相加
+  els.previewTotal.textContent = t(PREVIEW_TOTAL_KEY[estimate.source] || 'preview.total', { tokens: estimate.tokens.toLocaleString() });
   els.previewBox.hidden = false;
   placeExpand(els.previewBox);
   body.scrollTop = 0;
@@ -2673,7 +2711,7 @@ function closeExpand() {
 
 // 世界观和 NPC角色下方的字数
 function updateWorldCount() {
-  const count = (text) => (text ? t('set.worldCount', { chars: text.length.toLocaleString(), tokens: estimateTokens(text).toLocaleString() }) : '');
+  const count = (text) => (text ? t('set.worldCount', { chars: text.length.toLocaleString(), tokens: tokensOf(text).toLocaleString() }) : '');
   els.worldCount.textContent = count(state.conv.worldText);
   els.npcCount.textContent = count(state.conv.npcText);
 }
@@ -2901,6 +2939,11 @@ function bindSettings() {
     clearTimeout(saveTimer);
     await DB.set('settings', storableSettings());
   });
+  els.shareCalib.addEventListener('change', () => {
+    s().shareCalib = els.shareCalib.checked;
+    TokenCalib.setSharing(els.shareCalib.checked);
+    saveSettingsSoon();
+  });
   els.btnClearAll.addEventListener('click', async () => {
     if (state.generating) return toast(t('conv.stopFirst'));
     if (!(await ask(t('set.clearAllConfirm', pageVars()), { ok: t('set.clearAll'), danger: true }))) return;
@@ -2911,6 +2954,8 @@ function bindSettings() {
     await DB.destroy();
     forgetCachedLang();
     forgetNativeOrigins();
+    forgetNoUsageOption();
+    TokenCalib.forget();
     location.reload();
   });
 
@@ -2931,7 +2976,8 @@ function bindSettings() {
 
   // 查看下一轮将发送的内容
   els.btnPreviewNext.addEventListener('click', openPreview);
-  document.addEventListener('mousedown', (e) => { if (!els.previewBox.hidden && !els.previewBox.contains(e.target) && !insideDialog(e.target)) closePreview(); }, true);
+  // 「点在外面就关闭」都用 pointerdown：点在不可用的输入框上（例如助理模式下的世界观）时浏览器不发 mousedown 和 click
+  document.addEventListener('pointerdown', (e) => { if (!els.previewBox.hidden && !els.previewBox.contains(e.target) && !insideDialog(e.target)) closePreview(); }, true);
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !els.previewBox.hidden) { e.stopPropagation(); closePreview(); }
   }, true);
@@ -2941,7 +2987,15 @@ function bindSettings() {
     expandSource.dispatchEvent(new Event('input')); // 和直接在右侧输入一样保存、更新字数
   });
   // 点在放大窗口以外的地方就关闭（按 Esc 也可以）
-  document.addEventListener('mousedown', (e) => { if (expandSource && !els.expandBox.contains(e.target) && !insideDialog(e.target)) closeExpand(); }, true);
+  document.addEventListener('pointerdown', (e) => { if (expandSource && !els.expandBox.contains(e.target) && !insideDialog(e.target)) closeExpand(); }, true);
+  // 点在消息内容上：每条消息显示在一个 iframe 里，外层页面收不到里面的鼠标事件，但焦点会移进那个 iframe、页面失去焦点。
+  // 这时也算点在外面，关闭放大窗口和预览窗口。切到别的程序时页面也会失去焦点，但焦点不在 iframe 上，不关闭（切回来还能接着编辑）
+  window.addEventListener('blur', () => setTimeout(() => {
+    const f = document.activeElement;
+    if (!f || f.tagName !== 'IFRAME') return;
+    if (!els.previewBox.hidden && !els.previewBox.contains(f)) closePreview();
+    if (expandSource && !els.expandBox.contains(f)) closeExpand();
+  }, 0));
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && expandSource) { e.stopPropagation(); closeExpand(); }
   }, true);
@@ -3069,11 +3123,19 @@ function bindChat() {
   });
   // 有输入框或确认框打开时（例如正在重命名），对话列表不受点击、Esc 和窗口大小变化影响
   const dialogOpen = () => !els.dialog.hidden || !els.textDialog.hidden || !els.pwDialog.hidden || !els.modal.hidden || !els.updateDialog.hidden;
-  // 点在列表和右键菜单以外：都收起；点在列表里（右键菜单以外）：只收起右键菜单
-  document.addEventListener('mousedown', (e) => {
+  // 点在列表和右键菜单以外：都收起；点在列表里（右键菜单以外）：只收起右键菜单。
+  // 用 pointerdown：点在不可用的输入框上时浏览器不发 mousedown
+  document.addEventListener('pointerdown', (e) => {
     if (els.convCtxMenu.contains(e.target) || dialogOpen()) return;
     closeConvCtxMenu();
     if (!els.convPicker.contains(e.target)) closeConvMenu();
+  });
+  // 点在消息内容上（每条消息显示在一个 iframe 里，外层页面收不到里面的鼠标事件）或者切到软件窗口以外时，
+  // 页面会失去焦点：也收起对话列表、右键菜单和「＋ 新对话」菜单。有输入框或确认框打开时不收起（同上）
+  window.addEventListener('blur', () => {
+    if (dialogOpen()) return;
+    closeConvMenu();
+    closeNewConvMenu();
   });
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape' || dialogOpen()) return;
@@ -3108,7 +3170,8 @@ function bindChat() {
     const i = items.indexOf(document.activeElement);
     items[(i + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length].focus();
   });
-  document.addEventListener('click', (e) => { if (!els.newConvGroup.contains(e.target) && !insideDialog(e.target)) closeNewConvMenu(); });
+  // 点在菜单以外就收起。用 pointerdown：点在不可用的输入框上时浏览器不发 click
+  document.addEventListener('pointerdown', (e) => { if (!els.newConvGroup.contains(e.target) && !insideDialog(e.target)) closeNewConvMenu(); });
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !els.newConvMenu.hidden) { e.stopPropagation(); closeNewConvMenu(); els.btnNewConv.focus(); }
   }, true);
@@ -3234,6 +3297,8 @@ function init() {
   });
   // 第一次打开时先显示开源协议说明（见 showLicenseNotice）
   const licensed = booted.then(showLicenseNotice);
+  // 拉取其他用户共享的 token 校准数据，推送本机还没推送的（静默，见 tokens.js；只在打包的原生应用里）
+  booted.then(() => TokenCalib.sync(() => { if (state.conv) updateEstimate(); }), () => {});
   // 启动时立刻检查更新（只在原生应用里），和读取数据同时进行；有要提示的版本时等数据读完、
   // 开源协议说明关掉后再显示（读取数据失败时不显示）
   void checkForUpdates(version, licensed);

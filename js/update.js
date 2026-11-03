@@ -175,6 +175,37 @@ async function installUpdate(m, key) {
   }
 }
 
+// 更新提示里的更新说明：每个频道（正式版、测试版分开）比当前版本新、不超过提示版本的各个版本的说明，
+// 最新的在前，每个频道最多 UPDATE_NOTES_MAX 个版本；还有更早的就在最后提示去 GitHub Release 页面查看。
+// 说明来自 version.json 的 notes 和 history（scripts/update-manifest.js），按界面语言显示，缺了就用 zh-CN / en。
+// 没有任何说明时返回空字符串（旧的 version.json 没有这些字段）
+const UPDATE_NOTES_MAX = 2;
+function updateNotesText(current, offers) {
+  const pick = (notes) => {
+    for (const lang of [LANG, LANG === 'ja' ? 'en' : 'zh-CN', 'en']) {
+      if (Array.isArray(notes[lang]) && notes[lang].length) return notes[lang];
+    }
+    return [];
+  };
+  let text = '';
+  let more = false;
+  for (const m of offers) {
+    const entries = (Array.isArray(m.history) ? m.history.slice() : []);
+    if (m.notes && !entries.some((e) => e && e.version === m.version)) entries.unshift({ version: m.version, notes: m.notes });
+    const usable = entries
+      .filter((e) => e && e.notes && typeof e.notes === 'object' && compareVersions(e.version, current) > 0
+        && !(compareVersions(e.version, m.version) > 0) && pick(e.notes).length)
+      .sort((a, b) => compareVersions(b.version, a.version));
+    if (usable.length > UPDATE_NOTES_MAX) more = true;
+    for (const e of usable.slice(0, UPDATE_NOTES_MAX)) {
+      text += '\n\n' + t(m.channel === 'beta' ? 'update.notesBeta' : 'update.notesStable', { version: e.version })
+        + '\n' + pick(e.notes).map((line) => '· ' + line).join('\n');
+    }
+  }
+  if (more) text += '\n\n' + t('update.notesMore');
+  return text;
+}
+
 // 本机日期（年-月-日），用来判断今天是否已经检查过
 function localDay(d = new Date()) {
   const p = (n) => String(n).padStart(2, '0');
@@ -221,7 +252,7 @@ function openMandatoryDialog(title, message, onEsc) {
 // 返回 { manifest } / { remindDays } / { skip: true }
 function showUpdateDialog(current, offers) {
   const lines = offers.map((m) => t(m.channel === 'beta' ? 'update.lineBeta' : 'update.lineStable', { version: m.version }));
-  const message = t('update.message', { current, list: lines.join('\n') })
+  const message = t('update.message', { current, list: lines.join('\n'), notes: updateNotesText(current, offers) })
     + (offers.some((m) => m.channel === 'beta') ? '\n\n' + t('update.betaNote') : '');
   let menu = null;
   let toggle = null;

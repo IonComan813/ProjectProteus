@@ -48,17 +48,60 @@ function mergeSameRole(messages) {
   return out;
 }
 
+// 实际使用的接口地址（没填时用服务商的默认地址）
+function baseOf(cfg) {
+  return trimSlash(cfg.baseUrl || PROVIDERS[cfg.provider].baseUrl);
+}
+
+// 最终发送的消息列表：合并连续同一角色的消息；Anthropic 要求第一条必须是用户消息，开头不是时补“前情省略”
+function finalMessages(format, messages) {
+  const msgs = mergeSameRole(messages);
+  if (format === 'anthropic' && msgs.length && msgs[0].role !== 'user') msgs.unshift({ role: 'user', content: t('greet.omitted') });
+  return msgs;
+}
+
+// ---- 用量 ----
+// OpenAI 格式的流式回复默认不带用量，要在请求里加 stream_options.include_usage。
+// 个别接口不认这个参数会报错：这时去掉它重发一次，成功就记住这个接口地址，以后不再加
+const NO_USAGE_OPTION_KEY = 'proteus.noStreamOptions';
+const noUsageOption = new Set();
+try { for (const b of JSON.parse(localStorage.getItem(NO_USAGE_OPTION_KEY) || '[]')) noUsageOption.add(b); } catch (_) { /* 读不到就从头记 */ }
+
+function rememberNoUsageOption(base) {
+  if (noUsageOption.has(base)) return;
+  noUsageOption.add(base);
+  try { localStorage.setItem(NO_USAGE_OPTION_KEY, JSON.stringify([...noUsageOption])); } catch (_) { /* 只在这次打开期间记住 */ }
+}
+
+function forgetNoUsageOption() {
+  noUsageOption.clear();
+  try { localStorage.removeItem(NO_USAGE_OPTION_KEY); } catch (_) { /* 本来就没存 */ }
+}
+
+// 接口报告的用量 → { input, output }（没有的项为 0）。
+// Anthropic 格式的 input_tokens 不含缓存部分，要加上写入和读取缓存的 token；OpenAI 格式的 prompt_tokens 已经包含缓存
+function usageOf(u, format) {
+  if (!u || typeof u !== 'object') return null;
+  const n = (v) => (Number.isFinite(v) && v > 0 ? v : 0);
+  if (format === 'anthropic') {
+    return {
+      input: n(u.input_tokens) + n(u.cache_creation_input_tokens) + n(u.cache_read_input_tokens),
+      output: n(u.output_tokens),
+    };
+  }
+  // 有的中转站在 OpenAI 格式里也用 input_tokens / output_tokens 的名字
+  return { input: n(u.prompt_tokens) || n(u.input_tokens), output: n(u.completion_tokens) || n(u.output_tokens) };
+}
+
 // 组装真正发给接口的请求（不发送，只返回 url / headers / body），方便“预览”功能复用。
 function buildRequest(cfg, system, messages) {
   const provider = PROVIDERS[cfg.provider];
-  const base = trimSlash(cfg.baseUrl || provider.baseUrl);
+  const base = baseOf(cfg);
   if (!base) throw new Error(t('api.needBaseUrl'));
   if (!cfg.model) throw new Error(t('api.needModel'));
-  let msgs = mergeSameRole(messages);
+  const msgs = finalMessages(provider.format, messages);
 
   if (provider.format === 'anthropic') {
-    // Anthropic 要求第一条必须是用户消息
-    if (msgs.length && msgs[0].role !== 'user') msgs.unshift({ role: 'user', content: t('greet.omitted') });
     const body = {
       model: cfg.model,
       max_tokens: cfg.maxTokens || 8192,
@@ -79,7 +122,7 @@ function buildRequest(cfg, system, messages) {
       headers['anthropic-beta'] = 'server-side-fallback-2026-07-01';
       body.fallbacks = 'default';
     }
-    return { format: 'anthropic', url: base + '/v1/messages', headers, body };
+    return { format: 'anthropic', base, url: base + '/v1/messages', headers, body };
   }
 
   // OpenAI 格式
@@ -88,6 +131,7 @@ function buildRequest(cfg, system, messages) {
     stream: true,
     messages: system ? [{ role: 'system', content: system }, ...msgs] : msgs,
   };
+  if (!noUsageOption.has(base)) body.stream_options = { include_usage: true };
   if (cfg.maxTokens) {
     // OpenAI 官方的新模型用 max_completion_tokens，其他兼容接口大多仍用 max_tokens
     if (cfg.provider === 'openai') body.max_completion_tokens = cfg.maxTokens;
@@ -100,7 +144,7 @@ function buildRequest(cfg, system, messages) {
   };
   // OpenRouter 没有单独的选项，按接口地址认出来，带上应用名
   if (/^https:\/\/openrouter\.ai\//i.test(base)) headers['X-Title'] = 'Proteus';
-  return { format: 'openai', url: base + '/chat/completions', headers, body };
+  return { format: 'openai', base, url: base + '/chat/completions', headers, body };
 }
 
 async function readError(res) {
@@ -169,11 +213,14 @@ async function readSSE(res, onData, onRaw) {
 let lastExchange = null;
 const LOG_MAX = 4 * 1024 * 1024; // 原始回复最多记 4 MB
 
-// 非流式回复：从完整的 JSON 里取出正文，返回结束原因
-function readWhole(j, onText) {
+// 非流式回复：从完整的 JSON 里取出正文和用量，返回结束原因
+function readWhole(j, onText, onUsage) {
   if (j.error) throw new Error(t('api.errorEvent') + (j.error.message || JSON.stringify(j.error)));
   const join = (parts) => parts.filter((b) => b && b.type === 'text').map((b) => b.text).join('');
-  if (Array.isArray(j.content)) { // Anthropic 格式
+  const anthropic = Array.isArray(j.content);
+  const usage = usageOf(j.usage, anthropic ? 'anthropic' : 'openai');
+  if (usage && onUsage) onUsage(usage);
+  if (anthropic) { // Anthropic 格式
     const text = join(j.content);
     if (text) onText(text);
     return j.stop_reason || null;
@@ -236,22 +283,35 @@ async function postChat(url, init, signal) {
   return { res, native: true };
 }
 
-// 发送一次对话请求。onText(增量文字) 会被多次调用。
+// 发送一次对话请求。onText(增量文字) 会被多次调用；onUsage({ input, output }) 在收到接口报告的用量时调用
+// （可能多次，以最后一次为准；中途停止或出错时也可能已经收到了输入用量）。
 // 返回 { stopReason }。
-async function streamChat(cfg, system, messages, { signal, onText, onThinking }) {
+async function streamChat(cfg, system, messages, { signal, onText, onThinking, onUsage }) {
   const req = buildRequest(cfg, system, messages);
   if (!cfg.apiKey) throw new Error(t('api.needKey'));
   const log = lastExchange = { time: new Date(), request: { method: 'POST', url: req.url, headers: req.headers, body: req.body }, response: null, error: null };
   const record = (s) => { if (log.response.body.length < LOG_MAX) log.response.body += s; };
-  try {
-    let res;
+  const post = async (body) => {
     try {
-      const sent = await postChat(req.url, { method: 'POST', headers: req.headers, body: JSON.stringify(req.body), signal }, signal);
-      res = sent.res;
+      const sent = await postChat(req.url, { method: 'POST', headers: req.headers, body: JSON.stringify(body), signal }, signal);
       if (sent.native) log.request.via = 'native';
+      return sent.res;
     } catch (e) {
       if (e.name === 'AbortError') throw e;
       throw new Error(t('api.connectFailed') + '\n' + e.message);
+    }
+  };
+  try {
+    let res = await post(req.body);
+    // 请求里加了 stream_options 而接口说请求有误：可能是不认这个参数，去掉再发一次
+    if (!res.ok && req.body.stream_options && (res.status === 400 || res.status === 422)) {
+      // 日志里记下第一次的回复，便于排查
+      log.request.retry = { status: res.status, text: (await res.text().catch(() => '')).slice(0, 2000) };
+      const body = { ...req.body };
+      delete body.stream_options;
+      res = await post(body);
+      log.request.body = body;
+      if (res.ok) rememberNoUsageOption(req.base);
     }
     const type = res.headers.get('content-type') || '';
     log.response = { status: res.status, contentType: type, body: '' };
@@ -262,15 +322,28 @@ async function streamChat(cfg, system, messages, { signal, onText, onThinking })
     }
 
     let stopReason = null;
+    // 用量可能分几次报告（Anthropic：开头报告输入，结尾报告输出），每项保留最后一次非零的值
+    const usage = { input: 0, output: 0 };
+    const gotUsage = (u) => {
+      const x = usageOf(u, req.format);
+      if (!x || (!x.input && !x.output)) return;
+      if (x.input) usage.input = x.input;
+      if (x.output) usage.output = x.output;
+      if (onUsage) onUsage({ ...usage });
+    };
     const onEvent = req.format === 'anthropic'
       ? (ev) => {
-        if (ev.type === 'content_block_start' && ev.content_block && ev.content_block.type === 'thinking') onThinking && onThinking();
+        if (ev.type === 'message_start' && ev.message) gotUsage(ev.message.usage);
+        else if (ev.type === 'content_block_start' && ev.content_block && ev.content_block.type === 'thinking') onThinking && onThinking();
         else if (ev.type === 'content_block_delta' && ev.delta && ev.delta.type === 'text_delta') onText(ev.delta.text);
-        else if (ev.type === 'message_delta' && ev.delta && ev.delta.stop_reason) stopReason = ev.delta.stop_reason;
-        else if (ev.type === 'error') throw new Error(t('api.errorEvent') + ((ev.error && ev.error.message) || JSON.stringify(ev)));
+        else if (ev.type === 'message_delta') {
+          if (ev.delta && ev.delta.stop_reason) stopReason = ev.delta.stop_reason;
+          gotUsage(ev.usage);
+        } else if (ev.type === 'error') throw new Error(t('api.errorEvent') + ((ev.error && ev.error.message) || JSON.stringify(ev)));
       }
       : (ev) => {
         if (ev.error) throw new Error(t('api.errorEvent') + (ev.error.message || JSON.stringify(ev.error)));
+        gotUsage(ev.usage); // 一般在最后一块（choices 为空），有的接口每一块都带
         const choice = ev.choices && ev.choices[0];
         if (!choice) return;
         const d = choice.delta || {};
@@ -285,7 +358,7 @@ async function streamChat(cfg, system, messages, { signal, onText, onThinking })
     if (!streamed) {
       let j = null;
       try { j = JSON.parse(log.response.body); } catch (_) { /* 不是 JSON：当作没有内容 */ }
-      if (j && typeof j === 'object') stopReason = readWhole(j, onText);
+      if (j && typeof j === 'object') stopReason = readWhole(j, onText, onUsage);
     }
     return { stopReason };
   } catch (e) {
@@ -297,7 +370,7 @@ async function streamChat(cfg, system, messages, { signal, onText, onThinking })
 // 获取模型列表
 async function fetchModels(cfg) {
   const provider = PROVIDERS[cfg.provider];
-  const base = trimSlash(cfg.baseUrl || provider.baseUrl);
+  const base = baseOf(cfg);
   if (!base) throw new Error(t('api.needBaseUrl'));
   let url, headers;
   if (provider.format === 'anthropic') {

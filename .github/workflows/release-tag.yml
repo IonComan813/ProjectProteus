@@ -1,0 +1,49 @@
+# 发布一个新版本：在所选分支（一般是 main）的最新提交上打版本标签，再启动打包工作流（build.yml）发布它，
+# 结果和自己推送标签一样（带后缀的标签，例如 v0.4.8-beta.1，发布为预发布 Pre-release）。
+# 在 Actions 页面运行「Tag and release」，填写版本标签即可，不需要在本机打标签。
+# 工作流用 GITHUB_TOKEN 推送的标签不会触发 build.yml 的 push 事件，所以这里直接启动它（new_release=true）。
+name: Tag and release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '版本标签，例如 v0.4.8 或 v0.4.8-beta.1（打在所选分支的最新提交上）'
+        required: true
+
+permissions:
+  contents: write # 推送标签
+  actions: write  # 启动 build.yml
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create the tag
+        env:
+          TAG: ${{ inputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "::error::Not a version tag: $TAG (expected e.g. v0.4.8 or v0.4.8-beta.1)"
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" > /dev/null; then
+            echo "::error::Tag $TAG already exists."
+            exit 1
+          fi
+          git tag "$TAG" "$GITHUB_SHA"
+          git push origin "refs/tags/$TAG"
+          echo "Tagged $GITHUB_SHA as $TAG"
+
+      - name: Build and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          gh workflow run build.yml --ref "$TAG" -f release_tag="$TAG" -f new_release=true
+          echo "Started build.yml for $TAG: https://github.com/$GH_REPO/actions/workflows/build.yml"
