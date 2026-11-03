@@ -672,6 +672,42 @@ textarea:focus, input:focus, select:focus { outline: 1px solid var(--accent); bo
 /* 更新提示：盖在其他弹窗、「全部对话」窗口和右键菜单（55）上面，提示文字（toast，60）仍在它上面 */
 .modal.update-modal { z-index: 57; }
 #updateBox:focus { outline: none; }
+/* 下载失败、手动中止后的三个按钮：竖着排、一样宽 */
+.dialog-buttons.stacked { flex-direction: column; align-items: stretch; }
+/* 下载更新的进度条：屏幕上方居中，盖在聊天区上、在下拉列表（20）和弹窗下面 */
+.update-progress {
+  position: fixed;
+  top: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(440px, calc(100vw - 24px));
+  padding: 8px 8px 10px 14px;
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .4);
+  z-index: 19;
+}
+.update-progress-row { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; }
+.update-progress-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.update-progress-stop {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.update-progress-stop:hover, .update-progress-stop:focus-visible { background: rgba(201, 169, 110, .18); color: var(--text); outline: none; }
+.update-progress-bar { position: relative; height: 6px; margin-right: 6px; border-radius: 3px; background: rgba(255, 255, 255, .08); overflow: hidden; }
+.update-progress-fill { height: 100%; width: 0; background: var(--accent); border-radius: 3px; transition: width .3s; }
+/* 不知道总大小时：一小段来回移动 */
+.update-progress-bar.indeterminate .update-progress-fill { width: 30%; animation: update-progress-slide 1.2s ease-in-out infinite alternate; }
+@keyframes update-progress-slide { from { transform: translateX(-10%); } to { transform: translateX(245%); } }
 /* 更新提示里的「一天后提醒 ▾」：菜单往下展开、靠右对齐；下面放不下时由 JS 加上 drop-up 改为往上 */
 .update-remind .split-menu { left: auto; right: 0; }
 .update-remind .split-menu.drop-up { top: auto; bottom: calc(100% + 4px); }

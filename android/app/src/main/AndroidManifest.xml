@@ -35,4 +35,6 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- 在软件里下载更新后打开系统的安装界面（第一次安装更新时，系统会要求允许海神安装应用） -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 </manifest>

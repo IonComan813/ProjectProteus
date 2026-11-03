@@ -72,10 +72,15 @@ The native apps (desktop and Android) check the update server for a new version 
   - "Skip this version" in the ▾ menu: the versions listed are not shown again; you are told when a newer version number comes out. After skipping, the next check is also on the next day
 - You have to choose one of the buttons: Esc or clicking outside does not close this window
 - The check starts as soon as the app starts, and the window appears as soon as the version information arrives. It opens on top of any other window or dialog, which stay as they were after you choose; it also appears while a reply is being generated, and the reply keeps coming in
-- Once a download has started, the app also doesn't check again that day (not even after installing the new version); if you cancel the save dialog, you are asked again at the next start
+- The download happens inside the app, with a progress bar at the top of the screen (version, percentage, downloaded / total size); the × on its right stops the download
+- Once the download has finished, the app doesn't check again that day (not even after installing the new version); if you cancel the save dialog, you are asked again at the next start
+- If the download fails, "Download failed" appears: the download was interrupted or timed out, which may be a network problem or security software blocking it. It counts as timed out after 60 seconds without receiving any data; a download that is just slow but still receiving data doesn't time out. If you pressed ×, "Download stopped" appears instead. Both windows need one of these buttons:
+  - "Check for updates again": reads the version information again and shows the update window again
+  - "Download it from the GitHub Release page": opens that version's release page in your browser; the app doesn't check again that day
+  - "Check again next time the app starts"
 - The installer for this device is downloaded (Windows installer / portable, Mac Apple silicon / Intel, Linux or Android); your conversations and settings are kept when you install the new version:
-  - **Desktop**: downloaded inside the app. You choose where to save it first (the Downloads folder by default), and the taskbar shows the progress. When it finishes you are asked whether to close the app and run the installer (Windows installer), open the installer (Mac dmg; then drag Proteus into Applications to replace the old version) or start the new version (Linux AppImage). The Windows portable version downloads a zip: you can open its folder, then unzip it and replace the old folder after closing the app
-  - **Android**: downloaded by the system browser; tap the notification to install when it finishes
+  - **Desktop**: you choose where to save it first (the Downloads folder by default), and the taskbar also shows the progress. When it finishes you are asked whether to close the app and run the installer (Windows installer), open the installer (Mac dmg; then drag Proteus into Applications to replace the old version) or start the new version (Linux AppImage). The Windows portable version downloads a zip: you can open its folder, then unzip it and replace the old folder after closing the app
+  - **Android**: when the download finishes, the system's install screen opens. The first time you update this way, Android asks you to allow Proteus to install unknown apps; just follow the prompt
 - Version order: a test version comes before the release with the same number, e.g. `0.4.0-beta.2` < `0.4.0` < `0.4.1-beta.1`
 - Nothing is shown when the update server can't be reached. The web version does not check for updates
 
@@ -442,7 +447,7 @@ js/app.js         Interface logic, conversation management, context assembly
 js/vendor/        Third-party libraries (marked: Markdown parser, MIT license, full text in marked.LICENSE.md)
 electron/main.js  Entry point of the Windows / macOS / Linux apps (window, security settings, removing CORS restrictions, downloading updates)
 electron/preload.js  Native features offered to the page (for now only downloading updates)
-android/          Android project (Capacitor); capacitor.config.json is its configuration
+android/          Android project (Capacitor); capacitor.config.json is its configuration; UpdateDownloaderPlugin.java downloads updates inside the app and opens the install screen
 assets/           Source images for the Android icon and splash screen
 scripts/          Small build scripts (including third-party-notices.js, which checks third-party licenses and generates the notices)
 build/icon.png    App icon

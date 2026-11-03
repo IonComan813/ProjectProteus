@@ -102,15 +102,23 @@ async function checkForUpdates(version, booted) {
   } catch (_) {
     return;
   }
-  const current = state.version;
-  if (!current) return;
+  if (!state.version) return;
   const z = saved && saved.updateSnooze && typeof saved.updateSnooze === 'object' ? saved.updateSnooze : {};
   if (z.until && Date.now() < z.until) return;
-  const today = localDay();
-  if (saved && saved.updateCheckedDay === today) return;
-  const skip = z.skip || {};
-  let [stable, beta] = await Promise.all([fetchUpdateManifest('stable'), fetchUpdateManifest('beta')]);
+  if (saved && saved.updateCheckedDay === localDay()) return;
+  const found = await findUpdates(key, z.skip || {});
   try { await booted; } catch (_) { return; }
+  if (!found.offers.length) {
+    if (!found.failed) markUpdateChecked();
+    return;
+  }
+  await offerUpdates(found.offers, key);
+}
+
+// 读取两个频道，返回 { offers: 要提示的版本, failed: 是否有频道没读到 }
+async function findUpdates(key, skip) {
+  const current = state.version;
+  let [stable, beta] = await Promise.all([fetchUpdateManifest('stable'), fetchUpdateManifest('beta')]);
   const failed = stable === 'error' || beta === 'error';
   if (stable === 'error') stable = null;
   if (beta === 'error') beta = null;
@@ -120,16 +128,18 @@ async function checkForUpdates(version, booted) {
   if (wanted(stable)) offers.push(stable);
   // 测试版还要比最新的正式版新（不论正式版是否被跳过）
   if (wanted(beta) && (!stable || compareVersions(beta.version, stable.version) > 0)) offers.push(beta);
-  if (!offers.length) {
-    if (!failed) {
-      state.settings.updateCheckedDay = today;
-      saveSettingsSoon();
-    }
-    return;
-  }
+  return { offers, failed };
+}
 
-  const choice = await showUpdateDialog(current, offers);
-  if (!choice) return;
+// 记下今天已经检查过：同一天里再启动软件不再检查
+function markUpdateChecked() {
+  state.settings.updateCheckedDay = localDay();
+  saveSettingsSoon();
+}
+
+// 显示更新提示，按用户的选择稍后提醒、跳过或下载
+async function offerUpdates(offers, key) {
+  const choice = await showUpdateDialog(state.version, offers);
   if (choice.remindDays) {
     setUpdateSnooze({ ...updateSnooze(), until: Date.now() + choice.remindDays * 24 * 3600 * 1000 });
     toast(t('update.remindSet', { days: choice.remindDays }));
@@ -137,16 +147,31 @@ async function checkForUpdates(version, booted) {
     const skipNow = { ...(updateSnooze().skip || {}) };
     for (const m of offers) skipNow[m.channel] = m.version;
     setUpdateSnooze({ ...updateSnooze(), until: 0, skip: skipNow });
-    state.settings.updateCheckedDay = today; // 跳过以后也是第二天再检查
-    saveSettingsSoon();
+    markUpdateChecked(); // 跳过以后也是第二天再检查
     toast(t('update.skipped'));
   } else if (choice.manifest) {
-    const started = await downloadUpdate(`${UPDATE_BASE_URL}/${choice.manifest.channel}/${encodeURIComponent(choice.manifest.files[key])}`);
-    // 开始下载了：今天不再检查（装好新版本后再打开也是第二天才检查）；取消了保存就下次启动再提示
-    if (started) {
-      state.settings.updateCheckedDay = today;
-      saveSettingsSoon();
-    }
+    await installUpdate(choice.manifest, key);
+  }
+}
+
+// 下载选中的版本。下载完成（或交给了浏览器）：今天不再检查，装好新版本后当天再打开也不检查。
+// 取消了「另存为」：下次启动再提示。下载失败、超时或者用户点了 ×：弹窗让用户选择
+//   再次检查更新：重新读取版本信息、再显示一次更新提示
+//   前往 GitHub Release 页面手动下载：打开这个版本的 Release 页面，今天不再检查
+//   下次启动时再检查更新：什么都不做
+async function installUpdate(m, key) {
+  const result = await downloadUpdate(`${UPDATE_BASE_URL}/${m.channel}/${encodeURIComponent(m.files[key])}`, m.version);
+  if (result === 'done' || result === 'browser') return markUpdateChecked();
+  if (result === 'cancelled') return toast(t('update.saveCancelled'));
+  const next = await showDownloadStopped(result === 'aborted');
+  if (next === 'retry') {
+    const found = await findUpdates(key, updateSnooze().skip || {});
+    if (found.offers.length) return offerUpdates(found.offers, key);
+    toast(t(found.failed ? 'update.recheckFailed' : 'update.upToDate'));
+    if (!found.failed) markUpdateChecked();
+  } else if (next === 'release') {
+    openExternal(/^https:\/\//.test(m.release || '') ? m.release : `${PROJECT_URL}/releases`);
+    markUpdateChecked();
   }
 }
 
@@ -156,101 +181,113 @@ function localDay(d = new Date()) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
+// 必须选一个按钮才能关闭的窗口（#updateDialog）：更新提示和下载失败、中止的提示都用它。
+// 盖在其他窗口和弹窗上面，不能操作下面的东西；Esc、点窗口外面、安卓返回键都关不掉它（Esc 只交给 onEsc，例如收起菜单）。
+// Esc 在 window 的捕获阶段最先处理并且不再传下去：窗口下面已经打开的弹窗、列表、放大窗口、设置面板等都不会被它关掉。
+// 关闭后下面的东西保持原样，焦点回到原来的位置。返回 close(value) 和 done（选好后 resolve(value) 的 Promise）
+function openMandatoryDialog(title, message, onEsc) {
+  els.updateTitle.textContent = title;
+  els.updateMessage.textContent = message;
+  els.updateMessage.hidden = !message;
+  els.updateButtons.innerHTML = '';
+  els.updateButtons.classList.remove('stacked');
+  const prevFocus = document.activeElement;
+  const cleanup = [];
+  let resolve;
+  const done = new Promise((r) => { resolve = r; });
+  const onKey = (e) => {
+    if (e.key !== 'Escape') return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    if (onEsc) onEsc();
+  };
+  window.addEventListener('keydown', onKey, true);
+  cleanup.push(() => window.removeEventListener('keydown', onKey, true));
+  const close = (value) => {
+    els.updateDialog.hidden = true;
+    for (const f of cleanup) f();
+    if (prevFocus && prevFocus.isConnected && prevFocus !== document.body) prevFocus.focus({ preventScroll: true });
+    resolve(value);
+  };
+  const show = () => {
+    els.updateDialog.hidden = false; // 安卓的返回键也不能关掉它（见 bindBackButton）
+    // 焦点放在窗口本身、不放在按钮上：窗口可能在用户打字时突然出现，空格、回车不会误按到按钮。按 Tab 进入按钮
+    els.updateBox.focus({ preventScroll: true });
+  };
+  return { close, done, show, cleanup };
+}
+
 // 更新提示窗口。按钮依次是：下载测试版 / 下载正式版（有哪个显示哪个）/「一天后提醒」（旁边的 ▾ 打开菜单：三天后提醒、跳过此版本）。
-// 返回 { manifest } / { remindDays } / { skip: true }。必须选一个，不能用 Esc 或点窗口外面关闭。
-// 用自己的窗口（#updateDialog），盖在其他窗口和弹窗上面；关闭后下面的东西保持原样，焦点回到原来的位置
+// 返回 { manifest } / { remindDays } / { skip: true }
 function showUpdateDialog(current, offers) {
   const lines = offers.map((m) => t(m.channel === 'beta' ? 'update.lineBeta' : 'update.lineStable', { version: m.version }));
   const message = t('update.message', { current, list: lines.join('\n') })
     + (offers.some((m) => m.channel === 'beta') ? '\n\n' + t('update.betaNote') : '');
-  return new Promise((resolve) => {
-    els.updateTitle.textContent = t('update.title');
-    els.updateMessage.textContent = message;
-    els.updateButtons.innerHTML = '';
-    const prevFocus = document.activeElement;
-    let menu = null;
-    const close = (value) => {
-      els.updateDialog.hidden = true;
-      window.removeEventListener('keydown', onKey, true);
-      document.removeEventListener('pointerdown', onOutside, true);
-      if (prevFocus && prevFocus.isConnected && prevFocus !== document.body) prevFocus.focus({ preventScroll: true });
-      resolve(value);
-    };
-    const closeMenu = () => { if (menu) { menu.hidden = true; toggle.setAttribute('aria-expanded', 'false'); } };
-    // 这个窗口必须选一个按钮才能关闭：Esc 只收起 ▾ 菜单，点窗口外面也不关闭。
-    // Esc 在 window 的捕获阶段最先处理并且不再传下去：窗口下面已经打开的弹窗、列表、放大窗口、设置面板等都不会被它关掉
-    const onKey = (e) => {
-      if (e.key !== 'Escape') return;
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      if (menu && !menu.hidden) { closeMenu(); toggle.focus(); }
-    };
-    // 菜单打开时，点它以外的任何地方（包括这个窗口里的其他位置）都收起它；再点一次 ▾ 也收起
-    const onOutside = (e) => { if (menu && !menu.hidden && !split.contains(e.target)) closeMenu(); };
+  let menu = null;
+  let toggle = null;
+  const closeMenu = () => { if (menu && !menu.hidden) { menu.hidden = true; toggle.setAttribute('aria-expanded', 'false'); toggle.focus(); } };
+  const dlg = openMandatoryDialog(t('update.title'), message, closeMenu);
 
-    for (const m of offers.slice().reverse()) {
-      const label = t(m.channel === 'beta' ? 'update.getBeta' : 'update.getStable', { version: m.version });
-      els.updateButtons.appendChild(button(label, () => close({ manifest: m }), 'btn' + (m.channel === 'stable' ? ' btn-primary' : '')));
-    }
+  for (const m of offers.slice().reverse()) {
+    const label = t(m.channel === 'beta' ? 'update.getBeta' : 'update.getStable', { version: m.version });
+    els.updateButtons.appendChild(button(label, () => dlg.close({ manifest: m }), 'btn' + (m.channel === 'stable' ? ' btn-primary' : '')));
+  }
 
-    // 「一天后提醒 ▾」：左边直接选一天后提醒，右边的 ▾ 打开菜单
-    const split = document.createElement('div');
-    split.className = 'split-btn update-remind';
-    split.appendChild(button(t('update.remind1'), () => close({ remindDays: 1 }), 'btn'));
-    const toggle = button('', () => {
-      const open = menu.hidden;
-      menu.hidden = !open;
-      toggle.setAttribute('aria-expanded', String(open));
-      if (!open) return;
-      // 往下展开；下面放不下（例如手机横屏）时改为往上
-      menu.classList.remove('drop-up');
-      const below = window.innerHeight - split.getBoundingClientRect().bottom;
-      menu.classList.toggle('drop-up', below < menu.offsetHeight + 8);
-      menu.querySelector('.split-item').focus();
-    }, 'btn split-toggle');
-    toggle.innerHTML = '<span class="caret"></span>';
-    toggle.title = t('update.remindMore');
-    toggle.setAttribute('aria-label', t('update.remindMore'));
-    toggle.setAttribute('aria-haspopup', 'menu');
-    toggle.setAttribute('aria-expanded', 'false');
-    split.appendChild(toggle);
-    menu = document.createElement('div');
-    menu.className = 'split-menu';
-    menu.setAttribute('role', 'menu');
-    menu.hidden = true;
-    for (const [label, value] of [[t('update.remind3'), { remindDays: 3 }], [t('update.skip'), { skip: true }]]) {
-      const item = button(label, () => close(value), 'split-item');
-      item.setAttribute('role', 'menuitem');
-      menu.appendChild(item);
-    }
-    split.appendChild(menu);
-    els.updateButtons.appendChild(split);
+  // 「一天后提醒 ▾」：左边直接选一天后提醒，右边的 ▾ 打开菜单
+  const split = document.createElement('div');
+  split.className = 'split-btn update-remind';
+  split.appendChild(button(t('update.remind1'), () => dlg.close({ remindDays: 1 }), 'btn'));
+  toggle = button('', () => {
+    const open = menu.hidden;
+    menu.hidden = !open;
+    toggle.setAttribute('aria-expanded', String(open));
+    if (!open) return;
+    // 往下展开；下面放不下（例如手机横屏）时改为往上
+    menu.classList.remove('drop-up');
+    const below = window.innerHeight - split.getBoundingClientRect().bottom;
+    menu.classList.toggle('drop-up', below < menu.offsetHeight + 8);
+    menu.querySelector('.split-item').focus();
+  }, 'btn split-toggle');
+  toggle.innerHTML = '<span class="caret"></span>';
+  toggle.title = t('update.remindMore');
+  toggle.setAttribute('aria-label', t('update.remindMore'));
+  toggle.setAttribute('aria-haspopup', 'menu');
+  toggle.setAttribute('aria-expanded', 'false');
+  split.appendChild(toggle);
+  menu = document.createElement('div');
+  menu.className = 'split-menu';
+  menu.setAttribute('role', 'menu');
+  menu.hidden = true;
+  for (const [label, value] of [[t('update.remind3'), { remindDays: 3 }], [t('update.skip'), { skip: true }]]) {
+    const item = button(label, () => dlg.close(value), 'split-item');
+    item.setAttribute('role', 'menuitem');
+    menu.appendChild(item);
+  }
+  split.appendChild(menu);
+  els.updateButtons.appendChild(split);
 
-    window.addEventListener('keydown', onKey, true);
-    document.addEventListener('pointerdown', onOutside, true);
-    els.updateDialog.hidden = false; // 安卓的返回键也不能关掉它（见 bindBackButton）
-    // 焦点放在窗口本身、不放在按钮上：窗口可能在用户打字时突然出现，空格、回车不会误按到「下载」。按 Tab 进入按钮
-    els.updateBox.focus({ preventScroll: true });
-  });
+  // 菜单打开时，点它以外的任何地方（包括这个窗口里的其他位置）都收起它；再点一次 ▾ 也收起
+  const onOutside = (e) => { if (menu && !menu.hidden && !split.contains(e.target)) { menu.hidden = true; toggle.setAttribute('aria-expanded', 'false'); } };
+  document.addEventListener('pointerdown', onOutside, true);
+  dlg.cleanup.push(() => document.removeEventListener('pointerdown', onOutside, true));
+  dlg.show();
+  return dlg.done;
 }
 
-// 下载安装包，开始下载了返回 true。电脑版：在软件里下载，先选择保存位置，完成后问是否关闭软件并运行安装程序（electron/main.js）。
-// 安卓版：交给系统浏览器下载，下载完成后点通知安装
-let updateProgressBound = false;
-async function downloadUpdate(url) {
-  const desktop = window.proteusDesktop;
-  if (desktop && desktop.downloadUpdate) {
-    if (!updateProgressBound) {
-      updateProgressBound = true;
-      desktop.onUpdateDownload((info) => {
-        if (info.state === 'progress') toast(info.percent == null ? t('update.progressUnknown') : t('update.progress', { percent: info.percent }));
-        else if (info.state === 'done') toast(t('update.downloaded'));
-      });
-    }
-    const result = await desktop.downloadUpdate(url);
-    if (result === 'cancelled') { toast(t('update.saveCancelled')); return false; } // 下次检查时再提示
-    if (result) return true;
+// 下载失败、超时（标题「下载失败」）或者用户点了 ×（标题「下载手动中止」）后的窗口，必须选一个按钮。
+// 返回 'retry'（再次检查更新）/ 'release'（前往 GitHub Release 页面手动下载）/ 'later'（下次启动时再检查更新）
+function showDownloadStopped(byUser) {
+  const dlg = openMandatoryDialog(t(byUser ? 'update.abortedTitle' : 'update.failedTitle'), byUser ? '' : t('update.failedMessage'));
+  els.updateButtons.classList.add('stacked');
+  for (const [label, value, cls] of [['update.retry', 'retry', ' btn-primary'], ['update.openRelease', 'release', ''], ['update.nextLaunch', 'later', ' btn-ghost']]) {
+    els.updateButtons.appendChild(button(t(label), () => dlg.close(value), 'btn' + cls));
   }
+  dlg.show();
+  return dlg.done;
+}
+
+// 用系统浏览器打开网址（电脑版由 electron/main.js 交给系统浏览器，安卓版由 Capacitor 交给系统浏览器）
+function openExternal(url) {
   const a = document.createElement('a');
   a.href = url;
   a.target = '_blank';
@@ -258,6 +295,133 @@ async function downloadUpdate(url) {
   document.body.appendChild(a);
   a.click();
   a.remove();
+}
+
+// ---- 下载安装包 ----
+// 电脑版：在软件里下载，先选择保存位置，完成后问是否关闭软件并运行安装程序（electron/main.js）。
+// 安卓版：在软件里下载到应用自己的缓存文件夹，完成后打开系统的安装界面（UpdateDownloaderPlugin.java）。
+// 都没有时（例如旧的安卓外壳）交给系统浏览器下载。
+// 下载时屏幕上方显示进度条，右边的 × 可以停止下载。连续 UPDATE_STALL_MS 没有收到任何数据就当作超时、停止下载；
+// 只是下载得慢（数据一直在来）不算超时。
+// 返回 'done'（下载完成）/ 'browser'（交给了浏览器）/ 'cancelled'（取消了「另存为」）/ 'failed'（中断或超时）/ 'aborted'（用户点了 ×）
+const UPDATE_STALL_MS = 60 * 1000;
+let updateDownloader = null; // { cancel() }：正在进行的下载
+let desktopProgressBound = false;
+
+async function downloadUpdate(url, version) {
+  const desktop = window.proteusDesktop;
+  const android = typeof NATIVE !== 'undefined' && NATIVE ? nativePlugin('UpdateDownloader') : null;
+  if (desktop && desktop.downloadUpdate) {
+    // 结果由主进程的 update-download 消息告诉页面：先注册好，再开始下载
+    let finish;
+    const ended = new Promise((r) => { finish = r; });
+    if (!desktopProgressBound) {
+      desktopProgressBound = true;
+      desktop.onUpdateDownload((info) => { if (updateDownloader) updateDownloader.onEvent(info); });
+    }
+    const dl = watchDownload(version, () => desktop.cancelUpdate(), finish);
+    updateDownloader = dl;
+    const started = await desktop.downloadUpdate(url); // 先弹「另存为」，选好位置才开始
+    if (started === 'started') {
+      dl.begin();
+      return ended;
+    }
+    dl.stop();
+    if (started === 'cancelled') return 'cancelled'; // 下次启动时再提示
+  } else if (android && url.endsWith('.apk')) {
+    let finish;
+    const ended = new Promise((r) => { finish = r; });
+    const dl = watchDownload(version, () => android.cancel(), finish);
+    updateDownloader = dl;
+    dl.begin();
+    let listener = null;
+    try {
+      listener = await android.addListener('progress', (p) => dl.onEvent({ state: 'progress', received: p.received, total: p.total }));
+      android.download({ url, fileName: decodeURIComponent(url.split('/').pop()) })
+        .then((r) => dl.onEvent({ state: r && r.state === 'done' ? 'done' : r && r.state === 'aborted' ? 'aborted' : 'failed' }),
+          () => dl.onEvent({ state: 'failed' }));
+      const result = await ended;
+      if (result === 'done') {
+        toast(t('update.downloaded'));
+        // 打开系统的安装界面。打不开时不提示（用户可以到 GitHub Release 页面手动下载）
+        android.install().catch(() => {});
+      }
+      return result;
+    } catch (_) {
+      dl.stop(); // 没有这个原生功能（旧的安卓外壳）：交给浏览器
+    } finally {
+      if (listener) listener.remove();
+    }
+  }
+  openExternal(url);
   toast(t('update.downloading'));
-  return true;
+  return 'browser';
+}
+
+// 显示进度条、监视下载有没有卡住。cancel() 让下载停下（停下后由下载那边发出 aborted），finish(结果) 在结束时调用。
+// begin() 开始显示进度条和计时（电脑版在「另存为」选好以后）；onEvent 处理 progress / done / failed / aborted
+function watchDownload(version, cancel, finish) {
+  let lastBytes = -1;
+  let lastChange = Date.now();
+  let timedOut = false;
+  let finished = false;
+  let timer = null;
+  let grace = null;
+  const end = (state) => {
+    if (finished) return;
+    finished = true;
+    clearInterval(timer);
+    clearTimeout(grace);
+    hideUpdateProgress();
+    if (updateDownloader === dl) updateDownloader = null;
+    finish(state === 'aborted' && timedOut ? 'failed' : state);
+  };
+  const stopNow = (byTimeout) => {
+    if (finished || grace) return; // 已经在停了
+    clearInterval(timer);
+    timedOut = byTimeout;
+    Promise.resolve().then(cancel).catch(() => {});
+    // 下载那边一直没有回应时，过几秒也当作已经停下
+    grace = setTimeout(() => end('aborted'), 5000);
+  };
+  const dl = {
+    begin() {
+      lastChange = Date.now();
+      timer = setInterval(() => {
+        if (Date.now() - lastChange > UPDATE_STALL_MS) stopNow(true);
+      }, 2000);
+      if (lastBytes < 0) showUpdateProgress(version, 0, 0, true);
+      els.updateProgressStop.onclick = () => stopNow(false);
+    },
+    onEvent(info) {
+      if (finished) return;
+      if (info.state === 'progress') {
+        if (info.received !== lastBytes) { lastBytes = info.received; lastChange = Date.now(); }
+        showUpdateProgress(version, info.received, info.total);
+      } else if (info.state === 'done' || info.state === 'failed' || info.state === 'aborted') {
+        end(info.state);
+      }
+    },
+    stop() { finished = true; clearInterval(timer); hideUpdateProgress(); if (updateDownloader === dl) updateDownloader = null; },
+  };
+  return dl;
+}
+
+// 屏幕上方的下载进度条：「正在下载 0.5.0-beta.1… 42%」和已下载 / 总大小，右边是停止下载的 ×
+function showUpdateProgress(version, received, total, waiting) {
+  const mb = (n) => (n / 1024 / 1024).toFixed(1);
+  const percent = total > 0 ? Math.min(100, Math.floor((received / total) * 100)) : null;
+  els.updateProgressText.textContent = percent == null
+    ? t('update.progressUnknown', { version })
+    : t('update.progress', { version, percent });
+  els.updateProgressSize.textContent = waiting ? '' : total > 0 ? t('update.progressSize', { received: mb(received), total: mb(total) }) : t('update.progressSizeUnknown', { received: mb(received) });
+  els.updateProgressBar.classList.toggle('indeterminate', percent == null);
+  els.updateProgressFill.style.width = percent == null ? '' : percent + '%';
+  els.updateProgressStop.title = t('update.stop');
+  els.updateProgressStop.setAttribute('aria-label', t('update.stop'));
+  els.updateProgress.hidden = false;
+}
+
+function hideUpdateProgress() {
+  els.updateProgress.hidden = true;
 }

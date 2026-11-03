@@ -2316,7 +2316,8 @@ function showExitHint() {
 function bindBackButton() {
   if (!NATIVE) return;
   nativePlugin('App').addListener('backButton', () => {
-    // 更新提示盖在所有东西上面，而且必须选一个按钮：返回键只收起它里面的 ▾ 菜单（由它自己的 Esc 处理），不关掉窗口
+    // 更新提示（以及下载失败、手动中止的提示）盖在所有东西上面，而且必须选一个按钮：
+    // 返回键只收起它里面的 ▾ 菜单（由它自己的 Esc 处理），不关掉窗口
     if (!els.updateDialog.hidden) {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
       return;
