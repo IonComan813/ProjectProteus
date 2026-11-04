@@ -168,7 +168,6 @@ Each message is shown in its own isolated "sandbox" frame. Its styles and script
 
 - **No reply at all after sending** (the request failed or was blocked, or you stopped it before any text): the message you just sent goes back into the input box and the conversation ends at the last reply again, so editing it and clicking "Send" retries. The red box above the input says why ("Stopped by you" if you stopped it before any text; stopping after part of the reply shows nothing, since the cut-off ending is visible)
 - **No reply at all after editing a user message (or clicking "Get reply")**: the message has several versions, so it stays where it is instead of going back into the input box. The reason stays shown below the message, also after switching to another version and back, as a reminder of what went wrong with that version. Click "Get reply" to retry; the note goes away once there is a reply
-- **No reply at all after regenerating**: the new version is kept and shows the reason (a red box) in place of the text; you can switch away with `‹ 2/3 ›` and back to see it, regenerate again, edit it, or "Delete this version". If you carry on from this version, it isn't sent to the model (as if the model hadn't replied)
 
 - **Regenerate**: only on the last model reply. Old versions are kept and can be browsed with `‹ 2/3 ›`
 - **Edit**: only the **most recent** model reply and the **most recent** user message can be edited

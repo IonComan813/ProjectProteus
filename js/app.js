@@ -291,13 +291,11 @@ function sentGreeting(conv) {
 function windowOf(messages, greeting = sentGreeting(state.conv)) {
   const keep = state.settings.rounds * 2 + 1;
   const start = Math.max(0, messages.length - keep);
-  // 当前版本是空的模型回复（重新生成没得到回复、留下来的那个版本，见 runGeneration）不发送：相当于模型没回复过，
-  // 前后两条用户消息在 finalMessages 里合并成一条
   return messages.slice(start).map((m, i) => {
     let content = msgText(m);
     if (start + i === 0 && greeting && m.role === 'user') content = withGreeting(greeting, content);
     return { role: m.role, content };
-  }).filter((m) => m.role !== 'assistant' || m.content);
+  });
 }
 
 // 当前对话里，从第几条开始在下一次请求的记忆范围内
@@ -948,8 +946,7 @@ function updateView(v, it) {
     v.shownLocked = locked;
   }
 
-  // 没得到回复的原因：用户消息的这个版本没有任何回复时显示在消息下方；模型回复的这个版本（重新生成没得到回复）显示在内容的位置
-  const note = m && !editing && !isGen && Array.isArray(m.errors) && typeof m.errors[m.cur] === 'string' ? m.errors[m.cur] : '';
+  const note = m && m.role === 'user' && !editing && Array.isArray(m.errors) && typeof m.errors[m.cur] === 'string' ? m.errors[m.cur] : '';
   v.note.textContent = note;
   v.note.hidden = !note;
 
@@ -1245,9 +1242,8 @@ async function saveEdit() {
       await generateReply();
       return;
     }
-    // 编辑模型回复：直接改这个版本（相当于你改写了剧情），不重新生成。没得到回复的版本改写后就是正常的版本
+    // 编辑模型回复：直接改这个版本（相当于你改写了剧情），不重新生成
     m.versions[m.cur] = draft;
-    if (Array.isArray(m.errors)) m.errors[m.cur] = null;
     renderMessages();
     await saveConv();
     toast(t('msg.saved'));
@@ -1308,7 +1304,7 @@ function stashReplies(m) {
   const next = msgs[msgs.indexOf(m) + 1];
   const hasReply = next && next.role === 'assistant';
   if (!m.replies) m.replies = [];
-  m.replies[m.cur] = hasReply ? { id: next.id, versions: next.versions, cur: next.cur, ...(next.errors ? { errors: next.errors } : {}) } : null;
+  m.replies[m.cur] = hasReply ? { id: next.id, versions: next.versions, cur: next.cur } : null;
   if (hasReply) msgs.splice(msgs.indexOf(next), 1);
 }
 
@@ -1320,7 +1316,7 @@ function switchUserVersion(m, to) {
   m.replies[to] = null;
   if (set) {
     const msgs = state.conv.messages;
-    msgs.splice(msgs.indexOf(m) + 1, 0, { id: set.id, role: 'assistant', versions: set.versions, cur: set.cur, ...(set.errors ? { errors: set.errors } : {}) });
+    msgs.splice(msgs.indexOf(m) + 1, 0, { id: set.id, role: 'assistant', versions: set.versions, cur: set.cur });
   }
 }
 
@@ -1328,7 +1324,6 @@ async function deleteVersion(m) {
   if (!(await ask(t('msg.deleteVersionConfirm'), { ok: t('conv.delete'), danger: true }))) return;
   if (state.generating || !state.conv.messages.includes(m) || m.versions.length < 2) return;
   m.versions.splice(m.cur, 1);
-  if (Array.isArray(m.errors)) m.errors.splice(m.cur, 1);
   m.cur = Math.min(m.cur, m.versions.length - 1);
   renderMessages();
   await saveConv();
@@ -1557,10 +1552,8 @@ async function runGeneration(m, context, sent = null) {
   // 被拦截：模型的安全机制拒绝（Anthropic 的 refusal），或接口的内容过滤（OpenAI 格式的 content_filter）
   const blocked = reason === 'refusal' ? 'refused' : reason === 'content_filter' ? 'filtered' : null;
 
-  // 没有生成出任何文字时：重新生成的（这条回复还有别的版本）留下这个空版本，原因记在它上面（见下面），
-  // 可以用 ‹ 2/3 › 切回去看；第一次生成的撤掉这条回复
-  const keepFailed = !kept && m.versions.length > 1;
-  if (!kept && !keepFailed) {
+  // 没有生成出任何文字时，撤掉这个空版本
+  if (!kept) {
     m.versions.splice(ver, 1);
     if (!m.versions.length) conv.messages.splice(conv.messages.indexOf(m), 1);
     else m.cur = m.versions.length - 1;
@@ -1590,14 +1583,9 @@ async function runGeneration(m, context, sent = null) {
   }
   // 没退回输入框、这条用户消息的这个版本也就没有任何回复时（编辑用户消息后重新生成、点「生成回复」）：
   // 原因记在这个版本上，常驻显示在消息下方；切到别的版本再切回来还在，下次给这个版本生成回复时清掉。
-  // 退回了输入框的，原因显示在输入框上方的红框里
+  // 其他情况（退回了输入框、重新生成时还有以前的回复版本）显示在输入框上方的红框里
   let noteOnMsg = false;
-  if (keepFailed) {
-    // 重新生成没得到回复：原因常驻显示在这个版本的位置上（红框），切到别的版本再切回来还在
-    if (!Array.isArray(m.errors)) m.errors = [];
-    m.errors[ver] = noReply;
-    noteOnMsg = true;
-  } else if (!kept && !rolledBack && owner && conv.messages.includes(owner)) {
+  if (!kept && !rolledBack && owner && conv.messages.includes(owner)) {
     const next = conv.messages[conv.messages.indexOf(owner) + 1];
     if (!next || next.role !== 'assistant') {
       if (!Array.isArray(owner.errors)) owner.errors = [];
