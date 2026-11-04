@@ -532,9 +532,9 @@ The output is in the `dist/` folder.
 ```
 
 - **Every PR maintains this file**: it adds its own entries and removes or rewrites older entries it conflicts with (for example a feature it changes or takes back). By release time the file is a clean, accurate list of what's new in that version
-- **PRs that only change behind-the-scenes logic write an entry too**: a short one, without details, such as "Improved some behind-the-scenes logic". Otherwise, if such PRs are all that happened between two versions, the release notes are empty and users can't tell what the update was. If there already is such an entry, don't add another
-- **The first PR after a release** clears the entries, sets the base version (`基准版本`) to the version just released, and adds its own entries
-- **The PR description starts with** this block, always "已更新", followed by a short note of what was done:
+- **PRs that only change behind-the-scenes logic should write an entry too**: a short one, without details, such as "Improved some behind-the-scenes logic". Otherwise, if such PRs are all that happened between two versions, the release notes are empty and users can't tell what the update was. If there already is such an entry, don't add another; this is a recommendation, the check doesn't enforce it
+- **The first PR after a release** clears the entries and sets the base version (`基准版本`) to the version just released
+- **The PR description starts with** this block; the second line just says what was done, or "- 无需更新" when the entries did not change:
 
   ```
   ## 更新说明文件
@@ -542,11 +542,10 @@ The output is in the `dist/` folder.
   ```
 
 - **A PR check** (`.github/workflows/pr-notes-check.yml`) verifies that:
-  - the block says "已更新" ("无需更新" fails);
-  - the file has at least one entry;
-  - if the PR didn't change the entries (compared with the fork point; entries cleared after a release don't count), there is only a warning, not a failure, for example when "Improved some behind-the-scenes logic" is already there and another behind-the-scenes PR comes along;
+  - the block says "已更新" if the PR changed the entries (added, removed or reworded any) and "无需更新" if it didn't. Clearing entries that were already released, changing the base version, or editing only comments does not count: the first PR after a release writes "无需更新" if it only clears the file, and "已更新" if it also adds its own entries;
   - the file's format is valid, with all four languages (zh-CN, zh-TW, en, ja) in every entry;
-  - the base version is the latest released version. If it isn't, a release has happened and the file hasn't been cleared yet; the check fails and says what to change.
+  - the base version is the latest released version. If it isn't, a release has happened and the file hasn't been cleared yet; the check fails and says what to change;
+  - if the file has no entries at all, there is only a warning (the release notes would be empty), not a failure.
 
   The details are at the top of `scripts/release-notes.js`. The rest of the PR description is for the detailed changes and is not collected.
 - **When a version is published**, the build workflow reads this file from that commit, puts a Chinese and English section at the top of the release notes, and writes all four languages into `version.json` on the update server. `version.json` only holds the notes of the latest version, plus the previous version's number: the update window shows this version's notes, and a pointer to the GitHub Releases page when versions in between were skipped
