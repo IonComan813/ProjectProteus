@@ -84,7 +84,7 @@ const TokenCalib = (() => {
   // ---- 读写 ----
   // { relays: { 中转站: { s: 统计, models: { 模型名: { s: 统计, k: 进回归的请求次数, err: 最近一次估算的相对误差,
   //                                                     jump: 上一次的大偏差 { x, y, dir }，或已确认的变化 { dir, confirmed }（见 observe） } } } },
-  //   anchors: { anchorKey(对话id, 中转站, 模型): { x: 特征, y: 实际输入, out: 实际输出, t: 时间,
+  //   anchors: { anchorKey(对话id, 中转站, 模型): { x: 特征, y: 实际输入, out: 实际输出, est: 发送时的估算（界面上显示的那个数）, t: 时间,
   //              odd: 和内容对不上（不用来修正）, w: 修正的比例（第一次大偏差时为 JUMP_WEIGHT，没有时为 1） } },
   //   cloud: { t: 拉取时间, relays: { 域名: { 模型名: { a, b, c } } } }（共享数据，没有的系数不写）,
   //   client: 随机的设备编号, pushed: { 域名\n模型名: { t: 推送时间, th: 推送的系数 } } }
@@ -238,7 +238,7 @@ const TokenCalib = (() => {
 
   // 一次请求的预估输入 token。convId 给出时，用这个对话上一次请求的实际用量修正。
   // 返回 { tokens, source, last }；source 同 coefOf（有这个对话上一次的实际用量时为 'local'）；
-  // last 是这个对话上一次请求（同一中转站和模型）的实际用量 { input, output }
+  // last 是这个对话上一次请求（同一中转站和模型）的实际用量和发送时的估算 { input, output, est }（以前的数据没有 est，为 null）
   function predict(relay, model, x, convId) {
     const coef = coefOf(relay, model);
     let tokens = dot(coef.theta, x);
@@ -249,12 +249,13 @@ const TokenCalib = (() => {
     return {
       tokens: Math.max(0, Math.round(tokens)),
       source: usable ? 'local' : coef.source,
-      last: a ? { input: a.y, output: a.out } : null,
+      last: a ? { input: a.y, output: a.out, est: finite(a.est) ? a.est : null } : null,
     };
   }
 
-  // 记录一次请求的实际用量。x 是发送时算的特征，input / output 是接口报告的输入、输出 token
-  function observe(relay, model, x, input, output, convId) {
+  // 记录一次请求的实际用量。x 是发送时算的特征，input / output 是接口报告的输入、输出 token，
+  // est 是发送时的估算（predict 的结果，只用来显示上一次估得准不准；回归始终用粗略估算的特征 x，不用它）
+  function observe(relay, model, x, input, output, convId, est) {
     if (!safeKey(relay) || !safeKey(model) || !(input > 0)) return;
     const st = load();
     // 不进回归、也不用来修正这个对话的估算（只显示出来）的情况：
@@ -299,7 +300,7 @@ const TokenCalib = (() => {
       addTo(m.s, x, input, weight);
     }
     if (convId) {
-      const anchor = { x, y: input, out: output > 0 ? output : null, t: Date.now() };
+      const anchor = { x, y: input, out: output > 0 ? output : null, est: finite(est) && est >= 0 ? est : null, t: Date.now() };
       if (odd) anchor.odd = true;
       if (anchorWeight !== 1) anchor.w = anchorWeight;
       st.anchors[anchorKey(convId, relay, model)] = anchor;
@@ -493,7 +494,7 @@ const TokenCalib = (() => {
         if (!safeKey(key) || !isObj(a) || !validX(a.x) || !finite(a.y) || a.y <= 0 || !finite(a.t)) continue;
         const cur = own(st.anchors, key) ? st.anchors[key] : null;
         if (cur && cur.t >= a.t) continue;
-        const copy = { x: a.x, y: a.y, out: finite(a.out) && a.out > 0 ? a.out : null, t: a.t };
+        const copy = { x: a.x, y: a.y, out: finite(a.out) && a.out > 0 ? a.out : null, est: finite(a.est) && a.est >= 0 ? a.est : null, t: a.t };
         if (a.odd === true) copy.odd = true;
         if (finite(a.w) && a.w >= 0 && a.w < 1) copy.w = a.w;
         st.anchors[key] = copy;

@@ -1067,30 +1067,30 @@ function updateComposer() {
   updateEstimate();
 }
 
-// 记忆长度下方：下一次请求大约多少 token。总数和「查看下一轮将发送的内容」顶部的总数是同一个：
+// 记忆长度下方：下一次请求大约多少输入 token。总数和「查看下一轮将发送的内容」顶部的总数是同一个：
 // 用同一份内容（nextEstimate：输入框里的文字算作这一次的消息、合并连续同一角色的消息、补“前情省略”）。
-// 括号里是其中固定设定（system 部分和重点指令）的部分。
-// 有这个中转站和模型的实际用量时按它校准（否则是粗略估计），这个对话上一次请求的实际用量也显示出来
+// 校准从第一次请求起就逐步进行（tokens.js：岭回归，没有数据时系数为 1、加值为 0，就是粗略估算），所以提示文字不分“粗略 / 已校准”。
+// 这个对话上一次请求（同一中转站和模型）有记录时，下面再显示两行：发送时的估算，以及接口报告的实际用量和偏差
 function updateEstimate() {
-  const { system, postHistory, estimate, coef } = nextEstimate();
-  const sys = system.reduce((a, x) => a + tokensOf(x.text, coef), 0) + tokensOf(postHistory, coef);
-  let text = t(ESTIMATE_KEY[estimate.source] || 'set.tokenEstimate', {
-    tokens: estimate.tokens.toLocaleString(),
-    sys: sys.toLocaleString(),
-  });
+  const { estimate } = nextEstimate();
+  let text = t('set.tokenEstimate', { tokens: estimate.tokens.toLocaleString() });
   const last = estimate.last;
   if (last) {
-    text += '\n' + t(last.output ? 'set.tokenLast' : 'set.tokenLastIn', {
-      input: last.input.toLocaleString(),
-      output: (last.output || 0).toLocaleString(),
-    });
+    if (last.est !== null) text += '\n' + t('set.tokenLastEst', { tokens: last.est.toLocaleString() });
+    let line = t('set.tokenLastIn', { input: last.input.toLocaleString() });
+    if (last.est !== null) line += t('set.tokenLastBias', { bias: biasText(last.est, last.input) });
+    if (last.output) line += t('set.tokenLastOut', { output: last.output.toLocaleString() });
+    text += '\n' + line;
   }
   els.tokenEstimate.textContent = text;
 }
 
-// 估算的来源（tokens.js 的 source）→ 提示文字。共享数据在后台静默拉取，界面上不单独说明，和本机的数据一样显示为“按实际用量校准”
-const ESTIMATE_KEY = { local: 'set.tokenEstimateCalib', cloud: 'set.tokenEstimateCalib' };
-const PREVIEW_TOTAL_KEY = { local: 'preview.totalCalib', cloud: 'preview.totalCalib' };
+// 偏差 =（估值 − 实际）÷ 实际，带正负号：负数是估少了。例如 −8.9%
+function biasText(est, actual) {
+  const p = Math.round(((est - actual) / actual) * 1000) / 10;
+  const n = Math.abs(p).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  return (p > 0 ? '+' : p < 0 ? '−' : '') + n + '%';
+}
 
 // ---- 安装更新时保留输入框里的文字 ----
 // 安装更新会关闭软件：安装前把输入框里没发送的文字存起来（update.js 的 startInstall），下次启动时放回同一个对话。
@@ -1493,11 +1493,15 @@ async function runGeneration(m, context) {
 
   logConv = conv;
   const cfg = providerCfg();
-  let calib = null; // 这次请求的中转站、模型和内容的特征，收到实际用量后用来校准 token 估算
+  // 这次请求的中转站、模型和内容的特征，收到实际用量后用来校准 token 估算；
+  // est 是发送时的估算（用发送时的系数算这次实际发出的内容，通常就是发送前界面上显示的那个数），之后显示为“上一次请求输入 token 估值”
+  let calib = null;
   let usage = null;
   try {
     const req = requestOf(conv, context);
-    calib = { ...calibKey(cfg), x: TokenCalib.requestFeatures(req.system, finalMessages(PROVIDERS[cfg.provider].format, req.messages)) };
+    const k = calibKey(cfg);
+    const x = TokenCalib.requestFeatures(req.system, finalMessages(PROVIDERS[cfg.provider].format, req.messages));
+    calib = { ...k, x, est: TokenCalib.predict(k.relay, k.model, x, conv.id).tokens };
     result = await streamChat(cfg, req.system, req.messages, {
       signal: controller.signal,
       onUsage: (u) => { usage = u; },
@@ -1515,7 +1519,7 @@ async function runGeneration(m, context) {
     else error = e;
   }
   // 接口报告了输入用量（中途停止或出错时也可能已经报告了）：记下来校准以后的估算
-  if (calib && usage && usage.input) TokenCalib.observe(calib.relay, calib.model, calib.x, usage.input, usage.output, conv.id);
+  if (calib && usage && usage.input) TokenCalib.observe(calib.relay, calib.model, calib.x, usage.input, usage.output, conv.id, calib.est);
 
   state.generating = null;
   const text = m.versions[ver];
@@ -2645,8 +2649,10 @@ function openPreview() {
     g.textContent = title;
     body.appendChild(g);
   };
+  let sum = 0; // 各块相加
   const block = (title, text, note) => {
     const tokens = tokensOf(text, coef);
+    sum += tokens;
     const b = document.createElement('div');
     b.className = 'preview-block';
     const head = document.createElement('div');
@@ -2678,8 +2684,11 @@ function openPreview() {
     const lastOne = i === messages.length - 1;
     block(m.role === 'user' ? t('msg.you') : reply, m.content, lastOne && pending ? t('preview.emptyInput') : '');
   });
-  // 总数和设置面板里的一样（含消息格式的开销，并按这个对话上一次的实际用量修正），所以不一定等于各块相加
-  els.previewTotal.textContent = t(PREVIEW_TOTAL_KEY[estimate.source] || 'preview.total', { tokens: estimate.tokens.toLocaleString() });
+  // 各块都乘了校准的系数（tokens.js 的 a、b）。总数和设置面板里的一样，写成“各块相加 ± 加值 = 总数”：
+  // 加值是校准算法里不属于哪一块的部分（固定开销 c、每条消息的格式开销，以及按这个对话上一次实际用量的修正），可能是负数
+  const extra = estimate.tokens - sum;
+  const expr = sum.toLocaleString() + (extra < 0 ? ' − ' : ' + ') + Math.abs(extra).toLocaleString();
+  els.previewTotal.textContent = t('preview.total', { sum: expr, tokens: estimate.tokens.toLocaleString() });
   els.previewBox.hidden = false;
   placeExpand(els.previewBox);
   body.scrollTop = 0;
