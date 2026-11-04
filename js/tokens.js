@@ -85,7 +85,7 @@ const TokenCalib = (() => {
   // { relays: { 中转站: { s: 统计, models: { 模型名: { s: 统计, k: 进回归的请求次数, err: 最近一次估算的相对误差,
   //                                                     jump: 上一次的大偏差 { x, y, dir }，或已确认的变化 { dir, confirmed }（见 observe） } } } },
   //   anchors: { anchorKey(对话id, 中转站, 模型): { x: 特征, y: 实际输入, out: 实际输出, est: 发送时的估算（界面上显示的那个数）, t: 时间 } }
-  //              （这个对话的上一次请求，只用来显示）,
+  //              （这个对话的上一次请求，只用来显示。没收到接口报告的用量时 y、out 为 null，也没有 x；没收到输出用量时 out 为 null）,
   //   cloud: { t: 拉取时间, relays: { 域名: { 模型名: { a, b, c } } } }（共享数据，没有的系数不写）,
   //   client: 随机的设备编号, pushed: { 域名\n模型名: { t: 推送时间, th: 推送的系数 } } }
   let store = null;
@@ -254,10 +254,20 @@ const TokenCalib = (() => {
   }
 
   // 这个对话上一次请求（同一中转站和模型）：{ input: 实际输入, output: 实际输出, est: 发送时的估算 }，没有时为 null。
-  // 以前的数据没有 est，为 null
+  // 没收到的项为 null（input 为 null：没收到接口报告的用量；output 为 null：没收到输出用量）；以前的数据没有 est，为 null
   function lastOf(relay, model, convId) {
     const a = convId && relay && model ? load().anchors[anchorKey(convId, relay, model)] : null;
-    return a ? { input: a.y, output: a.out, est: finite(a.est) ? a.est : null } : null;
+    if (!a) return null;
+    return { input: finite(a.y) && a.y > 0 ? a.y : null, output: finite(a.out) && a.out > 0 ? a.out : null, est: finite(a.est) ? a.est : null };
+  }
+
+  // 记下这个对话的这次请求没收到接口报告的用量（回复中途断开、停止，或接口不报告用量）。只用来显示，不进回归
+  function observeNone(relay, model, convId, est) {
+    if (!safeKey(relay) || !safeKey(model) || !convId) return;
+    const st = load();
+    st.anchors[anchorKey(convId, relay, model)] = { y: null, out: null, est: finite(est) && est >= 0 ? est : null, t: Date.now() };
+    trimAnchors(st.anchors);
+    save();
   }
 
   // 记录一次请求的实际用量。x 是发送时算的特征，input / output 是接口报告的输入、输出 token，
@@ -494,10 +504,13 @@ const TokenCalib = (() => {
           const [convId, relay, model] = JSON.parse(oldKey);
           if (own(idMap, convId)) key = anchorKey(idMap[convId], relay, model);
         } catch (_) { continue; } // 认不出的跳过
-        if (!safeKey(key) || !isObj(a) || !validX(a.x) || !finite(a.y) || a.y <= 0 || !finite(a.t)) continue;
+        if (!safeKey(key) || !isObj(a) || !finite(a.t)) continue;
+        const got = finite(a.y) && a.y > 0; // 收到了接口报告的用量；没收到的（observeNone）只有 est
+        if (got ? !validX(a.x) : a.y !== null) continue;
         const cur = own(st.anchors, key) ? st.anchors[key] : null;
         if (cur && cur.t >= a.t) continue;
-        const copy = { x: a.x, y: a.y, out: finite(a.out) && a.out > 0 ? a.out : null, est: finite(a.est) && a.est >= 0 ? a.est : null, t: a.t };
+        const est = finite(a.est) && a.est >= 0 ? a.est : null;
+        const copy = got ? { x: a.x, y: a.y, out: finite(a.out) && a.out > 0 ? a.out : null, est, t: a.t } : { y: null, out: null, est, t: a.t };
         st.anchors[key] = copy;
       }
       trimAnchors(st.anchors);
@@ -507,7 +520,7 @@ const TokenCalib = (() => {
   }
 
   return {
-    relayOf, requestFeatures, coefOf, textTokens, estimate, lastOf, observe, forget,
+    relayOf, requestFeatures, coefOf, textTokens, estimate, lastOf, observe, observeNone, forget,
     setSharing, sync, exportData, importData,
     _test: { hostOf, pendingEntries, push },
   };

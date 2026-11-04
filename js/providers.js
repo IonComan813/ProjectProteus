@@ -322,10 +322,13 @@ async function streamChat(cfg, system, messages, { signal, onText, onThinking, o
     }
 
     let stopReason = null;
-    // 用量可能分几次报告（Anthropic：开头报告输入，结尾报告输出），每项保留最后一次非零的值
+    // 用量可能分几次报告（Anthropic：开头报告输入，结尾报告输出），每项保留最后一次非零的值。
+    // inputOnly：Anthropic 开头的 message_start 里也有 output_tokens，但那只是占位（一般是 1），不当作输出用量；
+    // 回复中途断开（网络、停止）时收不到结尾的输出用量，输出就是 0（界面上写“未接收到输出 token 报告”）
     const usage = { input: 0, output: 0 };
-    const gotUsage = (u) => {
+    const gotUsage = (u, inputOnly = false) => {
       const x = usageOf(u, req.format);
+      if (x && inputOnly) x.output = 0;
       if (!x || (!x.input && !x.output)) return;
       if (x.input) usage.input = x.input;
       if (x.output) usage.output = x.output;
@@ -333,7 +336,7 @@ async function streamChat(cfg, system, messages, { signal, onText, onThinking, o
     };
     const onEvent = req.format === 'anthropic'
       ? (ev) => {
-        if (ev.type === 'message_start' && ev.message) gotUsage(ev.message.usage);
+        if (ev.type === 'message_start' && ev.message) gotUsage(ev.message.usage, true);
         else if (ev.type === 'content_block_start' && ev.content_block && ev.content_block.type === 'thinking') onThinking && onThinking();
         else if (ev.type === 'content_block_delta' && ev.delta && ev.delta.type === 'text_delta') onText(ev.delta.text);
         else if (ev.type === 'message_delta') {

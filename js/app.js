@@ -1076,10 +1076,13 @@ function updateEstimate() {
   let text = t('set.tokenEstimate', { tokens: estimate.total.toLocaleString() });
   if (last) {
     if (last.est !== null) text += '\n' + t('set.tokenLastEst', { tokens: last.est.toLocaleString() });
-    let line = t('set.tokenLastIn', { input: last.input.toLocaleString() });
-    if (last.est !== null) line += t('set.tokenLastBias', { bias: biasText(last.est, last.input) });
-    if (last.output) line += t('set.tokenLastOut', { output: last.output.toLocaleString() });
-    text += '\n' + line;
+    if (last.input === null) text += '\n' + t('set.tokenLastNone');
+    else {
+      let line = t('set.tokenLastIn', { input: last.input.toLocaleString() });
+      if (last.est !== null) line += t('set.tokenLastBias', { bias: biasText(last.est, last.input) });
+      line += last.output !== null ? t('set.tokenLastOut', { output: last.output.toLocaleString() }) : t('set.tokenLastOutNone');
+      text += '\n' + line;
+    }
   }
   els.tokenEstimate.textContent = text;
 }
@@ -1518,8 +1521,13 @@ async function runGeneration(m, context) {
     if (e.name === 'AbortError') aborted = true;
     else error = e;
   }
-  // 接口报告了输入用量（中途停止或出错时也可能已经报告了）：记下来校准以后的估算
-  if (calib && usage && usage.input) TokenCalib.observe(calib.relay, calib.model, calib.x, usage.input, usage.output, conv.id, calib.est);
+  // 接口报告了输入用量（中途停止或出错时也可能已经报告了）：记下来校准以后的估算。
+  // 记忆长度下方的“上一次请求”只在这次留下了回复时才换成这一次：一个字都没有时（请求出错、停止）回复会被撤掉，
+  // 界面上看不到这次请求，“上一次请求”还是之前那一次（用量照样用来校准，数字是真的）。
+  // 留下了回复却没收到用量（中途断开、停止，或接口不报告用量）时，记下“没收到”
+  const replied = !!m.versions[ver];
+  if (calib && usage && usage.input) TokenCalib.observe(calib.relay, calib.model, calib.x, usage.input, usage.output, replied ? conv.id : null, calib.est);
+  else if (calib && replied) TokenCalib.observeNone(calib.relay, calib.model, conv.id, calib.est);
 
   state.generating = null;
   const text = m.versions[ver];
