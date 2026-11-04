@@ -2686,8 +2686,8 @@ function openPreview() {
     const lastOne = i === messages.length - 1;
     block(m.role === 'user' ? t('msg.you') : reply, m.content, estimate.messages[i], lastOne && pending ? t('preview.emptyInput') : '');
   });
-  // 各块都乘了校准的系数（含这条消息的格式开销）。总数和设置面板里的一样，写成“各块之和 + 加值 = 总数”：
-  // 加值是校准的固定加值（tokens.js 的 c，例如中转站自己加的内容），可能是负数
+  // 各块都乘了校准的系数（空的块是 0）。总数和设置面板里的一样，写成“各块之和 + 加值 = 总数”：
+  // 加值是校准的固定加值（tokens.js 的 c，例如中转站自己加的内容、消息格式的开销），可能是负数
   const { extra, total } = estimate;
   const sum = total - extra;
   const expr = sum.toLocaleString() + (extra < 0 ? ' − ' : ' + ') + Math.abs(extra).toLocaleString();
