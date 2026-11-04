@@ -2264,23 +2264,20 @@ async function restore(file) {
   if (data.type !== 'backup' || !Array.isArray(data.conversations) || !data.conversations.every(validBackupConv)) return toast(t('restore.invalid'));
   if (!(await ask(t('restore.fullConfirm', { n: data.conversations.length })))) return;
   if (state.generating) return toast(t('conv.stopFirst'));
-  // 备份里的对话加到现有对话里（现有的不动）。软件设置不动：以前的版本做的备份里带着设置的，也不用。
+  // 备份里的对话全部加到现有对话里（现有的不动；和现有的相同也照样加，重复的由用户自己删）。
+  // 软件设置不动：以前的版本做的备份里带着设置的，也不用。
   // 读完后仍停在读取前的对话里。先把还没写入的改动存好
   await flushConvSave();
   const arts = data.arts && typeof data.arts === 'object' ? data.arts : {};
   const existing = new Map(state.conversations.map((c) => [c.id, c]));
-  const idMap = {}; // 和现有对话 id 相同、内容不同的：换一个新的 id 加进来
+  const idMap = {}; // 和现有对话 id 相同的（例如同一份备份读了两次）：换一个新的 id 加进来
   let added = 0;
-  let same = 0;
   try {
     for (const c of data.conversations) {
       try { await openLock(c); } catch (_) { continue; } // 解不开的锁定对话跳过
       normalizeConv(c);
       const oldId = c.id;
-      const mine = existing.get(oldId);
-      if (mine) {
-        // 和现有的一模一样（例如同一份备份读了两次）：跳过，不重复加
-        if (JSON.stringify(storable(mine)) === JSON.stringify(storable(c))) { same++; continue; }
+      if (existing.has(oldId)) {
         c.id = uid();
         idMap[oldId] = c.id;
       }
@@ -2301,7 +2298,7 @@ async function restore(file) {
     return;
   }
   await boot();
-  toast(t(same ? 'restore.fullDoneSame' : 'restore.fullDone', { added, same }));
+  toast(t('restore.fullDone', { added }));
 }
 
 // ---------------- 布局：拖动调整左栏宽度和输入框高度 ----------------
