@@ -1,14 +1,15 @@
 // 检查更新（只在原生应用里：电脑版和安卓版）。
 //
-// 打包工作流在发布版本时，把安装包和一个 version.json 上传到更新服务器（Cloudflare R2），分两个频道：
-//   <UPDATE_BASE_URL>/stable/version.json   正式版（标签不带后缀，例如 v0.4.0）
-//   <UPDATE_BASE_URL>/beta/version.json     测试版（标签带后缀，例如 v0.4.0-beta.1）
-// 两个频道各自只保留最新的一个版本，互不覆盖。version.json 的内容：
-//   { version, tag, date, release（GitHub Release 页面）, files: { 'win-setup', 'win-zip', 'mac-arm64', 'mac-x64', 'linux', 'android' } }
+// 打包工作流在发布版本时，把安装包和一个 version.json 上传到更新服务器（Cloudflare R2）的 stable/ 文件夹，
+// 只保留最新的一个版本：
+//   <UPDATE_BASE_URL>/stable/version.json
+// version.json 的内容（scripts/update-manifest.js）：
+//   { version, tag, date, release（GitHub Release 页面）, files: { 'win-setup', 'win-zip', 'mac-arm64', 'mac-x64', 'linux', 'android' },
+//     notes（这个版本的更新说明，四种语言）, previous（上一个版本的版本号） }
 // files 里是安装包的文件名，和 version.json 放在同一个目录里。
+// （以前还有测试版的 beta/ 频道，现在只发布正式版，不再读取。）
 //
-// 软件启动时立刻读取这两个文件：正式版比当前版本新就提示；测试版比当前版本新、也比正式版新才提示。
-// 两个都有时在同一个窗口里列出，由用户选择下载哪个、稍后提醒或跳过这些版本。
+// 软件启动时立刻读取这个文件：比当前版本新就提示，由用户选择下载、稍后提醒或跳过这个版本。
 // 提示窗口一拿到版本信息就显示，盖在其他窗口和弹窗上面；正在生成回复时也显示，回复照常继续。
 // 电脑版在软件里下载（可以选择保存位置，完成后问是否关闭软件并运行安装程序）；安卓版用系统浏览器下载。
 // 网页版不检查（没有安装包可更新）。
@@ -76,7 +77,7 @@ async function fetchUpdateManifest(channel) {
 
 // 稍后提醒和跳过的版本，保存在软件设置里：
 //   updateSnooze.until：这个时间之前不提示（「一天后提醒」「三天后提醒」），期间出了更新的版本也不提示
-//   updateSnooze.skip：{ stable, beta } 各频道跳过的版本（「跳过此版本」），只有更新的版本才再提示
+//   updateSnooze.skip：{ stable } 跳过的版本（「跳过此版本」），只有更新的版本才再提示
 // 另外 updateCheckedDay 记下最近一次「检查过、没有要提示的更新」是哪一天（本机日期，例如 2026-11-02）：
 // 同一天里再启动软件不再检查，第二天第一次启动时再检查（按日期，不是满 24 小时），以减少对更新服务器的请求。
 // 连不上服务器时不记，下次启动再试
@@ -116,20 +117,14 @@ async function checkForUpdates(version, booted) {
   await offerUpdates(found.offers, key);
 }
 
-// 读取两个频道，返回 { offers: 要提示的版本, failed: 是否有频道没读到 }
+// 读取最新版本，返回 { offers: 要提示的版本（0 或 1 个）, failed: 是否没读到 }
 async function findUpdates(key, skip) {
   const current = state.version;
-  let [stable, beta] = await Promise.all([fetchUpdateManifest('stable'), fetchUpdateManifest('beta')]);
-  const failed = stable === 'error' || beta === 'error';
-  if (stable === 'error') stable = null;
-  if (beta === 'error') beta = null;
-  const wanted = (m) => m && m.files[key] && compareVersions(m.version, current) > 0
-    && !(skip[m.channel] && !(compareVersions(m.version, skip[m.channel]) > 0));
-  const offers = [];
-  if (wanted(stable)) offers.push(stable);
-  // 测试版还要比最新的正式版新（不论正式版是否被跳过）
-  if (wanted(beta) && (!stable || compareVersions(beta.version, stable.version) > 0)) offers.push(beta);
-  return { offers, failed };
+  const m = await fetchUpdateManifest('stable');
+  if (m === 'error') return { offers: [], failed: true };
+  const wanted = m && m.files[key] && compareVersions(m.version, current) > 0
+    && !(skip.stable && !(compareVersions(m.version, skip.stable) > 0));
+  return { offers: wanted ? [m] : [], failed: false };
 }
 
 // 记下今天已经检查过：同一天里再启动软件不再检查
@@ -175,34 +170,25 @@ async function installUpdate(m, key) {
   }
 }
 
-// 更新提示里的更新说明：每个频道（正式版、测试版分开）比当前版本新、不超过提示版本的各个版本的说明，
-// 最新的在前，每个频道最多 UPDATE_NOTES_MAX 个版本；还有更早的就在最后提示去 GitHub Release 页面查看。
-// 说明来自 version.json 的 notes 和 history（scripts/update-manifest.js），按界面语言显示，缺了就用 zh-CN / en。
-// 没有任何说明时返回空字符串（旧的 version.json 没有这些字段）
-const UPDATE_NOTES_MAX = 2;
-function updateNotesText(current, offers) {
+// 更新提示里的更新说明：最新版本的说明（version.json 的 notes），按界面语言显示，缺了就用 zh-CN / en。
+// 当前版本比 previous（上一个版本）还旧，说明跳过了中间的版本：在最后提示到 GitHub Release 页面查看那些版本的说明。
+// 旧格式的 version.json 没有 previous，用 history 判断（history 里有比当前版本新、比最新版本旧的版本）。
+// 没有任何说明、也没有跳过版本时返回空字符串
+function updateNotesText(current, m) {
   const pick = (notes) => {
+    if (!notes || typeof notes !== 'object') return [];
     for (const lang of [LANG, LANG === 'ja' ? 'en' : 'zh-CN', 'en']) {
       if (Array.isArray(notes[lang]) && notes[lang].length) return notes[lang];
     }
     return [];
   };
+  const lines = pick(m.notes);
+  const skipped = typeof m.previous === 'string'
+    ? compareVersions(current, m.previous) < 0
+    : Array.isArray(m.history) && m.history.some((e) => e && compareVersions(e.version, current) > 0 && compareVersions(e.version, m.version) < 0);
   let text = '';
-  let more = false;
-  for (const m of offers) {
-    const entries = (Array.isArray(m.history) ? m.history.slice() : []);
-    if (m.notes && !entries.some((e) => e && e.version === m.version)) entries.unshift({ version: m.version, notes: m.notes });
-    const usable = entries
-      .filter((e) => e && e.notes && typeof e.notes === 'object' && compareVersions(e.version, current) > 0
-        && !(compareVersions(e.version, m.version) > 0) && pick(e.notes).length)
-      .sort((a, b) => compareVersions(b.version, a.version));
-    if (usable.length > UPDATE_NOTES_MAX) more = true;
-    for (const e of usable.slice(0, UPDATE_NOTES_MAX)) {
-      text += '\n\n' + t(m.channel === 'beta' ? 'update.notesBeta' : 'update.notesStable', { version: e.version })
-        + '\n' + pick(e.notes).map((line) => '· ' + line).join('\n');
-    }
-  }
-  if (more) text += '\n\n' + t('update.notesMore');
+  if (lines.length) text += '\n\n' + t('update.notes') + '\n' + lines.map((line) => '· ' + line).join('\n');
+  if (skipped) text += '\n\n' + t('update.notesMore');
   return text;
 }
 
@@ -248,21 +234,17 @@ function openMandatoryDialog(title, message, onEsc) {
   return { close, done, show, cleanup };
 }
 
-// 更新提示窗口。按钮依次是：下载测试版 / 下载正式版（有哪个显示哪个）/「一天后提醒」（旁边的 ▾ 打开菜单：三天后提醒、跳过此版本）。
+// 更新提示窗口（offers 里只有一个版本）。按钮依次是：「下载 vX」「一天后提醒」（旁边的 ▾ 打开菜单：三天后提醒、跳过此版本）。
 // 返回 { manifest } / { remindDays } / { skip: true }
 function showUpdateDialog(current, offers) {
-  const lines = offers.map((m) => t(m.channel === 'beta' ? 'update.lineBeta' : 'update.lineStable', { version: m.version }));
-  const message = t('update.message', { current, list: lines.join('\n'), notes: updateNotesText(current, offers) })
-    + (offers.some((m) => m.channel === 'beta') ? '\n\n' + t('update.betaNote') : '');
+  const latest = offers[0];
+  const message = t('update.message', { current, version: latest.version, notes: updateNotesText(current, latest) });
   let menu = null;
   let toggle = null;
   const closeMenu = () => { if (menu && !menu.hidden) { menu.hidden = true; toggle.setAttribute('aria-expanded', 'false'); toggle.focus(); } };
   const dlg = openMandatoryDialog(t('update.title'), message, closeMenu);
 
-  for (const m of offers.slice().reverse()) {
-    const label = t(m.channel === 'beta' ? 'update.getBeta' : 'update.getStable', { version: m.version });
-    els.updateButtons.appendChild(button(label, () => dlg.close({ manifest: m }), 'btn' + (m.channel === 'stable' ? ' btn-primary' : '')));
-  }
+  els.updateButtons.appendChild(button(t('update.get', { version: latest.version }), () => dlg.close({ manifest: latest }), 'btn btn-primary'));
 
   // 「一天后提醒 ▾」：左边直接选一天后提醒，右边的 ▾ 打开菜单
   const split = document.createElement('div');
@@ -453,7 +435,7 @@ function watchDownload(version, cancel, finish) {
   return dl;
 }
 
-// 屏幕上方的下载进度条：「正在下载 0.5.0-beta.1… 42%」和已下载 / 总大小，右边是停止下载的 ×
+// 屏幕中间的下载进度条：「正在下载 0.5.1：42%」和已下载 / 总大小，右边是停止下载的 ×
 function showUpdateProgress(version, received, total, waiting) {
   const mb = (n) => (n / 1024 / 1024).toFixed(1);
   const percent = total > 0 ? Math.min(100, Math.floor((received / total) * 100)) : null;
