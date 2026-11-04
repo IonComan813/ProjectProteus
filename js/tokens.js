@@ -62,6 +62,10 @@ const TokenCalib = (() => {
   // 实际值 ÷ 粗略估算超出这个范围的不进回归（只用来修正这个对话），原因见 observe
   const RATIO_MIN = 0.2;
   const RATIO_MAX = 50;
+  // 已经校准过的模型碰到大偏差（见 observe）：
+  const JUMP_MIN_K = 3;        // 至少有这么多次数据，才有可信的估算可以比较
+  const JUMP_ERR = 0.3;        // 实际值和估算相差这么多以上算大偏差
+  const JUMP_WEIGHT = 0.3;     // 第一次大偏差只按这个权重计入，也只按这个比例修正这个对话的下一次估算
   const COEF_MIN = 0.1;
   const COEF_MAX = 10;
   const CONST_MIN = -5000;
@@ -78,8 +82,10 @@ const TokenCalib = (() => {
   const MAX_PUSH_ENTRIES = 20;
 
   // ---- 读写 ----
-  // { relays: { 中转站: { s: 统计, models: { 模型名: { s: 统计, k: 进回归的请求次数, err: 最近一次估算的相对误差 } } } },
-  //   anchors: { anchorKey(对话id, 中转站, 模型): { x: 特征, y: 实际输入, out: 实际输出, t: 时间, odd: 和内容对不上（见 observe） } },
+  // { relays: { 中转站: { s: 统计, models: { 模型名: { s: 统计, k: 进回归的请求次数, err: 最近一次估算的相对误差,
+  //                                                     jump: 上一次的大偏差 { x, y, dir }，或已确认的变化 { dir, confirmed }（见 observe） } } } },
+  //   anchors: { anchorKey(对话id, 中转站, 模型): { x: 特征, y: 实际输入, out: 实际输出, t: 时间,
+  //              odd: 和内容对不上（不用来修正）, w: 修正的比例（第一次大偏差时为 JUMP_WEIGHT，没有时为 1） } },
   //   cloud: { t: 拉取时间, relays: { 域名: { 模型名: { a, b, c } } } }（共享数据，没有的系数不写）,
   //   client: 随机的设备编号, pushed: { 域名\n模型名: { t: 推送时间, th: 推送的系数 } } }
   let store = null;
@@ -153,11 +159,15 @@ const TokenCalib = (() => {
   const PRIOR = [PRIOR_COEF, PRIOR_COEF, PRIOR_CONST];
   const CLOUD_PRIOR = PRIOR.map((p) => p * CLOUD_PRIOR_SCALE);
 
-  function addTo(s, x, y) {
-    const w = 1 / Math.pow(Math.max(y, MIN_WEIGHT_SIZE), 2); // 按相对误差拟合：大请求和小请求同样重要
-    for (let i = 0; i < 9; i++) s.A[i] *= DECAY;
-    for (let i = 0; i < 3; i++) s.b[i] *= DECAY;
-    s.n = s.n * DECAY + 1;
+  // 加入一次请求的数据。weight 是这次数据的权重（默认 1）；decay 为 false 时旧数据不衰减（补记以前少算的权重时用）
+  function addTo(s, x, y, weight = 1, decay = true) {
+    const w = weight / Math.pow(Math.max(y, MIN_WEIGHT_SIZE), 2); // 按相对误差拟合：大请求和小请求同样重要
+    if (decay) {
+      for (let i = 0; i < 9; i++) s.A[i] *= DECAY;
+      for (let i = 0; i < 3; i++) s.b[i] *= DECAY;
+      s.n *= DECAY;
+    }
+    s.n += weight;
     for (let i = 0; i < 3; i++) {
       for (let j = 0; j < 3; j++) s.A[i * 3 + j] += w * x[i] * x[j];
       s.b[i] += w * x[i] * y;
@@ -234,7 +244,8 @@ const TokenCalib = (() => {
     let tokens = dot(coef.theta, x);
     const a = convId && relay && model ? load().anchors[anchorKey(convId, relay, model)] : null;
     const usable = !!a && !a.odd; // 和内容对不上的实际值（见 observe）照样显示，但不用来修正
-    if (usable) tokens += a.y - dot(coef.theta, a.x);
+    // 第一次大偏差的那次（见 observe）只按 JUMP_WEIGHT 的比例修正
+    if (usable) tokens += (a.w === undefined ? 1 : a.w) * (a.y - dot(coef.theta, a.x));
     return {
       tokens: Math.max(0, Math.round(tokens)),
       source: usable ? 'local' : coef.source,
@@ -253,19 +264,46 @@ const TokenCalib = (() => {
     //     （中转站偷偷加了很长的 system prompt 时，短对话的实际值也会是估算的十几二十倍，这是真实的，要进回归，由 c 学到）
     const ratio = input / Math.max(dot(DEFAULT_THETA, x), 1);
     const odd = !(ratio >= RATIO_MIN && ratio <= RATIO_MAX);
-    if (convId) {
-      st.anchors[anchorKey(convId, relay, model)] = { x, y: input, out: output > 0 ? output : null, t: Date.now(), ...(odd ? { odd: true } : {}) };
-      trimAnchors(st.anchors);
-    }
+    let anchorWeight = 1;
     if (!odd) {
       const r = st.relays[relay] || (st.relays[relay] = { s: emptyStats(), models: {} });
       const m = r.models[model] || (r.models[model] = { s: emptyStats(), k: 0, err: null });
-      // 更新之前，单看回归（不用这个对话上一次的用量）估得准不准：用来判断校准是否已经稳定
+      // 更新之前，单看回归（不用这个对话上一次的用量）估得准不准：用来判断校准是否已经稳定，以及这次是不是大偏差
       const before = dot(coefOf(relay, model).theta, x);
       m.err = Math.abs(before - input) / input;
+      // 已经校准过的模型碰到大偏差：可能是偶发的怪数字，也可能是情况真的变了（中转站换了上游、模型名指向了新模型、
+      // 开始加隐藏的提示词，或者换了一种粗略公式估得不准的语言）。
+      //   第一次：只按 JUMP_WEIGHT 计入，记下来（m.jump）；这个对话的下一次估算也只按这个比例修正
+      //   下一次又往同一个方向偏差很大：认定情况变了，把上次少算的权重补上，这次按正常权重计入；
+      //     之后回归赶上来之前（还是同一个方向的大偏差）也都按正常权重计入
+      //   下一次正常，或者往反方向偏：上次是偶发的，只留下 JUMP_WEIGHT 的影响
+      const dir = Math.sign(input - before);
+      const jump = (m.k || 0) >= JUMP_MIN_K && Math.abs(input - before) / Math.max(before, 1) > JUMP_ERR;
+      const prev = m.jump;
+      delete m.jump;
+      let weight = 1;
+      if (jump && prev && prev.dir === dir) {
+        // 补上次少算的权重（已经确认过的不用补）。那次已经过去一次请求，这次计入时会对所有旧数据再衰减一次
+        if (!prev.confirmed && validX(prev.x) && finite(prev.y)) {
+          addTo(r.s, prev.x, prev.y, 1 - JUMP_WEIGHT, false);
+          addTo(m.s, prev.x, prev.y, 1 - JUMP_WEIGHT, false);
+        }
+        m.jump = { dir, confirmed: true };
+      } else if (jump) {
+        weight = JUMP_WEIGHT;
+        anchorWeight = JUMP_WEIGHT;
+        m.jump = { x, y: input, dir };
+      }
       m.k = (m.k || 0) + 1;
-      addTo(r.s, x, input);
-      addTo(m.s, x, input);
+      addTo(r.s, x, input, weight);
+      addTo(m.s, x, input, weight);
+    }
+    if (convId) {
+      const anchor = { x, y: input, out: output > 0 ? output : null, t: Date.now() };
+      if (odd) anchor.odd = true;
+      if (anchorWeight !== 1) anchor.w = anchorWeight;
+      st.anchors[anchorKey(convId, relay, model)] = anchor;
+      trimAnchors(st.anchors);
     }
     save();
     schedulePush();
@@ -449,7 +487,10 @@ const TokenCalib = (() => {
         if (!safeKey(key) || !isObj(a) || !validX(a.x) || !finite(a.y) || a.y <= 0 || !finite(a.t)) continue;
         const cur = own(st.anchors, key) ? st.anchors[key] : null;
         if (cur && cur.t >= a.t) continue;
-        st.anchors[key] = { x: a.x, y: a.y, out: finite(a.out) && a.out > 0 ? a.out : null, t: a.t, ...(a.odd === true ? { odd: true } : {}) };
+        const copy = { x: a.x, y: a.y, out: finite(a.out) && a.out > 0 ? a.out : null, t: a.t };
+        if (a.odd === true) copy.odd = true;
+        if (finite(a.w) && a.w >= 0 && a.w < 1) copy.w = a.w;
+        st.anchors[key] = copy;
       }
       trimAnchors(st.anchors);
     }
