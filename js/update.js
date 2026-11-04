@@ -387,35 +387,14 @@ async function downloadUpdate(url, version) {
   return 'browser';
 }
 
-// 安装会关闭软件（免安装版除外）。这些情况先等一等，返回进度条那里要显示的提示（i18n 键名），不用等时返回 null：
-//   模型正在出字；正在编辑消息或开场白（改了还没保存的会丢）；确认框、输入框、密码框开着（例如正要读取备份）；
-//   正在读取备份或卡片（读取完整备份时会先清空现有对话再写入，中途关掉会丢数据）。
-// 输入框里没发送的文字不用等：安装前存起来，重启后放回（saveInputDraft / restoreInputDraft）
-function installBlocker() {
-  if (state.generating) return 'update.waitReply';
-  if (state.editingId) return 'update.waitEdit';
-  if (state.greetingMode) return 'update.waitGreeting';
-  if (state.restoring) return 'update.waitRestore';
-  if (!els.dialog.hidden || !els.textDialog.hidden || !els.pwDialog.hidden) return 'update.waitDialog';
-  return null;
-}
-
-// 下载完成后安装：要等的情况（installBlocker）都过去后，进度条那里显示「下载完成，正在启动安装程序…」（按安装包类型）
-// 一会儿让用户看到，保存好对话和输入框里的文字，再开始安装。Windows 安装版、Linux、macOS 安装开始后软件随即关闭；
-// 安卓版安装时系统会关闭软件。没能开始安装（例如被安全软件拦下）时不提示，过一会儿收起进度条
+// 下载完成后安装：进度条那里显示「下载完成，正在启动安装程序…」（按安装包类型）一会儿让用户看到，
+// 保存好对话和输入框里的文字，再开始安装。下载和安装期间软件是锁定的（lockApp），不用等别的操作结束。
+// Windows 安装版、Linux、macOS 安装开始后软件随即关闭；安卓版安装时系统会关闭软件。
+// 没能开始安装（例如被安全软件拦下）时不提示，过一会儿收起进度条（同时解除锁定）
 async function startInstall(kind, install) {
   const text = kind === 'dmg' ? 'update.openingDmg' : kind === 'zip' ? 'update.zipReady' : kind === 'apk' ? 'update.installingAndroid' : 'update.installing';
-  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-  for (;;) {
-    let wait;
-    while ((wait = installBlocker())) {
-      showUpdateMessage(t(wait));
-      await sleep(1000);
-    }
-    showUpdateMessage(t(text));
-    await sleep(1500); // 让用户看到这句话
-    if (!installBlocker()) break; // 这期间又开始了要等的事（例如发了一条消息）：接着等
-  }
+  showUpdateMessage(t(text));
+  await new Promise((r) => setTimeout(r, 1500)); // 让用户看到这句话
   await flushConvSave();
   if (kind !== 'zip') saveInputDraft(); // 免安装版不关闭软件，不用存
   let ok = false;
@@ -489,8 +468,9 @@ function showUpdateProgress(version, received, total, waiting) {
   els.updateProgressStop.title = t('update.stop');
   els.updateProgressStop.setAttribute('aria-label', t('update.stop'));
   els.updateProgressStop.hidden = false;
-  els.updateProgress.classList.remove('message');
+  els.updateProgressBox.classList.remove('message');
   els.updateProgress.hidden = false;
+  lockApp(true);
 }
 
 // 下载完成后，进度条那里只显示一句话（进度条满格，没有 ×）
@@ -501,10 +481,44 @@ function showUpdateMessage(text) {
   els.updateProgressBar.classList.remove('indeterminate');
   els.updateProgressFill.style.width = '100%';
   els.updateProgressStop.hidden = true;
-  els.updateProgress.classList.add('message');
+  els.updateProgressBox.classList.add('message');
   els.updateProgress.hidden = false;
+  lockApp(true);
 }
 
 function hideUpdateProgress() {
   els.updateProgress.hidden = true;
+  lockApp(false);
+}
+
+// 下载和安装期间锁定软件：进度条以外的东西都不能点、不能用键盘操作（inert），
+// 进度条也不能用 Esc 或点外面关掉；按键只留给进度条上的 ×（Tab、Enter、空格）。安卓的返回键见 app.js 的 bindBackButton
+let appLocked = null; // 锁定时为被设成 inert 的元素
+let lockBound = false;
+function lockApp(on) {
+  if (!lockBound) {
+    lockBound = true;
+    // 点在变暗的区域上什么都不做，焦点也留在原处（不然 × 就用不了键盘了）
+    els.updateProgress.addEventListener('mousedown', (e) => { if (!els.updateProgressBox.contains(e.target)) e.preventDefault(); });
+  }
+  if (on && !appLocked) {
+    appLocked = [...document.body.children].filter((el) => el !== els.updateProgress && !el.inert);
+    for (const el of appLocked) el.inert = true;
+    document.addEventListener('keydown', blockKeys, true);
+  } else if (!on && appLocked) {
+    for (const el of appLocked) el.inert = false;
+    appLocked = null;
+    document.removeEventListener('keydown', blockKeys, true);
+  }
+  if (on) {
+    // 焦点放到 × 上（下载完成后 × 不显示，放到进度条上），免得留在输入框里
+    const target = els.updateProgressStop.hidden ? els.updateProgressBox : els.updateProgressStop;
+    if (!els.updateProgress.contains(document.activeElement)) target.focus();
+  }
+}
+
+function blockKeys(e) {
+  if (els.updateProgress.contains(e.target) && ['Tab', 'Enter', ' '].includes(e.key)) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
 }

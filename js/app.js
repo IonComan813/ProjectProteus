@@ -47,7 +47,6 @@ const state = {
   views: new Map(),    // 消息 id → 界面元素
   renderedConvId: null,
   greetingMode: null,  // 正在用输入框编辑开场白时为 { preview }
-  restoring: false,    // 正在读取世界卡、备份或酒馆卡（安装更新要等它完成，见 update.js 的 installBlocker）
   version: null,       // 当前运行的版本号（网页版为 null）
 };
 
@@ -1739,7 +1738,7 @@ async function importArt(convId, art) {
   await DB.set(artKey(convId), typeof art === 'string' ? await dataURLToBlob(art) : art);
 }
 
-// 备份里的对话：先整体检查，不合格就不读取（读取完整备份会先清空现有数据）
+// 备份里的对话：先整体检查，有不合格的就整个不读取
 function validVersions(x) {
   return !!x && Array.isArray(x.versions) && x.versions.length > 0 && x.versions.every((v) => typeof v === 'string')
     && Number.isInteger(x.cur) && x.cur >= 0 && x.cur < x.versions.length;
@@ -2203,15 +2202,6 @@ async function importTavernFile(file) {
 // 读取世界卡、完整备份（当前对话 / 全部对话），或者酒馆的角色卡（PNG / JSON）、世界书（JSON）。
 // 剧情导出是 TXT/Markdown，不能读回
 async function restore(file) {
-  state.restoring = true;
-  try {
-    return await restoreFile(file);
-  } finally {
-    state.restoring = false;
-  }
-}
-
-async function restoreFile(file) {
   if (state.generating) return toast(t('conv.stopFirst'));
   const r = await readImportFile(file);
   if (r.error) return toast(t(r.error));
@@ -2272,29 +2262,41 @@ async function restoreFile(file) {
   }
 
   if (data.type !== 'backup' || !Array.isArray(data.conversations) || !data.conversations.every(validBackupConv)) return toast(t('restore.invalid'));
-  if (!(await ask(t('restore.fullConfirm', { n: data.conversations.length }), { danger: true }))) return;
+  if (!(await ask(t('restore.fullConfirm', { n: data.conversations.length })))) return;
   if (state.generating) return toast(t('conv.stopFirst'));
-  // 还没写入的改动作废：现有对话马上要被替换，晚到的保存会把旧对话写回去
-  clearTimeout(convSaveTimer);
-  convSavePending = null;
+  // 备份里的对话加到现有对话里（现有的不动），软件设置换成备份里的。先把还没写入的改动存好
+  await flushConvSave();
   clearTimeout(saveTimer);
   const saved = data.settings && typeof data.settings === 'object' ? data.settings : {};
   const arts = data.arts && typeof data.arts === 'object' ? data.arts : {};
   // API Key 不在备份里，保留本机的；“记住 API Key”也跟着本机
   const settings = { ...DEFAULT_SETTINGS, ...saved, apiKeys: state.settings.apiKeys, rememberKeys: state.settings.rememberKeys };
+  const existing = new Map(state.conversations.map((c) => [c.id, c]));
+  const idMap = {}; // 和现有对话 id 相同、内容不同的：换一个新的 id 加进来
+  let added = 0;
+  let same = 0;
   try {
-    state.settings = settings;
-    await DB.set('settings', storableSettings());
-    // 清掉现有的对话和艺术图
-    for (const c of state.conversations) await DB.del(artKey(c.id));
-    await DB.clearConversations();
     for (const c of data.conversations) {
       try { await openLock(c); } catch (_) { continue; } // 解不开的锁定对话跳过
-      await DB.putConversation(storable(normalizeConv(c)));
-      await importArt(c.id, arts[c.id]);
+      normalizeConv(c);
+      const oldId = c.id;
+      const mine = existing.get(oldId);
+      if (mine) {
+        // 和现有的一模一样（例如同一份备份读了两次）：跳过，不重复加
+        if (JSON.stringify(storable(mine)) === JSON.stringify(storable(c))) { same++; continue; }
+        c.id = uid();
+        idMap[oldId] = c.id;
+      }
+      existing.set(c.id, c);
+      await DB.putConversation(storable(c));
+      await importArt(c.id, arts[oldId]);
+      added++;
     }
-    // token 校准数据和本机的合并（不清掉本机的：本机的数据同样有效）
-    TokenCalib.importData(data.tokenCalib);
+    if (idMap[settings.activeConvId]) settings.activeConvId = idMap[settings.activeConvId];
+    state.settings = settings;
+    await DB.set('settings', storableSettings());
+    // token 校准数据和本机的合并（换了 id 的对话，“上一次请求”跟着换）
+    TokenCalib.importData(data.tokenCalib, idMap);
   } catch (e) {
     console.error(e);
     await boot();
@@ -2302,7 +2304,7 @@ async function restoreFile(file) {
     return;
   }
   await boot();
-  toast(t('restore.fullDone'));
+  toast(t(same ? 'restore.fullDoneSame' : 'restore.fullDone', { added, same }));
 }
 
 // ---------------- 布局：拖动调整左栏宽度和输入框高度 ----------------
@@ -2384,6 +2386,8 @@ function showExitHint() {
 function bindBackButton() {
   if (!NATIVE) return;
   nativePlugin('App').addListener('backButton', () => {
+    // 正在下载或安装更新（软件锁定，见 update.js 的 lockApp）：返回键什么都不做
+    if (!els.updateProgress.hidden) return;
     // 更新提示（以及下载失败、手动中止的提示）盖在所有东西上面，而且必须选一个按钮：
     // 返回键只收起它里面的 ▾ 菜单（由它自己的 Esc 处理），不关掉窗口
     if (!els.updateDialog.hidden) {

@@ -464,8 +464,9 @@ const TokenCalib = (() => {
     && Array.isArray(s.b) && s.b.length === 3 && s.b.every(finite) && finite(s.n) && s.n >= 0;
   const validX = (x) => Array.isArray(x) && x.length === 3 && x.every(finite);
 
-  // 读取完整备份时合并：同一个中转站 / 模型保留数据多的那份，同一个“上一次请求”保留新的那份
-  function importData(d) {
+  // 读取完整备份时合并：同一个中转站 / 模型保留数据多的那份，同一个“上一次请求”保留新的那份。
+  // idMap：备份里换了 id 才加进来的对话 { 旧 id: 新 id }，它们的“上一次请求”跟着换
+  function importData(d, idMap = {}) {
     if (!isObj(d) || !isObj(d.relays)) return;
     const st = load();
     for (const relay of Object.keys(d.relays)) {
@@ -482,8 +483,13 @@ const TokenCalib = (() => {
       }
     }
     if (isObj(d.anchors)) {
-      for (const key of Object.keys(d.anchors)) {
-        const a = d.anchors[key];
+      for (const oldKey of Object.keys(d.anchors)) {
+        const a = d.anchors[oldKey];
+        let key = oldKey;
+        try {
+          const [convId, relay, model] = JSON.parse(oldKey);
+          if (own(idMap, convId)) key = anchorKey(idMap[convId], relay, model);
+        } catch (_) { continue; } // 认不出的跳过
         if (!safeKey(key) || !isObj(a) || !validX(a.x) || !finite(a.y) || a.y <= 0 || !finite(a.t)) continue;
         const cur = own(st.anchors, key) ? st.anchors[key] : null;
         if (cur && cur.t >= a.t) continue;
