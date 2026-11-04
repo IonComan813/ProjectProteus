@@ -1072,9 +1072,8 @@ function updateComposer() {
 // 校准从第一次请求起就逐步进行（tokens.js：岭回归，没有数据时系数为 1、加值为 0，就是粗略估算），所以提示文字不分“粗略 / 已校准”。
 // 这个对话上一次请求（同一中转站和模型）有记录时，下面再显示两行：发送时的估算，以及接口报告的实际用量和偏差
 function updateEstimate() {
-  const { estimate } = nextEstimate();
-  let text = t('set.tokenEstimate', { tokens: estimate.tokens.toLocaleString() });
-  const last = estimate.last;
+  const { estimate, last } = nextEstimate();
+  let text = t('set.tokenEstimate', { tokens: estimate.total.toLocaleString() });
   if (last) {
     if (last.est !== null) text += '\n' + t('set.tokenLastEst', { tokens: last.est.toLocaleString() });
     let line = t('set.tokenLastIn', { input: last.input.toLocaleString() });
@@ -1500,8 +1499,9 @@ async function runGeneration(m, context) {
   try {
     const req = requestOf(conv, context);
     const k = calibKey(cfg);
-    const x = TokenCalib.requestFeatures(req.system, finalMessages(PROVIDERS[cfg.provider].format, req.messages));
-    calib = { ...k, x, est: TokenCalib.predict(k.relay, k.model, x, conv.id).tokens };
+    const sent = finalMessages(PROVIDERS[cfg.provider].format, req.messages);
+    const est = TokenCalib.estimate(k.relay, k.model, systemBlocks(conv).map((b) => b.text), sent.map((m) => m.content)).total;
+    calib = { ...k, x: TokenCalib.requestFeatures(req.system, sent), est };
     result = await streamChat(cfg, req.system, req.messages, {
       signal: controller.signal,
       onUsage: (u) => { usage = u; },
@@ -2615,7 +2615,15 @@ function nextRequestBlocks() {
   }
   const req = requestOf(conv, list);
 
-  // system 部分：和 buildSystem 的顺序、标签相同，拆成一块一块
+  const system = systemBlocks(conv);
+
+  // 消息：和真正发出时一样合并连续同一角色的消息，Anthropic 格式开头补“前情省略”
+  const messages = finalMessages(PROVIDERS[state.settings.provider].format, req.messages);
+  return { system, messages, pending };
+}
+
+// system 部分：和 buildSystem 的顺序、标签相同，拆成一块一块（「查看下一轮将发送的内容」里的各块；发送时也按它估算）
+function systemBlocks(conv) {
   const system = [];
   const add = (title, text) => { if (text) system.push({ title, text: withMacros(text, conv) }); };
   add('System Prompt', conv.systemPrompt.trim());
@@ -2624,23 +2632,20 @@ function nextRequestBlocks() {
     if (conv.npcText.trim()) add(t('set.npc'), t('sys.npc') + '\n' + conv.npcText.trim());
     if (conv.persona.trim()) add(t('set.persona'), t('sys.persona') + '\n' + conv.persona.trim());
   }
-
-  // 消息：和真正发出时一样合并连续同一角色的消息，Anthropic 格式开头补“前情省略”
-  const messages = finalMessages(PROVIDERS[state.settings.provider].format, req.messages);
-  return { system, messages, pending, postHistory: req.postHistory, systemText: req.system };
+  return system;
 }
 
-// 下一次请求的内容和预估的 token 数（tokens.js 的 predict：按实际用量校准，并用这个对话上一次请求的实际用量修正）
+// 下一次请求的内容和预估的 token 数（tokens.js 的 estimate：各块 + 加值 = 总数），以及这个对话上一次请求的记录
 function nextEstimate() {
   const blocks = nextRequestBlocks();
   const k = calibKey();
-  const x = TokenCalib.requestFeatures(blocks.systemText, blocks.messages);
-  return { ...blocks, estimate: TokenCalib.predict(k.relay, k.model, x, state.conv.id), coef: TokenCalib.coefOf(k.relay, k.model) };
+  const estimate = TokenCalib.estimate(k.relay, k.model, blocks.system.map((b) => b.text), blocks.messages.map((m) => m.content));
+  return { ...blocks, estimate, last: TokenCalib.lastOf(k.relay, k.model, state.conv.id) };
 }
 
 function openPreview() {
   const conv = state.conv;
-  const { system, messages, pending, estimate, coef } = nextEstimate();
+  const { system, messages, pending, estimate } = nextEstimate();
   const body = els.previewBody;
   body.replaceChildren();
   const group = (title) => {
@@ -2649,10 +2654,7 @@ function openPreview() {
     g.textContent = title;
     body.appendChild(g);
   };
-  let sum = 0; // 各块相加
-  const block = (title, text, note) => {
-    const tokens = tokensOf(text, coef);
-    sum += tokens;
+  const block = (title, text, tokens, note) => {
     const b = document.createElement('div');
     b.className = 'preview-block';
     const head = document.createElement('div');
@@ -2676,19 +2678,20 @@ function openPreview() {
   };
   if (system.length) {
     group(t('preview.system'));
-    for (const x of system) block(x.title, x.text);
+    system.forEach((x, i) => block(x.title, x.text, estimate.system[i]));
   }
   group(t(isAssistant(conv) ? 'preview.chat' : 'preview.story'));
   const reply = t(isAssistant(conv) ? 'msg.assistant' : 'msg.story');
   messages.forEach((m, i) => {
     const lastOne = i === messages.length - 1;
-    block(m.role === 'user' ? t('msg.you') : reply, m.content, lastOne && pending ? t('preview.emptyInput') : '');
+    block(m.role === 'user' ? t('msg.you') : reply, m.content, estimate.messages[i], lastOne && pending ? t('preview.emptyInput') : '');
   });
-  // 各块都乘了校准的系数（tokens.js 的 a、b）。总数和设置面板里的一样，写成“各块相加 ± 加值 = 总数”：
-  // 加值是校准算法里不属于哪一块的部分（固定开销 c、每条消息的格式开销，以及按这个对话上一次实际用量的修正），可能是负数
-  const extra = estimate.tokens - sum;
+  // 各块都乘了校准的系数（含这条消息的格式开销）。总数和设置面板里的一样，写成“各块之和 + 加值 = 总数”：
+  // 加值是校准的固定加值（tokens.js 的 c，例如中转站自己加的内容），可能是负数
+  const { extra, total } = estimate;
+  const sum = total - extra;
   const expr = sum.toLocaleString() + (extra < 0 ? ' − ' : ' + ') + Math.abs(extra).toLocaleString();
-  els.previewTotal.textContent = t('preview.total', { sum: expr, tokens: estimate.tokens.toLocaleString() });
+  els.previewTotal.textContent = t('preview.total', { sum: expr, tokens: total.toLocaleString() });
   els.previewBox.hidden = false;
   placeExpand(els.previewBox);
   body.scrollTop = 0;

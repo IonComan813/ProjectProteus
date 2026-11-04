@@ -10,9 +10,9 @@
 //     a、b 分别是两类文字的系数（不同语言换算成 token 的比例不同），c 是固定的额外开销（例如中转站自己加的内容）。
 //     没有数据时 a = b = 1、c = 0，就是粗略估算。模型级的起点：有共享数据时用共享数据，否则用中转站级的结果，
 //     所以中转站里新用的模型也能直接沿用。旧的数据逐次减少权重，计数方式变了（例如中转站换了上游）也能跟上。
-//   - 同一个对话里相邻两次请求的内容大部分相同，所以下一次请求 = 这个对话上一次的实际用量 + 两次之间变化部分的估算
-//     （用回归算上一次的估算和实际值的差，加到这一次的估算上）。“上一次”按对话、中转站和模型分别记，
-//     同一个对话换着用不同的接口或模型时互不覆盖。
+//   - 估算按块给出（estimate）：每块 = a × 中日韩字数 + b ×（其他部分的粗略估算 + 消息格式的开销），总数 = 各块之和 + c。
+//     界面上写成「各块之和 + 加值 = 总数」，加值就是 c。不再按这个对话上一次的实际用量修正，总数严格按这个式子算。
+//   - 每个对话记下上一次请求（按对话、中转站和模型分别记）发送时的估算和接口报告的实际用量，只用来显示，不参与估算。
 //
 // 共享校准数据（**目前关闭**：CALIB_SHARING 为 false 时不拉取、不推送、也不使用以前拉到的共享数据，只在本机校准。
 // 代码保留，以后要打开时：把 CALIB_SHARING 改成 true，部署 worker/calibration，在仓库变量 CALIB_BASE_URL 填 Worker 地址，
@@ -59,13 +59,13 @@ const TokenCalib = (() => {
   const CLOUD_PRIOR_SCALE = 2; // 起点来自共享数据（多人的数据）时，权重加倍
   const MIN_WEIGHT_SIZE = 300; // 很小的请求格式开销占比大，按至少这么大计算权重，免得它们左右系数
   const MAX_ANCHORS = 300;     // 最多记住多少个“对话 + 中转站 + 模型”的上一次请求
-  // 实际值 ÷ 粗略估算超出这个范围的不进回归（只用来修正这个对话），原因见 observe
+  // 实际值 ÷ 粗略估算超出这个范围的不进回归（只显示出来），原因见 observe
   const RATIO_MIN = 0.2;
   const RATIO_MAX = 50;
   // 已经校准过的模型碰到大偏差（见 observe）：
   const JUMP_MIN_K = 3;        // 至少有这么多次数据，才有可信的估算可以比较
   const JUMP_ERR = 0.3;        // 实际值和估算相差这么多以上算大偏差
-  const JUMP_WEIGHT = 0.3;     // 第一次大偏差只按这个权重计入，也只按这个比例修正这个对话的下一次估算
+  const JUMP_WEIGHT = 0.3;     // 第一次大偏差只按这个权重计入
   const COEF_MIN = 0.1;
   const COEF_MAX = 10;
   const CONST_MIN = -5000;
@@ -84,8 +84,8 @@ const TokenCalib = (() => {
   // ---- 读写 ----
   // { relays: { 中转站: { s: 统计, models: { 模型名: { s: 统计, k: 进回归的请求次数, err: 最近一次估算的相对误差,
   //                                                     jump: 上一次的大偏差 { x, y, dir }，或已确认的变化 { dir, confirmed }（见 observe） } } } },
-  //   anchors: { anchorKey(对话id, 中转站, 模型): { x: 特征, y: 实际输入, out: 实际输出, est: 发送时的估算（界面上显示的那个数）, t: 时间,
-  //              odd: 和内容对不上（不用来修正）, w: 修正的比例（第一次大偏差时为 JUMP_WEIGHT，没有时为 1） } },
+  //   anchors: { anchorKey(对话id, 中转站, 模型): { x: 特征, y: 实际输入, out: 实际输出, est: 发送时的估算（界面上显示的那个数）, t: 时间 } }
+  //              （这个对话的上一次请求，只用来显示）,
   //   cloud: { t: 拉取时间, relays: { 域名: { 模型名: { a, b, c } } } }（共享数据，没有的系数不写）,
   //   client: 随机的设备编号, pushed: { 域名\n模型名: { t: 推送时间, th: 推送的系数 } } }
   let store = null;
@@ -236,45 +236,51 @@ const TokenCalib = (() => {
     return Math.max(0, Math.round(th[0] * c + th[1] * r));
   }
 
-  // 一次请求的预估输入 token。convId 给出时，用这个对话上一次请求的实际用量修正。
-  // 返回 { tokens, source, last }；source 同 coefOf（有这个对话上一次的实际用量时为 'local'）；
-  // last 是这个对话上一次请求（同一中转站和模型）的实际用量和发送时的估算 { input, output, est }（以前的数据没有 est，为 null）
-  function predict(relay, model, x, convId) {
-    const coef = coefOf(relay, model);
-    let tokens = dot(coef.theta, x);
-    const a = convId && relay && model ? load().anchors[anchorKey(convId, relay, model)] : null;
-    const usable = !!a && !a.odd; // 和内容对不上的实际值（见 observe）照样显示，但不用来修正
-    // 第一次大偏差的那次（见 observe）只按 JUMP_WEIGHT 的比例修正
-    if (usable) tokens += (a.w === undefined ? 1 : a.w) * (a.y - dot(coef.theta, a.x));
-    return {
-      tokens: Math.max(0, Math.round(tokens)),
-      source: usable ? 'local' : coef.source,
-      last: a ? { input: a.y, output: a.out, est: finite(a.est) ? a.est : null } : null,
+  // 一次请求的预估输入 token，按块给出。systemTexts：system 部分的各块（合起来算一条消息，格式开销加在第一块上）；
+  // messageTexts：最终发送的各条消息。每块 = a × 中日韩字数 + b ×（其他部分的粗略估算 + 格式开销），四舍五入；
+  // 加值 = c（四舍五入）；总数 = 各块之和 + 加值，严格相等（总数不会小于 0：c 是负数且各块很小时，加值相应调整）。
+  // 返回 { system: [各块], messages: [各块], extra: 加值, total: 总数 }
+  function estimate(relay, model, systemTexts, messageTexts) {
+    const th = coefOf(relay, model).theta;
+    const one = (text, msgs) => {
+      const [c, r] = textFeatures(text);
+      return Math.max(0, Math.round(th[0] * c + th[1] * (r + msgs * MSG_OVERHEAD)));
     };
+    const system = systemTexts.map((text, i) => one(text, i === 0 ? 1 : 0));
+    const messages = messageTexts.map((text) => one(text, 1));
+    const sum = system.reduce((p, q) => p + q, 0) + messages.reduce((p, q) => p + q, 0);
+    const extra = Math.max(Math.round(th[2]), -sum);
+    return { system, messages, extra, total: sum + extra };
+  }
+
+  // 这个对话上一次请求（同一中转站和模型）：{ input: 实际输入, output: 实际输出, est: 发送时的估算 }，没有时为 null。
+  // 以前的数据没有 est，为 null
+  function lastOf(relay, model, convId) {
+    const a = convId && relay && model ? load().anchors[anchorKey(convId, relay, model)] : null;
+    return a ? { input: a.y, output: a.out, est: finite(a.est) ? a.est : null } : null;
   }
 
   // 记录一次请求的实际用量。x 是发送时算的特征，input / output 是接口报告的输入、输出 token，
-  // est 是发送时的估算（predict 的结果，只用来显示上一次估得准不准；回归始终用粗略估算的特征 x，不用它）
+  // est 是发送时的估算（estimate 的总数，只用来显示上一次估得准不准；回归始终用粗略估算的特征 x，不用它）
   function observe(relay, model, x, input, output, convId, est) {
     if (!safeKey(relay) || !safeKey(model) || !(input > 0)) return;
     const st = load();
-    // 不进回归、也不用来修正这个对话的估算（只显示出来）的情况：
+    // 不进回归（只显示出来）的情况：
     //   实际值不到粗略估算的 1/5：几乎都是接口只报告了没命中缓存的部分（缓存命中后输入看起来只剩几十个 token），
     //     或者报告的是假数字（0、1、固定值）。真实的分词差异不会差到这个程度
     //   实际值超过粗略估算的 50 倍：报告的数字和内容已经没有关系了。
     //     （中转站偷偷加了很长的 system prompt 时，短对话的实际值也会是估算的十几二十倍，这是真实的，要进回归，由 c 学到）
     const ratio = input / Math.max(dot(DEFAULT_THETA, x), 1);
     const odd = !(ratio >= RATIO_MIN && ratio <= RATIO_MAX);
-    let anchorWeight = 1;
     if (!odd) {
       const r = st.relays[relay] || (st.relays[relay] = { s: emptyStats(), models: {} });
       const m = r.models[model] || (r.models[model] = { s: emptyStats(), k: 0, err: null });
-      // 更新之前，单看回归（不用这个对话上一次的用量）估得准不准：用来判断校准是否已经稳定，以及这次是不是大偏差
+      // 更新之前，回归估得准不准：用来判断校准是否已经稳定，以及这次是不是大偏差
       const before = dot(coefOf(relay, model).theta, x);
       m.err = Math.abs(before - input) / input;
       // 已经校准过的模型碰到大偏差：可能是偶发的怪数字，也可能是情况真的变了（中转站换了上游、模型名指向了新模型、
       // 开始加隐藏的提示词，或者换了一种粗略公式估得不准的语言）。
-      //   第一次：只按 JUMP_WEIGHT 计入，记下来（m.jump）；这个对话的下一次估算也只按这个比例修正
+      //   第一次：只按 JUMP_WEIGHT 计入，记下来（m.jump）
       //   下一次又往同一个方向偏差很大：认定情况变了，把上次少算的权重补上，这次按正常权重计入；
       //     之后回归赶上来之前（还是同一个方向的大偏差）也都按正常权重计入
       //   下一次正常，或者往反方向偏：上次是偶发的，只留下 JUMP_WEIGHT 的影响
@@ -292,7 +298,6 @@ const TokenCalib = (() => {
         m.jump = { dir, confirmed: true };
       } else if (jump) {
         weight = JUMP_WEIGHT;
-        anchorWeight = JUMP_WEIGHT;
         m.jump = { x, y: input, dir };
       }
       m.k = (m.k || 0) + 1;
@@ -301,8 +306,6 @@ const TokenCalib = (() => {
     }
     if (convId) {
       const anchor = { x, y: input, out: output > 0 ? output : null, est: finite(est) && est >= 0 ? est : null, t: Date.now() };
-      if (odd) anchor.odd = true;
-      if (anchorWeight !== 1) anchor.w = anchorWeight;
       st.anchors[anchorKey(convId, relay, model)] = anchor;
       trimAnchors(st.anchors);
     }
@@ -495,8 +498,6 @@ const TokenCalib = (() => {
         const cur = own(st.anchors, key) ? st.anchors[key] : null;
         if (cur && cur.t >= a.t) continue;
         const copy = { x: a.x, y: a.y, out: finite(a.out) && a.out > 0 ? a.out : null, est: finite(a.est) && a.est >= 0 ? a.est : null, t: a.t };
-        if (a.odd === true) copy.odd = true;
-        if (finite(a.w) && a.w >= 0 && a.w < 1) copy.w = a.w;
         st.anchors[key] = copy;
       }
       trimAnchors(st.anchors);
@@ -506,7 +507,7 @@ const TokenCalib = (() => {
   }
 
   return {
-    relayOf, requestFeatures, coefOf, textTokens, predict, observe, forget,
+    relayOf, requestFeatures, coefOf, textTokens, estimate, lastOf, observe, forget,
     setSharing, sync, exportData, importData,
     _test: { hostOf, pendingEntries, push },
   };
