@@ -1,7 +1,9 @@
-# 检查每个 PR 的正文开头有没有「## 更新说明」（格式见 scripts/release-notes.js 开头的说明）。
-# 发布版本时，打包工作流（build.yml）收集这些说明，写进 Release 页面和软件的更新提示。
-# 没有写、或者格式不对时这项检查失败（PR 页面上显示红叉）；改好 PR 正文后会自动重新检查。
-# 用户感觉不到的改动写一行「- 无」。
+# 检查每个 PR 有没有维护更新说明文件 .github/next-release.md（规则见 scripts/release-notes.js 开头的说明）：
+#   - PR 正文的开头有「## 更新说明文件」一段，下面一行写「- 已更新：……」或「- 无需更新」，并且和这个 PR 有没有改那个文件一致
+#   - 那个文件的格式正确
+#   - 文件的基准版本是最新发布的版本（不是的话说明刚发布过版本，要先清空文件里的条目）
+# 发布版本时，打包工作流（build.yml）读取这个文件，写进 Release 页面和软件的更新提示。
+# 不合格时这项检查失败（PR 页面上显示红叉）并写明原因；改好 PR 正文或推送新提交后会自动重新检查。
 name: PR release notes
 
 on:
@@ -16,5 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 要比较这个 PR 改了哪些文件，还要读取版本标签
       # PR 正文从事件文件里读，不放进命令行（正文是任何人都能写的内容）
       - run: node scripts/release-notes.js check "$GITHUB_EVENT_PATH"

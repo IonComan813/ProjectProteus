@@ -69,10 +69,10 @@ Switching computers, reinstalling your system or (for the web version) clearing 
 
 The native apps (desktop and Android) check the update server for a new version when they start. To keep requests to the server down, they check at most once a day: after a check that finds nothing new, opening the app again on the same day doesn't check, and the first start on the next day does (by date, not 24 hours). A check that can't reach the server doesn't count, so the next start tries again.
 
-- You are told about a new **release**, and about a new **test version** if it is also newer than the latest release. When there are both, they are listed in one window: choose which to download
-- The buttons are "Download test version", "Download" (the release) and "Remind me tomorrow", showing a download button for each version offered. If you don't want to update now:
+- When there is a new version you are told about it: the window shows the current version, the new version and what's new in it. If you skipped versions in between (say, updating from 0.4.6 straight to 0.5.1), it ends with a pointer to the GitHub Releases page for what changed in those
+- The buttons are "Download vX" and "Remind me tomorrow". If you don't want to update now:
   - "Remind me tomorrow": nothing is shown when you open the app during the next 24 hours, even if a newer version comes out. The ▾ next to it also has "Remind me in 3 days" (72 hours)
-  - "Skip this version" in the ▾ menu: the versions listed are not shown again; you are told when a newer version number comes out. After skipping, the next check is also on the next day
+  - "Skip this version" in the ▾ menu: this version is not shown again; you are told when a newer version number comes out. After skipping, the next check is also on the next day
 - You have to choose one of the buttons: Esc or clicking outside does not close this window
 - The check starts as soon as the app starts, and the window appears as soon as the version information arrives. It opens on top of any other window or dialog, which stay as they were after you choose; it also appears while a reply is being generated, and the reply keeps coming in
 - After you choose to download, everything happens by itself: the download runs inside the app (no save dialog) with a progress bar in the middle of the screen (version, percentage, downloaded / total size) and the rest dimmed. While downloading and installing the app is locked: nothing else can be done, the keyboard does nothing, and the progress bar can't be closed with Esc or by clicking outside it; only clicking (or tapping) the × on its right stops the download. When it finishes, the progress bar shows "Download finished, starting the installer…", the conversations are saved and the update is installed without asking again. Unsent text in the input box is put back after the update
@@ -88,7 +88,7 @@ The native apps (desktop and Android) check the update server for a new version 
   - **macOS (dmg)**: downloaded to the Downloads folder and opened, then the app closes; drag Proteus into Applications to replace the old version
   - **Windows portable version (zip)**: downloaded to the Downloads folder and its folder opened; after closing the app, unzip it and replace the old folder
   - **Android**: installed directly with the system installer; the app closes while installing, then open it again. The package is deleted as soon as the system has it. The first time you update this way, Android asks you to allow Proteus to install unknown apps and to confirm the installation; on Android 12 and later, later updates need no confirmation
-- Version order: a test version comes before the release with the same number, e.g. `0.4.0-beta.2` < `0.4.0` < `0.4.1-beta.1`
+- Only releases are published. Test versions published earlier (with a suffix, such as `0.4.8-beta.1`) are older than the release with the same number, so they are offered the newer release too
 - Nothing is shown when the update server can't be reached. The web version does not check for updates
 
 ## Interface
@@ -298,11 +298,11 @@ You can edit the number in the memory length box directly or adjust it with − 
 
 - It keeps separate records per relay (API address) and per model on that relay. The same model name on different relays, or on a relay and the official API, is counted separately; a relay whose addresses in the two compatible modes differ only by a trailing `/v1` counts as one relay. A model used for the first time on a relay starts from what the relay's other models have shown
 - Chinese/Japanese/Korean text and other text are calibrated separately (languages convert to tokens at different rates), and a fixed overhead added by a relay is learned too
-- Within a conversation, the next request is estimated from the actual usage of that conversation's last request plus the part that changed since, so it is usually close after one request. Below the estimate you also see the actual input and output tokens of the conversation's last request
-- Once there is real data, "rough estimate" in the hint changes to "calibrated from actual usage". Only numbers are recorded, never conversation content; "Clear app data" deletes them, and "Full backup (all conversations)" includes them so you can carry on on another device
+- Estimate = sum of the parts + added amount: each part (each piece of the system part and each message) is a × Chinese/Japanese/Korean characters + b × (rough estimate of the other text + message formatting), and the added amount is the learned fixed overhead c. Below the estimate you also see the estimated input tokens of the conversation's last request (as estimated when it was sent), and the actual input and output tokens the API reported, with the deviation ((estimate − actual) ÷ actual; negative means the estimate was too low)
+- Calibration starts gradually from the first request (with no data the estimate is the rough one), so the hint always says "calibrated step by step from the usage the API reports". In "View what the next request will send" each part is multiplied by the calibrated coefficients, and the total at the top reads "sum of the parts + added amount = total"; the added amount is the fixed overhead c (for example content a relay adds itself) and can be negative. Only numbers are recorded, never conversation content; "Clear app data" deletes them, and "Full backup (all conversations)" includes them so you can carry on on another device
 - Reading usage: in the Anthropic format (official and compatible relays) the input is `input_tokens` plus the tokens written to and read from the cache; in the OpenAI format (OpenAI official, Gemini and compatible relays) it is `prompt_tokens`. Streaming replies in the OpenAI format only report usage when the request includes `stream_options` (Gemini's OpenAI-compatible API supports it too). A few APIs reject that parameter; Proteus then resends once without it and remembers the address so it isn't added again. If such an API doesn't report usage either, the estimate stays rough
 
-**When the actual usage is wildly different from the estimate**: when the actual figure is under 1/5 of the rough estimate or over 50 times it, it is shown but not used for calibration, nor to correct the conversation's next estimate. Such figures are usually not a tokenizer difference (models and languages differ by tens of percent at most) but a problem with how the API reports usage:
+**When the actual usage is wildly different from the estimate**: when the actual figure is under 1/5 of the rough estimate or over 50 times it, it is shown but not used for calibration. Such figures are usually not a tokenizer difference (models and languages differ by tens of percent at most) but a problem with how the API reports usage:
 
 - **Only the uncached part is reported**: the most common case. Once the cache is hit, some relays converting the Anthropic format to the OpenAI format fill in only the uncached `input_tokens` (or drop the cache fields), so a request of tens of thousands of tokens looks like a few dozen
 - **Fake numbers**: always 0 or 1, or a fixed value unrelated to the request; some account pools and reverse-engineered channels don't count at all
@@ -512,22 +512,38 @@ The output is in the `dist/` folder.
   git push origin v0.2.0
   ```
 
-- **Publishing without tagging locally**: on the Actions page, run "Tag and release" (`.github/workflows/release-tag.yml`), pick the branch (usually `main`) and enter the version tag (e.g. `v0.4.8-beta.1`). It tags the latest commit on that branch and starts the build workflow to publish that version, with the same result as pushing the tag
+- **Publishing without tagging locally**: on the Actions page, run "Tag and release" (`.github/workflows/release-tag.yml`), pick the branch (usually `main`) and enter the version tag (e.g. `v0.5.1`). It tags the latest commit on that branch and starts the build workflow to publish that version, with the same result as pushing the tag
 
-- **Publishing a test version**: use a tag with a suffix, such as `v0.4.0-beta.1`, and put it on the commit to test, which can be on any branch (on the "Draft a new release" page, choose that branch as the "Target"). A release created by such a tag is marked as a **pre-release**: it does not become the "Latest" release, and its notes start with a line saying it is a test version (also when you create the release on the web page yourself). To give a version its own notes, add `.github/release-notes/<tag>.md` (for example `v0.4.0-beta.1.md`) in that commit: they are put at the start of the release notes. On Android, `0.4.0-beta.1` has the same version code as `0.4.0`, so the final `0.4.0` can update it in place; but a lower version released later (say `0.3.4`) cannot be installed over it
+- **Test versions** (not used for now: only releases are published, and the app only checks for releases): use a tag with a suffix, such as `v0.4.0-beta.1`, and put it on the commit to test, which can be on any branch (on the "Draft a new release" page, choose that branch as the "Target"). A release created by such a tag is marked as a **pre-release**: it does not become the "Latest" release, and its notes start with a line saying it is a test version (also when you create the release on the web page yourself). To give a version its own notes, add `.github/release-notes/<tag>.md` (for example `v0.4.0-beta.1.md`) in that commit: they are put at the start of the release notes. On Android, `0.4.0-beta.1` has the same version code as `0.4.0`, so the final `0.4.0` can update it in place; but a lower version released later (say `0.3.4`) cannot be installed over it
 - **Just checking that it builds**: on the repository's Actions page choose "Build native app" → "Run workflow". This builds without publishing; the installers are in the Artifacts at the bottom of that run's page and are kept for 30 days.
 
-**Release notes**: every PR starts its description with short release notes, one line per language in four languages; the format is described at the top of `scripts/release-notes.js`, for example:
+**Release notes**: `.github/next-release.md` in the repository holds the changes users will notice since the previous version, each entry with its four languages together, for example:
 
 ```
-## 更新说明
+基准版本: v0.5.0
+
 - zh-CN: 修复了特定窗口无法按照预期关闭的问题
-- zh-TW: 修復了特定視窗無法按照預期關閉的問題
-- en: Fixed some windows not closing as expected
-- ja: 一部のウィンドウが想定どおりに閉じない問題を修正しました
+  zh-TW: 修復了特定視窗無法按照預期關閉的問題
+  en: Fixed some windows not closing as expected
+  ja: 一部のウィンドウが想定どおりに閉じない問題を修正しました
 ```
 
-Changes users won't notice get a single line "- 无" (or "- none"). A PR check (`.github/workflows/pr-notes-check.yml`) fails when the description doesn't start with this block or its format is wrong. When a version is published, the build workflow collects the notes of the PRs merged since the previous version (since the previous release for a release, since the previous version of either kind for a test version), puts a Chinese and English section at the top of the release notes, and writes all four languages into `version.json` on the update server. The app shows these notes in its update window: up to two versions each for releases and test versions, and a pointer to the GitHub Releases page when more versions were skipped.
+- **Every PR maintains this file**: it adds its own entries and removes or rewrites older entries it conflicts with (for example a feature it changes or takes back). By release time the file is a clean, accurate list of what's new in that version
+- **The first PR after a release** clears the entries and sets the base version (`基准版本`) to the version just released
+- **The PR description starts with** this block; the second line just says what was done, or "- 无需更新" when the file was not changed:
+
+  ```
+  ## 更新说明文件
+  - 已更新：加入 1 条；删去和它冲突的「……」
+  ```
+
+- **A PR check** (`.github/workflows/pr-notes-check.yml`) verifies that:
+  - the block says "已更新" if the PR changed the file and "无需更新" if it didn't;
+  - the file's format is valid, with all four languages (zh-CN, zh-TW, en, ja) in every entry;
+  - the base version is the latest released version. If it isn't, a release has happened and the file hasn't been cleared yet; the check fails and says what to change.
+
+  The details are at the top of `scripts/release-notes.js`. The rest of the PR description is for the detailed changes and is not collected.
+- **When a version is published**, the build workflow reads this file from that commit, puts a Chinese and English section at the top of the release notes, and writes all four languages into `version.json` on the update server. `version.json` only holds the notes of the latest version, plus the previous version's number: the update window shows this version's notes, and a pointer to the GitHub Releases page when versions in between were skipped
 
 The download instructions on a release page come from `.github/release-notes.md` (in English). A line saying which commit the installers were built from is added to the end of the release notes automatically; it is also updated when the installers of an existing release are rebuilt from a chosen branch and replaced. That commit is the source code of those installers.
 
@@ -552,7 +568,7 @@ If they are not set, build-only runs sign with a temporary debug key instead (in
 
 #### Update server (Cloudflare R2)
 
-After publishing to a release, the workflow also uploads the same installers and a `version.json` to the Cloudflare R2 bucket `projectproteus-releases`, where the app checks for updates at startup (`js/update.js`). Tags without a suffix go to `stable/`, tags with one (test versions) to `beta/`; each channel keeps only its latest version, and neither overwrites the other. Rebuilding a tag older than what a channel already holds leaves that channel unchanged.
+After publishing to a release, the workflow also uploads the same installers and a `version.json` to the Cloudflare R2 bucket `projectproteus-releases`, where the app checks for updates at startup (`js/update.js`). Versions go to `stable/`, which keeps only the latest one; rebuilding a tag older than the one there leaves it unchanged. (A test version tag with a suffix would go to `beta/`, but the app now only checks `stable/`.)
 
 Set up three things first:
 

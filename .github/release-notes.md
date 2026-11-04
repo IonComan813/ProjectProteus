@@ -1,5 +1,3 @@
-Proteus native apps, ready to use after download with no separate browser needed: the Windows / macOS / Linux apps come with a built-in Chromium engine, and the Android app uses the system WebView.
-
 ## Downloads
 
 | File | For |

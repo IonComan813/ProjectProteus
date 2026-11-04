@@ -22,8 +22,8 @@
 # 要发布到 Release 的运行直接失败。
 #
 # 更新服务器（Cloudflare R2，存储桶 projectproteus-releases）：发布到 Release 之后，同一批安装包和一个 version.json
-# 也上传到 R2，软件启动时从那里检查更新（js/update.js）。标签不带后缀的放在 stable/，带后缀的（测试版）放在 beta/，
-# 每个频道只保留最新的一个版本，两个频道互不覆盖；重新打包一个比频道里现有版本旧的标签时，不动那个频道。
+# 也上传到 R2，软件启动时从那里检查更新（js/update.js）。标签不带后缀的放在 stable/，只保留最新的一个版本；
+# 重新打包一个比现有版本旧的标签时不动它。（带后缀的标签放在 beta/，但软件现在只读 stable/：只发布正式版。）
 # 需要在仓库 Settings → Secrets and variables → Actions 里添加：
 #   Secrets：R2_ACCESS_KEY_ID、R2_SECRET_ACCESS_KEY（R2 的 API 令牌，对这个存储桶有「对象读和写」权限）
 #   Variables：UPDATE_BASE_URL（存储桶的公开地址，例如 https://pub-xxxx.r2.dev 或自己的域名，结尾不带 /）
@@ -32,9 +32,9 @@
 # 是那个 Worker 的地址（结尾不带 /），由 scripts/set-server-url.js 写进 js/tokens.js；没有时打出的安装包不共享校准数据。
 # （共享功能目前关闭：js/tokens.js 的 CALIB_SHARING 为 false 时，填了 CALIB_BASE_URL 也不共享。）
 #
-# 更新说明：发布时收集这个版本和上一个版本之间合并的 PR 正文开头的「## 更新说明」（格式见 scripts/release-notes.js），
-# 正式版从上一个正式版算起，测试版从上一个版本算起。中英双语的一段放在 Release 说明的最前面，
-# 四种语言的写进 version.json（软件的更新提示里显示）。PR 有没有写更新说明由 pr-notes-check.yml 检查。
+# 更新说明：发布时读取这次提交里的 .github/next-release.md（上一个版本以来的改动，每个 PR 维护，规则见
+# scripts/release-notes.js 开头的说明）。中英双语的一段放在 Release 说明的最前面，四种语言的写进 version.json
+# （软件的更新提示里显示）。PR 有没有维护这个文件由 pr-notes-check.yml 检查。
 
 name: Build native app
 
@@ -233,21 +233,16 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      pull-requests: read # 读取 PR 正文里的更新说明
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # 要找上一个版本的标签和两个版本之间的提交
 
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
           merge-multiple: true
 
-      # 收集这个版本的更新说明（出错时只给出警告、说明为空，不影响发布）
+      # 读取这个版本的更新说明（.github/next-release.md；出错时只给出警告、说明为空，不影响发布）
       - name: Collect release notes
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: node scripts/release-notes.js collect "$RELEASE_TAG" changes.json
 
       - name: Upload to the release
