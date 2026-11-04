@@ -20,7 +20,6 @@ const ROUNDS_MAX = 40;
 const DEFAULT_SETTINGS = {
   lang: null,          // null = 按系统语言自动选择（不支持的语言用英语）
   rememberKeys: true,  // false = API Key 只在本次打开期间有效，不写入本机存储（公用电脑）
-  shareCalib: true,    // 把本机的 token 校准数据（中转站域名、模型名、系数）匿名共享给其他用户（tokens.js）
   rounds: 12,
   artWidth: null,      // 左栏宽度（像素），null = 自动
   inputHeight: 88,     // 输入框高度（像素）
@@ -1093,6 +1092,33 @@ function updateEstimate() {
 const ESTIMATE_KEY = { local: 'set.tokenEstimateCalib', cloud: 'set.tokenEstimateCalib' };
 const PREVIEW_TOTAL_KEY = { local: 'preview.totalCalib', cloud: 'preview.totalCalib' };
 
+// ---- 安装更新时保留输入框里的文字 ----
+// 安装更新会关闭软件：安装前把输入框里没发送的文字存起来（update.js 的 startInstall），下次启动时放回同一个对话。
+// 只放回 10 分钟以内存的；放回后（或者过期）就删掉
+const INPUT_DRAFT_KEY = 'proteus.inputDraft';
+const INPUT_DRAFT_MAX_AGE = 10 * 60 * 1000;
+
+function saveInputDraft() {
+  const text = els.input.value;
+  if (!text.trim() || state.greetingMode || !state.conv) return;
+  try { localStorage.setItem(INPUT_DRAFT_KEY, JSON.stringify({ conv: state.conv.id, text, t: Date.now() })); } catch (_) { /* 存不了就算了 */ }
+}
+
+function forgetInputDraft() {
+  try { localStorage.removeItem(INPUT_DRAFT_KEY); } catch (_) { /* 本来就没存 */ }
+}
+
+function restoreInputDraft() {
+  let d = null;
+  try { d = JSON.parse(localStorage.getItem(INPUT_DRAFT_KEY) || 'null'); } catch (_) { /* 认不出就不放回 */ }
+  forgetInputDraft();
+  if (!d || typeof d.text !== 'string' || !(Date.now() - d.t < INPUT_DRAFT_MAX_AGE)) return;
+  if (state.conv && state.conv.id === d.conv && !els.input.value) {
+    els.input.value = d.text;
+    updateEstimateSoon();
+  }
+}
+
 // 在输入框里打字时稍等一下再更新
 let estimateTimer = null;
 function updateEstimateSoon() {
@@ -1712,7 +1738,7 @@ async function importArt(convId, art) {
   await DB.set(artKey(convId), typeof art === 'string' ? await dataURLToBlob(art) : art);
 }
 
-// 备份里的对话：先整体检查，不合格就不读取（读取完整备份会先清空现有数据）
+// 备份里的对话：先整体检查，有不合格的就整个不读取
 function validVersions(x) {
   return !!x && Array.isArray(x.versions) && x.versions.length > 0 && x.versions.every((v) => typeof v === 'string')
     && Number.isInteger(x.cur) && x.cur >= 0 && x.cur < x.versions.length;
@@ -1812,7 +1838,8 @@ async function backupConv() {
   download(`${safeFilename(convTitle(conv))}-${t('export.convSuffix')}.json`, JSON.stringify(data, null, 2), 'application/json');
 }
 
-// 完整备份（全部对话）：所有对话（各自的设定、剧情、艺术图）+ 软件设置（不含 API Key）。
+// 完整备份（全部对话）：所有对话（各自的设定、剧情、艺术图）+ token 校准数据。不含任何软件设置
+// （记忆长度、界面语言、布局、模型与接口等都可以随时调整；API Key 也不该出现在备份里）。
 // 选择加密时，每个普通对话的 System Prompt、世界观、开场白和艺术图加密，剧情和人设仍是明文；
 // 已经锁定的对话始终保持原来的密文和密码（先提醒一下）。全部都是锁定对话时不再问是否加密。
 async function backup() {
@@ -1841,7 +1868,6 @@ async function backup() {
     type: 'backup',
     version: 3,
     exportedAt: new Date().toISOString(),
-    settings: { ...state.settings, apiKeys: {} },
     conversations,
     tokenCalib: TokenCalib.exportData(new Set(state.conversations.map((c) => c.id))), // token 校准数据，换设备后接着用
     arts,
@@ -2236,29 +2262,35 @@ async function restore(file) {
   }
 
   if (data.type !== 'backup' || !Array.isArray(data.conversations) || !data.conversations.every(validBackupConv)) return toast(t('restore.invalid'));
-  if (!(await ask(t('restore.fullConfirm', { n: data.conversations.length }), { danger: true }))) return;
+  if (!(await ask(t('restore.fullConfirm', { n: data.conversations.length })))) return;
   if (state.generating) return toast(t('conv.stopFirst'));
-  // 还没写入的改动作废：现有对话马上要被替换，晚到的保存会把旧对话写回去
-  clearTimeout(convSaveTimer);
-  convSavePending = null;
-  clearTimeout(saveTimer);
-  const saved = data.settings && typeof data.settings === 'object' ? data.settings : {};
+  // 备份里的对话全部加到现有对话里（现有的不动；和现有的相同也照样加，重复的由用户自己删）。
+  // 软件设置不动：以前的版本做的备份里带着设置的，也不用。
+  // 读完后仍停在读取前的对话里。先把还没写入的改动存好
+  await flushConvSave();
   const arts = data.arts && typeof data.arts === 'object' ? data.arts : {};
-  // API Key 不在备份里，保留本机的；“记住 API Key”也跟着本机
-  const settings = { ...DEFAULT_SETTINGS, ...saved, apiKeys: state.settings.apiKeys, rememberKeys: state.settings.rememberKeys };
+  const existing = new Map(state.conversations.map((c) => [c.id, c]));
+  const idMap = {}; // 和现有对话 id 相同的（例如同一份备份读了两次）：换一个新的 id 加进来
+  let added = 0;
   try {
-    state.settings = settings;
-    await DB.set('settings', storableSettings());
-    // 清掉现有的对话和艺术图
-    for (const c of state.conversations) await DB.del(artKey(c.id));
-    await DB.clearConversations();
     for (const c of data.conversations) {
       try { await openLock(c); } catch (_) { continue; } // 解不开的锁定对话跳过
-      await DB.putConversation(storable(normalizeConv(c)));
-      await importArt(c.id, arts[c.id]);
+      normalizeConv(c);
+      const oldId = c.id;
+      if (existing.has(oldId)) {
+        c.id = uid();
+        idMap[oldId] = c.id;
+      }
+      existing.set(c.id, c);
+      await DB.putConversation(storable(c));
+      await importArt(c.id, arts[oldId]);
+      added++;
     }
-    // token 校准数据和本机的合并（不清掉本机的：本机的数据同样有效）
-    TokenCalib.importData(data.tokenCalib);
+    // 读完后重新载入时打开的还是现在这个对话
+    state.settings.activeConvId = state.conv.id;
+    await DB.set('settings', storableSettings());
+    // token 校准数据和本机的合并（换了 id 的对话，“上一次请求”跟着换）
+    TokenCalib.importData(data.tokenCalib, idMap);
   } catch (e) {
     console.error(e);
     await boot();
@@ -2266,7 +2298,7 @@ async function restore(file) {
     return;
   }
   await boot();
-  toast(t('restore.fullDone'));
+  toast(t('restore.fullDone', { added }));
 }
 
 // ---------------- 布局：拖动调整左栏宽度和输入框高度 ----------------
@@ -2348,6 +2380,8 @@ function showExitHint() {
 function bindBackButton() {
   if (!NATIVE) return;
   nativePlugin('App').addListener('backButton', () => {
+    // 正在下载或安装更新（软件锁定，见 update.js 的 lockApp）：返回键什么都不做
+    if (!els.updateProgress.hidden) return;
     // 更新提示（以及下载失败、手动中止的提示）盖在所有东西上面，而且必须选一个按钮：
     // 返回键只收起它里面的 ▾ 菜单（由它自己的 Esc 处理），不关掉窗口
     if (!els.updateDialog.hidden) {
@@ -2458,8 +2492,6 @@ function fillSettingsForm() {
   els.temperature.value = s.temperature;
   els.langSelect.value = LANG;
   els.rememberKeys.checked = s.rememberKeys !== false;
-  els.shareCalib.checked = s.shareCalib !== false;
-  TokenCalib.setSharing(s.shareCalib !== false);
   fillProviderFields();
 }
 
@@ -2939,11 +2971,6 @@ function bindSettings() {
     clearTimeout(saveTimer);
     await DB.set('settings', storableSettings());
   });
-  els.shareCalib.addEventListener('change', () => {
-    s().shareCalib = els.shareCalib.checked;
-    TokenCalib.setSharing(els.shareCalib.checked);
-    saveSettingsSoon();
-  });
   els.btnClearAll.addEventListener('click', async () => {
     if (state.generating) return toast(t('conv.stopFirst'));
     if (!(await ask(t('set.clearAllConfirm', pageVars()), { ok: t('set.clearAll'), danger: true }))) return;
@@ -2955,6 +2982,7 @@ function bindSettings() {
     forgetCachedLang();
     forgetNativeOrigins();
     forgetNoUsageOption();
+    forgetInputDraft();
     TokenCalib.forget();
     location.reload();
   });
@@ -3295,9 +3323,10 @@ function init() {
     showError(t('boot.failed', { msg: e.message }));
     throw e;
   });
+  booted.then(restoreInputDraft, () => {});
   // 第一次打开时先显示开源协议说明（见 showLicenseNotice）
   const licensed = booted.then(showLicenseNotice);
-  // 拉取其他用户共享的 token 校准数据，推送本机还没推送的（静默，见 tokens.js；只在打包的原生应用里）
+  // 拉取其他用户共享的 token 校准数据，推送本机还没推送的（静默，见 tokens.js。共享目前关闭，这里什么都不做）
   booted.then(() => TokenCalib.sync(() => { if (state.conv) updateEstimate(); }), () => {});
   // 启动时立刻检查更新（只在原生应用里），和读取数据同时进行；有要提示的版本时等数据读完、
   // 开源协议说明关掉后再显示（读取数据失败时不显示）

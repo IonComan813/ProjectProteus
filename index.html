@@ -228,9 +228,6 @@
 
       <section class="card">
         <h3 data-i18n="set.localData">软件数据</h3>
-        <label class="field-inline remember-keys">
-          <input type="checkbox" id="shareCalib"> <span data-i18n="set.shareCalib">匿名共享 token 校准数据（不含对话内容和 API Key）</span>
-        </label>
         <p class="hint" data-i18n="set.clearAllHint"></p>
         <button class="btn btn-small danger" id="btnClearAll" data-i18n="set.clearAll">清除软件数据</button>
       </section>
@@ -281,14 +278,17 @@
   <!-- 安卓：按返回键会退出时，先在屏幕中间显示「再按一次退出海神」，一会儿自动消失 -->
   <div class="exit-hint" id="exitHint" role="status" aria-live="polite"></div>
 
-  <!-- 下载更新时屏幕上方的进度条：版本号、百分比、已下载 / 总大小，右边的 × 停止下载（js/update.js） -->
-  <div class="update-progress" id="updateProgress" role="status" hidden>
+  <!-- 下载更新时的进度条，屏幕中间，周围变暗：版本号、百分比、已下载 / 总大小，右边的 × 停止下载（js/update.js）。
+       显示期间锁定软件，只能用 × 停止下载 -->
+  <div class="update-progress-overlay" id="updateProgress" hidden>
+  <div class="update-progress" id="updateProgressBox" role="status" tabindex="-1">
     <div class="update-progress-row">
       <span class="update-progress-text" id="updateProgressText"></span>
       <span class="muted small" id="updateProgressSize"></span>
-      <button type="button" class="update-progress-stop" id="updateProgressStop">×</button>
+      <button type="button" class="update-progress-stop" id="updateProgressStop" tabindex="-1">×</button>
     </div>
     <div class="update-progress-bar" id="updateProgressBar"><div class="update-progress-fill" id="updateProgressFill"></div></div>
+  </div>
   </div>
 
   <!-- 更新提示，以及下载失败、手动中止的提示：立刻显示，盖在所有窗口和弹窗上面（正在生成的回复照常继续）。必须选一个按钮才能关闭 -->

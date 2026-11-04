@@ -14,21 +14,27 @@
 //     （用回归算上一次的估算和实际值的差，加到这一次的估算上）。“上一次”按对话、中转站和模型分别记，
 //     同一个对话换着用不同的接口或模型时互不覆盖。
 //
-// 共享校准数据（只在打包的原生应用里：CALIB_BASE_URL 由打包工作流填入，仓库里是空的，不共享）：
+// 共享校准数据（**目前关闭**：CALIB_SHARING 为 false 时不拉取、不推送、也不使用以前拉到的共享数据，只在本机校准。
+// 代码保留，以后要打开时：把 CALIB_SHARING 改成 true，部署 worker/calibration，在仓库变量 CALIB_BASE_URL 填 Worker 地址，
+// 并在设置里加回「匿名共享 token 校准数据」的勾选框（调用 setSharing）。打开后的行为如下，只在打包的原生应用里）：
 //   - 启动时从 <CALIB_BASE_URL>/v1/calibration.json 拉取其他用户共享的系数（按中转站的域名和模型名），存在本机，
 //     拉取失败时沿用上次拉到的。共享的系数只作为起点，有了本机的数据就以本机为主。
 //   - 本机某个模型的校准稳定后（至少 2 次请求，并且最近一次的估算误差在 10% 以内；或者已经有 5 次请求），
 //     如果共享数据里还没有它，或者和共享数据差得多，推送到 <CALIB_BASE_URL>/v1/contribute。同一个模型 7 天内最多推送一次。
 //     推送的只有：中转站的域名（不含路径和端口以外的部分）、模型名、系数和数据量，以及一个随机的设备编号
 //     （只用来让同一台设备的数据替换而不是叠加）。不推送 API Key、接口路径和任何对话内容。
-//     IP 地址、localhost、内网域名（.local、.lan、.internal 等）和非 https 的地址不推送。可以在设置里关掉推送。
+//     IP 地址、localhost、内网域名（.local、.lan、.internal 等）和非 https 的地址不推送。设置里可以关掉推送（setSharing）。
 //   - 拉取和推送都静默进行，成功失败都不提示；没有共享数据时只用本机的数据。服务器端见 worker/calibration。
 //
 // 只记录数字（字数、token 数），不记录任何对话内容。存在 localStorage，“清除软件数据”时一起删除；
 // 完整备份（全部对话）里带上本机的校准数据（不含共享数据和设备编号），读取备份时合并进来。
 
+// 是否共享校准数据（见上面的说明）。目前关闭
+const CALIB_SHARING = false;
 // 共享校准数据的服务器地址（结尾不带 /）。仓库里是空的（不共享）；打包工作流用仓库变量 CALIB_BASE_URL 填进来
 const CALIB_BASE_URL = '';
+// 两个条件都满足才共享
+const CALIB_ENABLED = CALIB_SHARING && !!CALIB_BASE_URL;
 
 // 中日韩标点、假名、汉字、韩文音节、全角符号
 const CJK_RE = /[　-鿿가-힯＀-￯]/g;
@@ -56,6 +62,10 @@ const TokenCalib = (() => {
   // 实际值 ÷ 粗略估算超出这个范围的不进回归（只用来修正这个对话），原因见 observe
   const RATIO_MIN = 0.2;
   const RATIO_MAX = 50;
+  // 已经校准过的模型碰到大偏差（见 observe）：
+  const JUMP_MIN_K = 3;        // 至少有这么多次数据，才有可信的估算可以比较
+  const JUMP_ERR = 0.3;        // 实际值和估算相差这么多以上算大偏差
+  const JUMP_WEIGHT = 0.3;     // 第一次大偏差只按这个权重计入，也只按这个比例修正这个对话的下一次估算
   const COEF_MIN = 0.1;
   const COEF_MAX = 10;
   const CONST_MIN = -5000;
@@ -72,8 +82,10 @@ const TokenCalib = (() => {
   const MAX_PUSH_ENTRIES = 20;
 
   // ---- 读写 ----
-  // { relays: { 中转站: { s: 统计, models: { 模型名: { s: 统计, k: 进回归的请求次数, err: 最近一次估算的相对误差 } } } },
-  //   anchors: { anchorKey(对话id, 中转站, 模型): { x: 特征, y: 实际输入, out: 实际输出, t: 时间, odd: 和内容对不上（见 observe） } },
+  // { relays: { 中转站: { s: 统计, models: { 模型名: { s: 统计, k: 进回归的请求次数, err: 最近一次估算的相对误差,
+  //                                                     jump: 上一次的大偏差 { x, y, dir }，或已确认的变化 { dir, confirmed }（见 observe） } } } },
+  //   anchors: { anchorKey(对话id, 中转站, 模型): { x: 特征, y: 实际输入, out: 实际输出, t: 时间,
+  //              odd: 和内容对不上（不用来修正）, w: 修正的比例（第一次大偏差时为 JUMP_WEIGHT，没有时为 1） } },
   //   cloud: { t: 拉取时间, relays: { 域名: { 模型名: { a, b, c } } } }（共享数据，没有的系数不写）,
   //   client: 随机的设备编号, pushed: { 域名\n模型名: { t: 推送时间, th: 推送的系数 } } }
   let store = null;
@@ -147,11 +159,15 @@ const TokenCalib = (() => {
   const PRIOR = [PRIOR_COEF, PRIOR_COEF, PRIOR_CONST];
   const CLOUD_PRIOR = PRIOR.map((p) => p * CLOUD_PRIOR_SCALE);
 
-  function addTo(s, x, y) {
-    const w = 1 / Math.pow(Math.max(y, MIN_WEIGHT_SIZE), 2); // 按相对误差拟合：大请求和小请求同样重要
-    for (let i = 0; i < 9; i++) s.A[i] *= DECAY;
-    for (let i = 0; i < 3; i++) s.b[i] *= DECAY;
-    s.n = s.n * DECAY + 1;
+  // 加入一次请求的数据。weight 是这次数据的权重（默认 1）；decay 为 false 时旧数据不衰减（补记以前少算的权重时用）
+  function addTo(s, x, y, weight = 1, decay = true) {
+    const w = weight / Math.pow(Math.max(y, MIN_WEIGHT_SIZE), 2); // 按相对误差拟合：大请求和小请求同样重要
+    if (decay) {
+      for (let i = 0; i < 9; i++) s.A[i] *= DECAY;
+      for (let i = 0; i < 3; i++) s.b[i] *= DECAY;
+      s.n *= DECAY;
+    }
+    s.n += weight;
     for (let i = 0; i < 3; i++) {
       for (let j = 0; j < 3; j++) s.A[i * 3 + j] += w * x[i] * x[j];
       s.b[i] += w * x[i] * y;
@@ -192,6 +208,7 @@ const TokenCalib = (() => {
 
   // 共享数据里这个中转站 + 模型的系数（没有的系数为 undefined），没有时为 null
   function cloudOf(relay, model) {
+    if (!CALIB_ENABLED) return null; // 共享关闭时，以前拉到的共享数据也不用
     const c = load().cloud;
     const host = c && hostOf(relay);
     const byModel = host && own(c.relays, host) ? c.relays[host] : null;
@@ -227,7 +244,8 @@ const TokenCalib = (() => {
     let tokens = dot(coef.theta, x);
     const a = convId && relay && model ? load().anchors[anchorKey(convId, relay, model)] : null;
     const usable = !!a && !a.odd; // 和内容对不上的实际值（见 observe）照样显示，但不用来修正
-    if (usable) tokens += a.y - dot(coef.theta, a.x);
+    // 第一次大偏差的那次（见 observe）只按 JUMP_WEIGHT 的比例修正
+    if (usable) tokens += (a.w === undefined ? 1 : a.w) * (a.y - dot(coef.theta, a.x));
     return {
       tokens: Math.max(0, Math.round(tokens)),
       source: usable ? 'local' : coef.source,
@@ -246,19 +264,46 @@ const TokenCalib = (() => {
     //     （中转站偷偷加了很长的 system prompt 时，短对话的实际值也会是估算的十几二十倍，这是真实的，要进回归，由 c 学到）
     const ratio = input / Math.max(dot(DEFAULT_THETA, x), 1);
     const odd = !(ratio >= RATIO_MIN && ratio <= RATIO_MAX);
-    if (convId) {
-      st.anchors[anchorKey(convId, relay, model)] = { x, y: input, out: output > 0 ? output : null, t: Date.now(), ...(odd ? { odd: true } : {}) };
-      trimAnchors(st.anchors);
-    }
+    let anchorWeight = 1;
     if (!odd) {
       const r = st.relays[relay] || (st.relays[relay] = { s: emptyStats(), models: {} });
       const m = r.models[model] || (r.models[model] = { s: emptyStats(), k: 0, err: null });
-      // 更新之前，单看回归（不用这个对话上一次的用量）估得准不准：用来判断校准是否已经稳定
+      // 更新之前，单看回归（不用这个对话上一次的用量）估得准不准：用来判断校准是否已经稳定，以及这次是不是大偏差
       const before = dot(coefOf(relay, model).theta, x);
       m.err = Math.abs(before - input) / input;
+      // 已经校准过的模型碰到大偏差：可能是偶发的怪数字，也可能是情况真的变了（中转站换了上游、模型名指向了新模型、
+      // 开始加隐藏的提示词，或者换了一种粗略公式估得不准的语言）。
+      //   第一次：只按 JUMP_WEIGHT 计入，记下来（m.jump）；这个对话的下一次估算也只按这个比例修正
+      //   下一次又往同一个方向偏差很大：认定情况变了，把上次少算的权重补上，这次按正常权重计入；
+      //     之后回归赶上来之前（还是同一个方向的大偏差）也都按正常权重计入
+      //   下一次正常，或者往反方向偏：上次是偶发的，只留下 JUMP_WEIGHT 的影响
+      const dir = Math.sign(input - before);
+      const jump = (m.k || 0) >= JUMP_MIN_K && Math.abs(input - before) / Math.max(before, 1) > JUMP_ERR;
+      const prev = m.jump;
+      delete m.jump;
+      let weight = 1;
+      if (jump && prev && prev.dir === dir) {
+        // 补上次少算的权重（已经确认过的不用补）。那次已经过去一次请求，这次计入时会对所有旧数据再衰减一次
+        if (!prev.confirmed && validX(prev.x) && finite(prev.y)) {
+          addTo(r.s, prev.x, prev.y, 1 - JUMP_WEIGHT, false);
+          addTo(m.s, prev.x, prev.y, 1 - JUMP_WEIGHT, false);
+        }
+        m.jump = { dir, confirmed: true };
+      } else if (jump) {
+        weight = JUMP_WEIGHT;
+        anchorWeight = JUMP_WEIGHT;
+        m.jump = { x, y: input, dir };
+      }
       m.k = (m.k || 0) + 1;
-      addTo(r.s, x, input);
-      addTo(m.s, x, input);
+      addTo(r.s, x, input, weight);
+      addTo(m.s, x, input, weight);
+    }
+    if (convId) {
+      const anchor = { x, y: input, out: output > 0 ? output : null, t: Date.now() };
+      if (odd) anchor.odd = true;
+      if (anchorWeight !== 1) anchor.w = anchorWeight;
+      st.anchors[anchorKey(convId, relay, model)] = anchor;
+      trimAnchors(st.anchors);
     }
     save();
     schedulePush();
@@ -273,7 +318,7 @@ const TokenCalib = (() => {
 
   // ---- 共享 ----
 
-  let sharing = true;
+  let sharing = false; // 设置里的勾选框打开时由 setSharing 设为 true（勾选框目前去掉了）
   let pushTimer = null;
   let pushing = false;
   let lastPushAt = 0;
@@ -317,7 +362,7 @@ const TokenCalib = (() => {
 
   // 启动时调用：拉取共享数据，再推送还没推送的。onCloud 在拉到新数据后调用（刷新界面上的估算）
   async function sync(onCloud) {
-    if (!CALIB_BASE_URL) return;
+    if (!CALIB_ENABLED) return;
     try {
       const res = await request('/v1/calibration.json');
       if (res.ok) {
@@ -369,13 +414,13 @@ const TokenCalib = (() => {
   }
 
   function schedulePush() {
-    if (!CALIB_BASE_URL || !sharing || pushTimer) return;
+    if (!CALIB_ENABLED || !sharing || pushTimer) return;
     const wait = Math.max(5000, lastPushAt + PUSH_GAP_MS - Date.now());
     pushTimer = setTimeout(() => { pushTimer = null; void push(); }, wait);
   }
 
   async function push() {
-    if (!CALIB_BASE_URL || !sharing || pushing) return;
+    if (!CALIB_ENABLED || !sharing || pushing) return;
     const entries = pendingEntries();
     if (!entries.length) return;
     const st = load();
@@ -419,8 +464,9 @@ const TokenCalib = (() => {
     && Array.isArray(s.b) && s.b.length === 3 && s.b.every(finite) && finite(s.n) && s.n >= 0;
   const validX = (x) => Array.isArray(x) && x.length === 3 && x.every(finite);
 
-  // 读取完整备份时合并：同一个中转站 / 模型保留数据多的那份，同一个“上一次请求”保留新的那份
-  function importData(d) {
+  // 读取完整备份时合并：同一个中转站 / 模型保留数据多的那份，同一个“上一次请求”保留新的那份。
+  // idMap：备份里换了 id 才加进来的对话 { 旧 id: 新 id }，它们的“上一次请求”跟着换
+  function importData(d, idMap = {}) {
     if (!isObj(d) || !isObj(d.relays)) return;
     const st = load();
     for (const relay of Object.keys(d.relays)) {
@@ -437,12 +483,20 @@ const TokenCalib = (() => {
       }
     }
     if (isObj(d.anchors)) {
-      for (const key of Object.keys(d.anchors)) {
-        const a = d.anchors[key];
+      for (const oldKey of Object.keys(d.anchors)) {
+        const a = d.anchors[oldKey];
+        let key = oldKey;
+        try {
+          const [convId, relay, model] = JSON.parse(oldKey);
+          if (own(idMap, convId)) key = anchorKey(idMap[convId], relay, model);
+        } catch (_) { continue; } // 认不出的跳过
         if (!safeKey(key) || !isObj(a) || !validX(a.x) || !finite(a.y) || a.y <= 0 || !finite(a.t)) continue;
         const cur = own(st.anchors, key) ? st.anchors[key] : null;
         if (cur && cur.t >= a.t) continue;
-        st.anchors[key] = { x: a.x, y: a.y, out: finite(a.out) && a.out > 0 ? a.out : null, t: a.t, ...(a.odd === true ? { odd: true } : {}) };
+        const copy = { x: a.x, y: a.y, out: finite(a.out) && a.out > 0 ? a.out : null, t: a.t };
+        if (a.odd === true) copy.odd = true;
+        if (finite(a.w) && a.w >= 0 && a.w < 1) copy.w = a.w;
+        st.anchors[key] = copy;
       }
       trimAnchors(st.anchors);
     }

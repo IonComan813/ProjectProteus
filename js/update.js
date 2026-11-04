@@ -387,20 +387,20 @@ async function downloadUpdate(url, version) {
   return 'browser';
 }
 
-// 下载完成后安装：进度条那里显示「下载完成，正在启动安装程序…」（按安装包类型），
-// 等正在生成的回复写完、保存好对话，再开始安装。Windows 安装版、Linux、macOS 安装开始后软件随即关闭；
-// 安卓版安装时系统会关闭软件。没能开始安装（例如被安全软件拦下）时不提示，过一会儿收起进度条
+// 下载完成后安装：进度条那里显示「下载完成，正在启动安装程序…」（按安装包类型）一会儿让用户看到，
+// 保存好对话和输入框里的文字，再开始安装。下载和安装期间软件是锁定的（lockApp），不用等别的操作结束。
+// Windows 安装版、Linux、macOS 安装开始后软件随即关闭；安卓版安装时系统会关闭软件。
+// 没能开始安装（例如被安全软件拦下）时不提示，过一会儿收起进度条（同时解除锁定）
 async function startInstall(kind, install) {
   const text = kind === 'dmg' ? 'update.openingDmg' : kind === 'zip' ? 'update.zipReady' : kind === 'apk' ? 'update.installingAndroid' : 'update.installing';
-  while (state.generating) {
-    showUpdateMessage(t('update.installAfterReply'));
-    await new Promise((r) => setTimeout(r, 1000));
-  }
   showUpdateMessage(t(text));
+  await new Promise((r) => setTimeout(r, 1500)); // 让用户看到这句话
   await flushConvSave();
-  await new Promise((r) => setTimeout(r, 800)); // 让用户看到这句话
+  if (kind !== 'zip') saveInputDraft(); // 免安装版不关闭软件，不用存
   let ok = false;
   try { ok = await install(); } catch (_) { /* 不提示 */ }
+  // 软件没有被关闭（没能开始安装，或者安卓上取消了安装）：存着的文字就不用放回了，免得以后启动时冒出来
+  setTimeout(forgetInputDraft, 60 * 1000);
   setTimeout(hideUpdateProgress, ok && kind !== 'zip' ? 20000 : 12000);
 }
 
@@ -457,30 +457,64 @@ function watchDownload(version, cancel, finish) {
 function showUpdateProgress(version, received, total, waiting) {
   const mb = (n) => (n / 1024 / 1024).toFixed(1);
   const percent = total > 0 ? Math.min(100, Math.floor((received / total) * 100)) : null;
+  // 文案里版本号后面不接省略号「…」：接了看起来就像版本号太长被截断了
   els.updateProgressText.textContent = percent == null
     ? t('update.progressUnknown', { version })
     : t('update.progress', { version, percent });
+  els.updateProgressText.title = els.updateProgressText.textContent; // 窗口很窄、真的放不下时，鼠标移上去能看到全文
   els.updateProgressSize.textContent = waiting ? '' : total > 0 ? t('update.progressSize', { received: mb(received), total: mb(total) }) : t('update.progressSizeUnknown', { received: mb(received) });
   els.updateProgressBar.classList.toggle('indeterminate', percent == null);
   els.updateProgressFill.style.width = percent == null ? '' : percent + '%';
   els.updateProgressStop.title = t('update.stop');
   els.updateProgressStop.setAttribute('aria-label', t('update.stop'));
   els.updateProgressStop.hidden = false;
-  els.updateProgress.classList.remove('message');
+  els.updateProgressBox.classList.remove('message');
   els.updateProgress.hidden = false;
+  lockApp(true);
 }
 
 // 下载完成后，进度条那里只显示一句话（进度条满格，没有 ×）
 function showUpdateMessage(text) {
   els.updateProgressText.textContent = text;
+  els.updateProgressText.title = '';
   els.updateProgressSize.textContent = '';
   els.updateProgressBar.classList.remove('indeterminate');
   els.updateProgressFill.style.width = '100%';
   els.updateProgressStop.hidden = true;
-  els.updateProgress.classList.add('message');
+  els.updateProgressBox.classList.add('message');
   els.updateProgress.hidden = false;
+  lockApp(true);
 }
 
 function hideUpdateProgress() {
   els.updateProgress.hidden = true;
+  lockApp(false);
+}
+
+// 下载和安装期间锁定软件：进度条以外的东西都不能点、不能用键盘操作（inert），进度条也不能用 Esc 或点外面关掉。
+// 所有按键都不起作用：× 只能用鼠标点或手指点（Enter 一般不用来中止操作，免得误按）。安卓的返回键见 app.js 的 bindBackButton
+let appLocked = null; // 锁定时为被设成 inert 的元素
+let lockBound = false;
+function lockApp(on) {
+  if (!lockBound) {
+    lockBound = true;
+    // 点在变暗的区域上什么都不做，焦点也留在原处；点 × 时焦点也不移到 × 上
+    els.updateProgress.addEventListener('mousedown', (e) => e.preventDefault());
+  }
+  if (on && !appLocked) {
+    appLocked = [...document.body.children].filter((el) => el !== els.updateProgress && !el.inert);
+    for (const el of appLocked) el.inert = true;
+    document.addEventListener('keydown', blockKeys, true);
+  } else if (!on && appLocked) {
+    for (const el of appLocked) el.inert = false;
+    appLocked = null;
+    document.removeEventListener('keydown', blockKeys, true);
+  }
+  // 焦点放到进度条上（不是 ×），免得留在输入框里
+  if (on && document.activeElement !== els.updateProgressBox) els.updateProgressBox.focus();
+}
+
+function blockKeys(e) {
+  e.preventDefault();
+  e.stopImmediatePropagation();
 }

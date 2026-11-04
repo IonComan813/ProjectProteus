@@ -46,7 +46,7 @@ Download `Proteus-<version>-android.apk` on your phone and tap it to install. Th
 - Exporting a story, world card or backup opens the system share menu, so you can save it to Files, a cloud drive, or send it to someone
 - Relay endpoints that block direct browser access (CORS) work too: when a request can't get through, the app resends it through Android's own network connection and remembers that endpoint. For those endpoints the reply appears all at once when it is finished instead of as it is written. The official Claude, OpenAI and Gemini APIs and OpenRouter are not affected and still show replies as they are written
 - Only `https://` API addresses work, not plain `http://` (for example a local model server on your network)
-- Data on your phone and on your computer are separate; use "Full backup (all conversations)" to move it. The Android app's data is not backed up to your Google account and is not carried over automatically to a new phone; use a full backup to move it
+- Data on your phone and on your computer are separate; use "Full backup (all conversations)" to move your conversations (app settings and API keys are not in the backup and need filling in again on the other side). The Android app's data is not backed up to your Google account and is not carried over automatically to a new phone; use a full backup to move it
 
 ### Web version
 
@@ -61,7 +61,7 @@ When the window is narrower than 1000 pixels (including on a phone browser), the
 
 ### Where is my data stored?
 
-All data (settings, conversations, images, API keys) is stored **only on this device**: the native apps keep it in their own data folder, and the web version keeps it in the browser you opened it with. Data is not shared between devices, or between the native apps and the web version; use "Full backup (all conversations)" to move it. The only thing that leaves this device is the token calibration numbers the native apps share anonymously (relay domain, model name and a few coefficients, never conversation content or API keys), which you can turn off in the settings; see [Sharing token calibration data](#sharing-token-calibration-data).
+All data (settings, conversations, images, API keys) is stored **only on this device**: the native apps keep it in their own data folder, and the web version keeps it in the browser you opened it with. Data is not shared between devices, or between the native apps and the web version; use "Full backup (all conversations)" to move your conversations, and fill in the app settings and API keys again on the other side.
 
 Switching computers, reinstalling your system or (for the web version) clearing browser data will make your existing content disappear, so export a "Full backup (all conversations)" regularly from "Export / Backup…" on the right.
 
@@ -75,7 +75,7 @@ The native apps (desktop and Android) check the update server for a new version 
   - "Skip this version" in the ▾ menu: the versions listed are not shown again; you are told when a newer version number comes out. After skipping, the next check is also on the next day
 - You have to choose one of the buttons: Esc or clicking outside does not close this window
 - The check starts as soon as the app starts, and the window appears as soon as the version information arrives. It opens on top of any other window or dialog, which stay as they were after you choose; it also appears while a reply is being generated, and the reply keeps coming in
-- After you choose to download, everything happens by itself: the download runs inside the app (no save dialog) with a progress bar at the top of the screen (version, percentage, downloaded / total size); the × on its right stops the download. When it finishes, the progress bar shows "Download finished, starting the installer…" and the update is installed without asking again. If a reply is being generated, it waits until the reply is finished and the conversation saved
+- After you choose to download, everything happens by itself: the download runs inside the app (no save dialog) with a progress bar in the middle of the screen (version, percentage, downloaded / total size) and the rest dimmed. While downloading and installing the app is locked: nothing else can be done, the keyboard does nothing, and the progress bar can't be closed with Esc or by clicking outside it; only clicking (or tapping) the × on its right stops the download. When it finishes, the progress bar shows "Download finished, starting the installer…", the conversations are saved and the update is installed without asking again. Unsent text in the input box is put back after the update
 - Once the download has finished, the app doesn't check again that day (not even after installing the new version)
 - If the installer is blocked and can't run, nothing is shown and the app keeps running
 - If the download fails, "Download failed" appears: the download was interrupted or timed out, which may be a network problem or security software blocking it. It counts as timed out after 60 seconds without receiving any data; a download that is just slow but still receiving data doesn't time out. If you pressed ×, "Download stopped" appears instead. Both windows need one of these buttons:
@@ -189,7 +189,7 @@ Besides roleplay, Proteus can be used as an ordinary LLM chat tool (a personal a
 - **Settings**: nothing is carried over from the current conversation — not the opening, System Prompt, world, user's character or artwork. The System Prompt is replaced with a general personal-assistant prompt (one for each interface language; you can edit it). "Reset to default" depends on the conversation's mode: a roleplay chat gets the roleplay default, an assistant chat the assistant default. The world, NPC characters, user's character, `{{user}}` value and key instructions are empty and cannot be edited (not because they are protected, but because this mode doesn't use them); there is no "Add opening". Artwork can still be uploaded; it is only displayed, never sent to the model
 - **Sent to the model**: only the System Prompt, the conversation within the memory range and your current message — no world, NPC characters, character, key instructions or opening, and none of their labels (see the next section); `{{user}}` is not replaced. Memory length works as usual
 - **New chats**: every type of new chat is chosen in the "＋ New chat" menu. A new chat copies the most recently used conversation of the same type (the current one, if it is of that type): in an assistant chat, "🤖 New assistant chat" keeps the current System Prompt and artwork; "🎭 New roleplay chat" takes the settings, opening and artwork of the roleplay chat you used most recently (or the defaults if there is none). Likewise, a new assistant chat started from a roleplay chat keeps the System Prompt and artwork of the most recent assistant chat, if there is one (a roleplay chat's artwork is not carried over)
-- **Export**: only the chat (TXT / Markdown), full backup (all conversations) and log; world cards and single-conversation backups are not offered. "Load world card / backup / SillyTavern card" works as usual: world cards, single-conversation backups and SillyTavern cards are loaded as new conversations, and a full backup replaces all conversations, whatever mode the current chat is in
+- **Export**: only the chat (TXT / Markdown), full backup (all conversations) and log; world cards and single-conversation backups are not offered. "Load world card / backup / SillyTavern card" works as usual: world cards, single-conversation backups and SillyTavern cards are loaded as new conversations, and a full backup's conversations are added to the existing ones, whatever mode the current chat is in
 - **Storage**: assistant chats use the same format as roleplay chats with one extra `mode: "assistant"` marker, so they are included in full backups (all conversations) and loaded back as usual. When a full backup is encrypted, assistant chats and their artwork are not encrypted (they have no settings to protect)
 
 > Older versions of Proteus don't know the marker and load assistant chats from a full backup as ordinary roleplay chats (with the assistant System Prompt and an empty world and character); nothing is lost.
@@ -299,7 +299,7 @@ You can edit the number in the memory length box directly or adjust it with − 
 - It keeps separate records per relay (API address) and per model on that relay. The same model name on different relays, or on a relay and the official API, is counted separately; a relay whose addresses in the two compatible modes differ only by a trailing `/v1` counts as one relay. A model used for the first time on a relay starts from what the relay's other models have shown
 - Chinese/Japanese/Korean text and other text are calibrated separately (languages convert to tokens at different rates), and a fixed overhead added by a relay is learned too
 - Within a conversation, the next request is estimated from the actual usage of that conversation's last request plus the part that changed since, so it is usually close after one request. Below the estimate you also see the actual input and output tokens of the conversation's last request
-- Once there is real data (from this device or shared by other users), "rough estimate" in the hint changes to "calibrated from actual usage". Only numbers are recorded, never conversation content; "Clear app data" deletes them, and "Full backup (all conversations)" includes them so you can carry on on another device
+- Once there is real data, "rough estimate" in the hint changes to "calibrated from actual usage". Only numbers are recorded, never conversation content; "Clear app data" deletes them, and "Full backup (all conversations)" includes them so you can carry on on another device
 - Reading usage: in the Anthropic format (official and compatible relays) the input is `input_tokens` plus the tokens written to and read from the cache; in the OpenAI format (OpenAI official, Gemini and compatible relays) it is `prompt_tokens`. Streaming replies in the OpenAI format only report usage when the request includes `stream_options` (Gemini's OpenAI-compatible API supports it too). A few APIs reject that parameter; Proteus then resends once without it and remembers the address so it isn't added again. If such an API doesn't report usage either, the estimate stays rough
 
 **When the actual usage is wildly different from the estimate**: when the actual figure is under 1/5 of the rough estimate or over 50 times it, it is shown but not used for calibration, nor to correct the conversation's next estimate. Such figures are usually not a tokenizer difference (models and languages differ by tens of percent at most) but a problem with how the API reports usage:
@@ -314,21 +314,9 @@ Two other cases also differ a lot, but the figures are real and are used for cal
 - **The relay adds a long hidden system prompt** (for example channels resold from Claude Code or Cursor accounts, often with prompts of ten thousand tokens or more): short conversations come out ten or twenty times the estimate; the fixed overhead c learns this, and it matters less as the conversation grows
 - **The relay counts with a different tokenizer** (for example counting Claude with OpenAI's tiktoken): off by 10–40%, which is why each relay is calibrated separately
 
-### Sharing token calibration data
+### Sharing token calibration data (currently off)
 
-When the native app starts, it downloads calibration coefficients shared by other users (by relay domain and model name). The first time you use a model on a relay, the estimate is already fairly accurate as long as someone else has used it; once there is data on this device, that takes over. All of this happens silently in the background; you only see the resulting estimate. While "Share token calibration data anonymously" under "App data" in the settings panel is ticked (the default), this device's calibration is uploaded anonymously too:
-
-- **When**: once a model has had at least 2 requests on this device and the last estimate was within 10% (or it has had 5 requests), it is uploaded if the shared data doesn't have that model yet or differs by more than 15%. Each model is uploaded at most once every 7 days
-- **What**: the relay's domain (no path), the model name, the three coefficients and how much data they come from, plus a randomly generated device ID (only so that a device's data replaces its earlier data instead of adding to it). API keys, API paths and conversation content are **never** uploaded. IP addresses, localhost, local network domains (`.local`, `.lan`, `.internal`, etc.) and non-https addresses are not uploaded
-- **What is published**: the server aggregates once an hour. Each IP counts as one vote per model, and a model is only published with **at least 3 votes**, using the median; a private relay domain used only by you never appears in the published data
-- Downloading and uploading happen silently, with no message on success or failure; without a connection only this device's data is used. The web version and installers built without a server address configured neither download nor upload
-- Someone could push wrong numbers on purpose, so the server rate-limits by IP, takes the median and limits the coefficient ranges, and the app only uses shared data as a starting point: after a request or two the estimate is based mainly on this device's actual usage
-
-Further down, "View what the next request will send" opens a large window (over the chat on a computer, over the settings panel on a phone) listing each part of the next request in the order it is sent: the System Prompt, world, NPC characters and user's character in the system settings, then every message within the memory range. It shows the text actually sent, labels included and nothing shortened, with `{{user}}` and `{{char}}` already replaced; each part has its estimated tokens on the right of its title, and the total is at the top. This is the logical content, not the raw API request (address, headers, JSON).
-
-- If there is text in the input box, it appears last as your current message (with the key instructions after it); if the input box is empty, the last part is the message you are about to send, marked as such
-- In a locked conversation, protected settings are shown as "(protected content)"
-- Click outside the window (or press Esc) to close it
+Calibration happens only on this device; nothing is uploaded or downloaded. A feature for sharing calibration coefficients anonymously between users was built (server in `worker/calibration`, client in `js/tokens.js`); the code is kept but currently turned off, and how to turn it on is described at the top of `js/tokens.js`.
 
 ## Export and backup
 
@@ -340,7 +328,7 @@ Further down, "View what the next request will send" opens a large window (over 
 | Chat (TXT / Markdown) (assistant mode) | All messages in the current conversation | System Prompt |
 | World card (JSON, can be encrypted) | The current conversation's System Prompt, world, NPC characters, key instructions, opening (all versions, and whether it is sent to the model), artwork | User's character, `{{user}}` value, story |
 | Full backup (this conversation) (JSON, can be encrypted) | Everything in the current conversation: System Prompt, world, NPC characters, user's character, `{{user}}` value, key instructions, opening (all versions, and whether it is sent to the model), story (including every version of every reply), artwork | App settings |
-| Full backup (all conversations) (JSON, can be encrypted) | Every conversation (with all its content), the app settings (memory length, Model & API, interface language, layout, etc.) and the token calibration data (merged with this device's on loading) | API keys; shared calibration data downloaded from the server |
+| Full backup (all conversations) (JSON, can be encrypted) | Every conversation (with all its content, as in "Full backup (this conversation)") and the token calibration data (merged with this device's on loading) | App settings (memory length, Model & API, API keys, interface language, layout, etc.) |
 | Log (last request) (TXT) | The request actually sent to the model the last time (API address, headers, JSON body) and the raw response received, for troubleshooting. Only the last request since the app was opened; not saved | API keys; locked settings from encrypted world cards (shown as "(protected content)") |
 
 In an assistant chat only the chat, full backup (all conversations) and log are offered, see [Assistant mode](#assistant-mode).
@@ -349,7 +337,7 @@ In an assistant chat only the chat, full backup (all conversations) and log are 
 
 - **Loading a world card** creates a new conversation with the card's System Prompt, world, NPC characters, key instructions, opening and artwork, and an empty user's character and `{{user}}` value; existing conversations are not affected
 - **Loading a full backup (this conversation)** creates a new conversation exactly as it was backed up; existing conversations are not affected (loading the same backup twice gives two conversations)
-- **Loading a full backup (all conversations)** replaces all current conversations and settings (your API keys on this device are kept), restoring the whole app to the state of the backup
+- **Loading a full backup (all conversations)** adds the backup's conversations to your existing ones, which stay as they are. Conversations that are the same as an existing one are added too (loading the same backup twice gives two copies); delete the ones you don't need. App settings are not in the backup and are left alone when loading (settings in backups made by earlier versions are ignored too), and you stay in the conversation you were in. Use it to move your conversations to another device, then adjust the settings there
 
 Images are stored in the JSON as text (base64), so world cards and backups with images are about a third larger than the images themselves. The artwork can also be downloaded on its own under "Artwork" on the right.
 
@@ -475,7 +463,7 @@ css/style.css     Styles
 js/i18n.js        Interface languages (Simplified Chinese, Traditional Chinese, English, Japanese) and the default System Prompt
 js/db.js          Local storage (the browser's IndexedDB)
 js/crypto.js      World card encryption
-js/tokens.js      Token estimates, calibrated from the usage the API reports; downloads and uploads shared calibration data
+js/tokens.js      Token estimates, calibrated from the usage the API reports
 js/providers.js   Communication with the model APIs
 js/render.js      Message display (Markdown/HTML, sandboxed)
 js/stcard.js      Loading SillyTavern character cards and lorebooks
@@ -488,7 +476,7 @@ electron/preload.js  Native features offered to the page (for now only downloadi
 android/          Android project (Capacitor); capacitor.config.json is its configuration; UpdateDownloaderPlugin.java downloads and installs updates inside the app (UpdateInstallReceiver.java handles the cases that need the user to confirm)
 assets/           Source images for the Android icon and splash screen
 scripts/          Small build scripts (including third-party-notices.js, which checks third-party licenses and generates the notices)
-worker/calibration/  Server for shared token calibration data (Cloudflare Worker + R2), see "Server for shared calibration data"
+worker/calibration/  Server for shared token calibration data (Cloudflare Worker + R2; sharing is currently off, no need to deploy it)
 build/icon.png    App icon
 package.json      Dependencies, and the packaging configuration for the Windows / macOS / Linux apps
 ```
@@ -580,23 +568,9 @@ Set up three things first:
 
 Without the two secrets the upload is skipped with a warning; without `UPDATE_BASE_URL` the installers built don't check for updates (`scripts/set-server-url.js` writes the address into `js/update.js` at build time).
 
-#### Server for shared calibration data (Cloudflare Worker)
+#### Server for shared calibration data (Cloudflare Worker, not in use)
 
-The server for [sharing token calibration data](#sharing-token-calibration-data) is in `worker/calibration`: a Cloudflare Worker that keeps its data in a **separate** bucket, `projectproteus-calibration`. It doesn't share `projectproteus-releases` with the installers, and the app never writes to R2 directly: write credentials shipped in the app could be extracted by anyone and used to replace the installers. The Worker only accepts validated numbers and writes them to its own bucket.
-
-1. In Cloudflare, under My Profile → API Tokens, create a token with "Workers Scripts: Edit" and "Workers R2 Storage: Edit"
-2. In the repository's Settings → Secrets and variables → Actions, add:
-
-| Type | Name | Content |
-|---|---|---|
-| Secret | `CLOUDFLARE_API_TOKEN` | The token from step 1 |
-| Secret | `CALIB_IP_SALT` | Any long random string (e.g. `openssl rand -hex 32`). The Worker only stores salted hashes of IPs; don't change it later, or earlier votes will count as someone else's |
-| Variable | `CLOUDFLARE_ACCOUNT_ID` | Your Cloudflare account ID |
-
-3. Run "Calibration worker" on the Actions page (after that it deploys automatically when `worker/calibration` changes on main); the first run creates the bucket
-4. Put the Worker's address (e.g. `https://proteus-calibration.<subdomain>.workers.dev`, no trailing `/`) in the repository variable `CALIB_BASE_URL`. Installers built after that download and upload calibration data (`scripts/set-server-url.js` writes it into `js/tokens.js` at build time)
-
-You can also deploy by hand with `npx wrangler deploy` in `worker/calibration` (after `npx wrangler r2 bucket create projectproteus-calibration` and `npx wrangler secret put IP_SALT`). The Worker's API and anti-abuse rules are described at the top of `worker/calibration/src/index.js`.
+Sharing token calibration data is currently off (see [Sharing token calibration data (currently off)](#sharing-token-calibration-data-currently-off)), so **there is no need to deploy this Worker or set anything up on Cloudflare**. The code is in `worker/calibration`; the deployment workflow is `.github/workflows/calibration-worker.yml` (manual runs only), and the secrets / variables it needs are listed at its top.
 
 #### Android smoke test
 
