@@ -46,7 +46,7 @@ Download `Proteus-<version>-android.apk` on your phone and tap it to install. Th
 - Exporting a story, world card or backup opens the system share menu, so you can save it to Files, a cloud drive, or send it to someone
 - Relay endpoints that block direct browser access (CORS) work too: when a request can't get through, the app resends it through Android's own network connection and remembers that endpoint. For those endpoints the reply appears all at once when it is finished instead of as it is written. The official Claude, OpenAI and Gemini APIs and OpenRouter are not affected and still show replies as they are written
 - Only `https://` API addresses work, not plain `http://` (for example a local model server on your network)
-- Data on your phone and on your computer are separate; use "Full backup (all conversations)" to move it. The Android app's data is not backed up to your Google account and is not carried over automatically to a new phone; use a full backup to move it
+- Data on your phone and on your computer are separate; use "Full backup (all conversations)" to move your conversations (app settings and API keys are not in the backup and need filling in again on the other side). The Android app's data is not backed up to your Google account and is not carried over automatically to a new phone; use a full backup to move it
 
 ### Web version
 
@@ -61,7 +61,7 @@ When the window is narrower than 1000 pixels (including on a phone browser), the
 
 ### Where is my data stored?
 
-All data (settings, conversations, images, API keys) is stored **only on this device**: the native apps keep it in their own data folder, and the web version keeps it in the browser you opened it with. Data is not shared between devices, or between the native apps and the web version; use "Full backup (all conversations)" to move it.
+All data (settings, conversations, images, API keys) is stored **only on this device**: the native apps keep it in their own data folder, and the web version keeps it in the browser you opened it with. Data is not shared between devices, or between the native apps and the web version; use "Full backup (all conversations)" to move your conversations, and fill in the app settings and API keys again on the other side.
 
 Switching computers, reinstalling your system or (for the web version) clearing browser data will make your existing content disappear, so export a "Full backup (all conversations)" regularly from "Export / Backup…" on the right.
 
@@ -328,7 +328,7 @@ Calibration happens only on this device; nothing is uploaded or downloaded. A fe
 | Chat (TXT / Markdown) (assistant mode) | All messages in the current conversation | System Prompt |
 | World card (JSON, can be encrypted) | The current conversation's System Prompt, world, NPC characters, key instructions, opening (all versions, and whether it is sent to the model), artwork | User's character, `{{user}}` value, story |
 | Full backup (this conversation) (JSON, can be encrypted) | Everything in the current conversation: System Prompt, world, NPC characters, user's character, `{{user}}` value, key instructions, opening (all versions, and whether it is sent to the model), story (including every version of every reply), artwork | App settings |
-| Full backup (all conversations) (JSON, can be encrypted) | Every conversation (with all its content), the app settings (memory length, interface language, layout) and the token calibration data (merged with this device's on loading) | All "Model & API" settings (provider, API address, API keys, model, max output length, etc.); this device's update reminders (remind later, skipped versions) |
+| Full backup (all conversations) (JSON, can be encrypted) | Every conversation (with all its content, as in "Full backup (this conversation)") and the token calibration data (merged with this device's on loading) | App settings (memory length, Model & API, API keys, interface language, layout, etc.) |
 | Log (last request) (TXT) | The request actually sent to the model the last time (API address, headers, JSON body) and the raw response received, for troubleshooting. Only the last request since the app was opened; not saved | API keys; locked settings from encrypted world cards (shown as "(protected content)") |
 
 In an assistant chat only the chat, full backup (all conversations) and log are offered, see [Assistant mode](#assistant-mode).
@@ -337,7 +337,7 @@ In an assistant chat only the chat, full backup (all conversations) and log are 
 
 - **Loading a world card** creates a new conversation with the card's System Prompt, world, NPC characters, key instructions, opening and artwork, and an empty user's character and `{{user}}` value; existing conversations are not affected
 - **Loading a full backup (this conversation)** creates a new conversation exactly as it was backed up; existing conversations are not affected (loading the same backup twice gives two conversations)
-- **Loading a full backup (all conversations)** adds the backup's conversations to your existing ones, which stay as they are; conversations identical to an existing one (for example when loading the same backup twice) are not added again. The app settings (memory length, interface language, layout) are replaced with the ones in the backup. The "Model & API" settings are not in the backup and are left alone when loading, so API keys and everything else you filled in on this device stay (they are also ignored in backups made by earlier versions that included them). Use it to move your data to another device, then fill in "Model & API" there
+- **Loading a full backup (all conversations)** adds the backup's conversations to your existing ones, which stay as they are; conversations identical to an existing one (for example when loading the same backup twice) are not added again. App settings are not in the backup and are left alone when loading (settings in backups made by earlier versions are ignored too), and you stay in the conversation you were in. Use it to move your conversations to another device, then adjust the settings there
 
 Images are stored in the JSON as text (base64), so world cards and backups with images are about a third larger than the images themselves. The artwork can also be downloaded on its own under "Artwork" on the right.
 

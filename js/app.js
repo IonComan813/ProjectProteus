@@ -132,26 +132,6 @@ const artKey = (id) => 'art:' + id;
 // ---------------- 保存 ----------------
 
 // 要写入本机存储的软件设置：不记住 API Key 时把它去掉
-// 完整备份不带、读取完整备份时也不动的设置：
-//   「模型与接口」那一块（服务商、接口地址、API Key、记住 API Key、模型名和获取到的列表、最大输出长度、effort、温度）；
-//   只属于这台设备的更新提示记录（稍后提醒、跳过的版本、哪天检查过）
-const LOCAL_SETTING_KEYS = ['provider', 'apiKeys', 'rememberKeys', 'baseUrls', 'models', 'modelLists', 'maxTokens', 'effort',
-  'useTemperature', 'temperature', 'updateSnooze', 'updateCheckedDay'];
-
-// 设置里要放进完整备份的部分（s 默认为当前设置）
-function backupSettings(s = state.settings) {
-  const out = { ...s };
-  for (const k of LOCAL_SETTING_KEYS) delete out[k];
-  return out;
-}
-
-// 当前设置里留在本机的部分
-function localSettings() {
-  const out = {};
-  for (const k of LOCAL_SETTING_KEYS) if (k in state.settings) out[k] = state.settings[k];
-  return out;
-}
-
 function storableSettings() {
   const s = state.settings;
   return s.rememberKeys === false ? { ...s, apiKeys: {} } : s;
@@ -1858,8 +1838,8 @@ async function backupConv() {
   download(`${safeFilename(convTitle(conv))}-${t('export.convSuffix')}.json`, JSON.stringify(data, null, 2), 'application/json');
 }
 
-// 完整备份（全部对话）：所有对话（各自的设定、剧情、艺术图）+ 软件设置（不含「模型与接口」那一块和只属于这台设备的，
-// 见 LOCAL_SETTING_KEYS）+ token 校准数据。
+// 完整备份（全部对话）：所有对话（各自的设定、剧情、艺术图）+ token 校准数据。不含任何软件设置
+// （记忆长度、界面语言、布局、模型与接口等都可以随时调整；API Key 也不该出现在备份里）。
 // 选择加密时，每个普通对话的 System Prompt、世界观、开场白和艺术图加密，剧情和人设仍是明文；
 // 已经锁定的对话始终保持原来的密文和密码（先提醒一下）。全部都是锁定对话时不再问是否加密。
 async function backup() {
@@ -1888,7 +1868,6 @@ async function backup() {
     type: 'backup',
     version: 3,
     exportedAt: new Date().toISOString(),
-    settings: backupSettings(),
     conversations,
     tokenCalib: TokenCalib.exportData(new Set(state.conversations.map((c) => c.id))), // token 校准数据，换设备后接着用
     arts,
@@ -2285,13 +2264,10 @@ async function restore(file) {
   if (data.type !== 'backup' || !Array.isArray(data.conversations) || !data.conversations.every(validBackupConv)) return toast(t('restore.invalid'));
   if (!(await ask(t('restore.fullConfirm', { n: data.conversations.length })))) return;
   if (state.generating) return toast(t('conv.stopFirst'));
-  // 备份里的对话加到现有对话里（现有的不动），软件设置换成备份里的。先把还没写入的改动存好
+  // 备份里的对话加到现有对话里（现有的不动）。软件设置不动：以前的版本做的备份里带着设置的，也不用。
+  // 读完后仍停在读取前的对话里。先把还没写入的改动存好
   await flushConvSave();
-  clearTimeout(saveTimer);
-  const saved = data.settings && typeof data.settings === 'object' ? data.settings : {};
   const arts = data.arts && typeof data.arts === 'object' ? data.arts : {};
-  // 「模型与接口」那一块和只属于这台设备的设置（LOCAL_SETTING_KEYS）保留本机的；以前的备份里带着它们的也不用
-  const settings = { ...DEFAULT_SETTINGS, ...backupSettings(saved), ...localSettings() };
   const existing = new Map(state.conversations.map((c) => [c.id, c]));
   const idMap = {}; // 和现有对话 id 相同、内容不同的：换一个新的 id 加进来
   let added = 0;
@@ -2313,8 +2289,8 @@ async function restore(file) {
       await importArt(c.id, arts[oldId]);
       added++;
     }
-    if (idMap[settings.activeConvId]) settings.activeConvId = idMap[settings.activeConvId];
-    state.settings = settings;
+    // 读完后重新载入时打开的还是现在这个对话
+    state.settings.activeConvId = state.conv.id;
     await DB.set('settings', storableSettings());
     // token 校准数据和本机的合并（换了 id 的对话，“上一次请求”跟着换）
     TokenCalib.importData(data.tokenCalib, idMap);
