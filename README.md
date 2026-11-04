@@ -530,7 +530,7 @@ The output is in the `dist/` folder.
 
 - **Every PR maintains this file**: it adds its own entries and removes or rewrites older entries it conflicts with (for example a feature it changes or takes back). By release time the file is a clean, accurate list of what's new in that version
 - **The first PR after a release** clears the entries and sets the base version (`基准版本`) to the version just released
-- **The PR description starts with** this block; the second line just says what was done, or "- 无需更新" when the file was not changed:
+- **The PR description starts with** this block; the second line just says what was done, or "- 无需更新" when the entries did not change:
 
   ```
   ## 更新说明文件
@@ -538,7 +538,7 @@ The output is in the `dist/` folder.
   ```
 
 - **A PR check** (`.github/workflows/pr-notes-check.yml`) verifies that:
-  - the block says "已更新" if the PR changed the file and "无需更新" if it didn't;
+  - the block says "已更新" if the PR changed the entries (added, removed or reworded any) and "无需更新" if it didn't. Clearing entries that were already released, changing the base version, or editing only comments does not count: the first PR after a release writes "无需更新" if it only clears the file, and "已更新" if it also adds its own entries;
   - the file's format is valid, with all four languages (zh-CN, zh-TW, en, ja) in every entry;
   - the base version is the latest released version. If it isn't, a release has happened and the file hasn't been cleared yet; the check fails and says what to change.
 
