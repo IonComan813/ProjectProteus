@@ -1442,19 +1442,22 @@ async function send() {
   const text = els.input.value.trim();
   if (!text) return;
   const conv = state.conv;
-  conv.messages.push({ id: uid(), role: 'user', versions: [text], cur: 0 });
+  const msg = { id: uid(), role: 'user', versions: [text], cur: 0 };
+  const sent = { msg, text, title: conv.title }; // 一个字回复都没有时退回输入框用（见 runGeneration）
+  conv.messages.push(msg);
   if (!conv.title) conv.title = titleFrom(text);
   els.input.value = '';
   await saveConv();
-  await generateReply();
+  await generateReply(sent);
 }
 
-async function generateReply() {
+// sent：刚用「发送」发出的消息（send 传入）。「生成回复」、编辑用户消息后重新生成时没有
+async function generateReply(sent = null) {
   const msgs = state.conv.messages;
   const context = msgs.slice();
   const m = { id: uid(), role: 'assistant', versions: [''], cur: 0 };
   msgs.push(m);
-  await runGeneration(m, context);
+  await runGeneration(m, context, sent);
 }
 
 async function regenerate(m) {
@@ -1465,7 +1468,7 @@ async function regenerate(m) {
   await runGeneration(m, msgs.slice(0, idx));
 }
 
-async function runGeneration(m, context) {
+async function runGeneration(m, context, sent = null) {
   const conv = state.conv;
   const controller = new AbortController();
   state.generating = { controller, msgId: m.id };
@@ -1543,6 +1546,16 @@ async function runGeneration(m, context) {
     m.versions.splice(ver, 1);
     if (!m.versions.length) conv.messages.splice(conv.messages.indexOf(m), 1);
     else m.cur = m.versions.length - 1;
+  }
+  // 刚用「发送」发出的消息一个字回复都没有（出错、被拦截、停止）：把它退回输入框，对话回到上一次回复为止，
+  // 改一改再点「发送」就是重试。还在这个对话里、它仍是最后一条时才退回（切到了别的对话就留在原处）。
+  // 输入框里这期间又写了字的话，接在退回的文字后面。编辑用户消息后重新生成的不退回（那条消息有多个版本，留在原处）
+  if (!kept && sent && state.conv === conv && conv.messages[conv.messages.length - 1] === sent.msg) {
+    conv.messages.pop();
+    conv.title = sent.title;
+    const typed = els.input.value.trim();
+    els.input.value = typed ? sent.text + '\n\n' + typed : sent.text;
+    renderConvSelect(); // 标题可能退回了
   }
 
   if (state.conv === conv) renderMessages();
