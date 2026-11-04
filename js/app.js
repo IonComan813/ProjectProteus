@@ -889,8 +889,12 @@ function createView(it) {
     row.append(sendBox, sendText);
     el.appendChild(row);
   }
-  el.appendChild(actions);
-  return { el, label, holder, actions, sendBox, sendText, frame: null, editor: null, shownText: null };
+  // 用户消息下方常驻的说明：这个版本为什么没得到回复（见 runGeneration）
+  const note = document.createElement('div');
+  note.className = 'msg-error';
+  note.hidden = true;
+  el.append(note, actions);
+  return { el, label, holder, note, actions, sendBox, sendText, frame: null, editor: null, shownText: null };
 }
 
 function updateView(v, it) {
@@ -941,6 +945,10 @@ function updateView(v, it) {
     v.shownText = text;
     v.shownLocked = locked;
   }
+
+  const note = m && m.role === 'user' && !editing && Array.isArray(m.errors) && typeof m.errors[m.cur] === 'string' ? m.errors[m.cur] : '';
+  v.note.textContent = note;
+  v.note.hidden = !note;
 
   // 操作按钮
   v.actions.innerHTML = '';
@@ -1472,6 +1480,9 @@ async function runGeneration(m, context, sent = null) {
   const conv = state.conv;
   const controller = new AbortController();
   state.generating = { controller, msgId: m.id };
+  // 这次回复的是哪条用户消息（context 的最后一条）。它这个版本以前没得到回复时记下的原因（见下面）先清掉
+  const owner = context[context.length - 1] && context[context.length - 1].role === 'user' ? context[context.length - 1] : null;
+  if (owner && Array.isArray(owner.errors)) owner.errors[owner.cur] = null;
   // 发出请求的时间（回复结束后随对话一起保存）
   touchConv(conv);
   renderConvSelect();
@@ -1550,12 +1561,37 @@ async function runGeneration(m, context, sent = null) {
   // 刚用「发送」发出的消息一个字回复都没有（出错、被拦截、停止）：把它退回输入框，对话回到上一次回复为止，
   // 改一改再点「发送」就是重试。还在这个对话里、它仍是最后一条时才退回（切到了别的对话就留在原处）。
   // 输入框里这期间又写了字的话，接在退回的文字后面。编辑用户消息后重新生成的不退回（那条消息有多个版本，留在原处）
+  // 一个字都没有时说明原因。还没出字就点了停止写「用户手动中断」；已经出了一部分再停止的不提示（看得出结尾是断的）
+  let noReply = null;
+  if (!kept) {
+    if (error) noReply = error.message;
+    else if (blocked) noReply = t('gen.' + blocked);
+    else if (failed) noReply = t('gen.errorEnded');
+    else if (truncated) noReply = t('gen.truncatedEmpty');
+    else if (aborted) noReply = t('gen.userStopped');
+    // 正常结束却一个字都没有：例如接口把正文放进了思考字段，没法判断哪些是正文
+    else noReply = t('gen.empty');
+  }
+  let rolledBack = false;
   if (!kept && sent && state.conv === conv && conv.messages[conv.messages.length - 1] === sent.msg) {
     conv.messages.pop();
     conv.title = sent.title;
     const typed = els.input.value.trim();
     els.input.value = typed ? sent.text + '\n\n' + typed : sent.text;
     renderConvSelect(); // 标题可能退回了
+    rolledBack = true;
+  }
+  // 没退回输入框、这条用户消息的这个版本也就没有任何回复时（编辑用户消息后重新生成、点「生成回复」）：
+  // 原因记在这个版本上，常驻显示在消息下方；切到别的版本再切回来还在，下次给这个版本生成回复时清掉。
+  // 其他情况（退回了输入框、重新生成时还有以前的回复版本）显示在输入框上方的红框里
+  let noteOnMsg = false;
+  if (!kept && !rolledBack && owner && conv.messages.includes(owner)) {
+    const next = conv.messages[conv.messages.indexOf(owner) + 1];
+    if (!next || next.role !== 'assistant') {
+      if (!Array.isArray(owner.errors)) owner.errors = [];
+      owner.errors[owner.cur] = noReply;
+      noteOnMsg = true;
+    }
   }
 
   if (state.conv === conv) renderMessages();
@@ -1566,13 +1602,7 @@ async function runGeneration(m, context, sent = null) {
     if (error || failed) showModal(t('gen.interruptedTitle'), t('gen.interrupted') + (error ? '\n\n' + error.message : ''));
     else if (blocked) showModal(t('gen.blockedTitle'), t('gen.' + blocked + 'Partial'));
     else if (truncated) showModal(t('gen.truncatedTitle'), t('gen.truncated'));
-  } else if (error) showError(error.message);
-  else if (blocked) showError(t('gen.' + blocked));
-  else if (failed) showError(t('gen.errorEnded'));
-  else if (truncated) showError(t('gen.truncatedEmpty'));
-  else if (aborted) toast(t('gen.stopped'));
-  // 正常结束却一个字都没有：例如接口把正文放进了思考字段，没法判断哪些是正文
-  else showError(t('gen.empty'));
+  } else if (!noteOnMsg && state.conv === conv) showError(noReply);
 }
 
 function stop() {
