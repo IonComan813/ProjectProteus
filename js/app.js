@@ -47,6 +47,7 @@ const state = {
   views: new Map(),    // 消息 id → 界面元素
   renderedConvId: null,
   greetingMode: null,  // 正在用输入框编辑开场白时为 { preview }
+  restoring: false,    // 正在读取世界卡、备份或酒馆卡（安装更新要等它完成，见 update.js 的 installBlocker）
   version: null,       // 当前运行的版本号（网页版为 null）
 };
 
@@ -1091,6 +1092,33 @@ function updateEstimate() {
 // 估算的来源（tokens.js 的 source）→ 提示文字。共享数据在后台静默拉取，界面上不单独说明，和本机的数据一样显示为“按实际用量校准”
 const ESTIMATE_KEY = { local: 'set.tokenEstimateCalib', cloud: 'set.tokenEstimateCalib' };
 const PREVIEW_TOTAL_KEY = { local: 'preview.totalCalib', cloud: 'preview.totalCalib' };
+
+// ---- 安装更新时保留输入框里的文字 ----
+// 安装更新会关闭软件：安装前把输入框里没发送的文字存起来（update.js 的 startInstall），下次启动时放回同一个对话。
+// 只放回 10 分钟以内存的；放回后（或者过期）就删掉
+const INPUT_DRAFT_KEY = 'proteus.inputDraft';
+const INPUT_DRAFT_MAX_AGE = 10 * 60 * 1000;
+
+function saveInputDraft() {
+  const text = els.input.value;
+  if (!text.trim() || state.greetingMode || !state.conv) return;
+  try { localStorage.setItem(INPUT_DRAFT_KEY, JSON.stringify({ conv: state.conv.id, text, t: Date.now() })); } catch (_) { /* 存不了就算了 */ }
+}
+
+function forgetInputDraft() {
+  try { localStorage.removeItem(INPUT_DRAFT_KEY); } catch (_) { /* 本来就没存 */ }
+}
+
+function restoreInputDraft() {
+  let d = null;
+  try { d = JSON.parse(localStorage.getItem(INPUT_DRAFT_KEY) || 'null'); } catch (_) { /* 认不出就不放回 */ }
+  forgetInputDraft();
+  if (!d || typeof d.text !== 'string' || !(Date.now() - d.t < INPUT_DRAFT_MAX_AGE)) return;
+  if (state.conv && state.conv.id === d.conv && !els.input.value) {
+    els.input.value = d.text;
+    updateEstimateSoon();
+  }
+}
 
 // 在输入框里打字时稍等一下再更新
 let estimateTimer = null;
@@ -2175,6 +2203,15 @@ async function importTavernFile(file) {
 // 读取世界卡、完整备份（当前对话 / 全部对话），或者酒馆的角色卡（PNG / JSON）、世界书（JSON）。
 // 剧情导出是 TXT/Markdown，不能读回
 async function restore(file) {
+  state.restoring = true;
+  try {
+    return await restoreFile(file);
+  } finally {
+    state.restoring = false;
+  }
+}
+
+async function restoreFile(file) {
   if (state.generating) return toast(t('conv.stopFirst'));
   const r = await readImportFile(file);
   if (r.error) return toast(t(r.error));
@@ -2947,6 +2984,7 @@ function bindSettings() {
     forgetCachedLang();
     forgetNativeOrigins();
     forgetNoUsageOption();
+    forgetInputDraft();
     TokenCalib.forget();
     location.reload();
   });
@@ -3287,6 +3325,7 @@ function init() {
     showError(t('boot.failed', { msg: e.message }));
     throw e;
   });
+  booted.then(restoreInputDraft, () => {});
   // 第一次打开时先显示开源协议说明（见 showLicenseNotice）
   const licensed = booted.then(showLicenseNotice);
   // 拉取其他用户共享的 token 校准数据，推送本机还没推送的（静默，见 tokens.js。共享目前关闭，这里什么都不做）

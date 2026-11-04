@@ -387,20 +387,41 @@ async function downloadUpdate(url, version) {
   return 'browser';
 }
 
-// 下载完成后安装：进度条那里显示「下载完成，正在启动安装程序…」（按安装包类型），
-// 等正在生成的回复写完、保存好对话，再开始安装。Windows 安装版、Linux、macOS 安装开始后软件随即关闭；
+// 安装会关闭软件（免安装版除外）。这些情况先等一等，返回进度条那里要显示的提示（i18n 键名），不用等时返回 null：
+//   模型正在出字；正在编辑消息或开场白（改了还没保存的会丢）；确认框、输入框、密码框开着（例如正要读取备份）；
+//   正在读取备份或卡片（读取完整备份时会先清空现有对话再写入，中途关掉会丢数据）。
+// 输入框里没发送的文字不用等：安装前存起来，重启后放回（saveInputDraft / restoreInputDraft）
+function installBlocker() {
+  if (state.generating) return 'update.waitReply';
+  if (state.editingId) return 'update.waitEdit';
+  if (state.greetingMode) return 'update.waitGreeting';
+  if (state.restoring) return 'update.waitRestore';
+  if (!els.dialog.hidden || !els.textDialog.hidden || !els.pwDialog.hidden) return 'update.waitDialog';
+  return null;
+}
+
+// 下载完成后安装：要等的情况（installBlocker）都过去后，进度条那里显示「下载完成，正在启动安装程序…」（按安装包类型）
+// 一会儿让用户看到，保存好对话和输入框里的文字，再开始安装。Windows 安装版、Linux、macOS 安装开始后软件随即关闭；
 // 安卓版安装时系统会关闭软件。没能开始安装（例如被安全软件拦下）时不提示，过一会儿收起进度条
 async function startInstall(kind, install) {
   const text = kind === 'dmg' ? 'update.openingDmg' : kind === 'zip' ? 'update.zipReady' : kind === 'apk' ? 'update.installingAndroid' : 'update.installing';
-  while (state.generating) {
-    showUpdateMessage(t('update.installAfterReply'));
-    await new Promise((r) => setTimeout(r, 1000));
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  for (;;) {
+    let wait;
+    while ((wait = installBlocker())) {
+      showUpdateMessage(t(wait));
+      await sleep(1000);
+    }
+    showUpdateMessage(t(text));
+    await sleep(1500); // 让用户看到这句话
+    if (!installBlocker()) break; // 这期间又开始了要等的事（例如发了一条消息）：接着等
   }
-  showUpdateMessage(t(text));
   await flushConvSave();
-  await new Promise((r) => setTimeout(r, 800)); // 让用户看到这句话
+  if (kind !== 'zip') saveInputDraft(); // 免安装版不关闭软件，不用存
   let ok = false;
   try { ok = await install(); } catch (_) { /* 不提示 */ }
+  // 软件没有被关闭（没能开始安装，或者安卓上取消了安装）：存着的文字就不用放回了，免得以后启动时冒出来
+  setTimeout(forgetInputDraft, 60 * 1000);
   setTimeout(hideUpdateProgress, ok && kind !== 'zip' ? 20000 : 12000);
 }
 
