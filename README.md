@@ -539,7 +539,7 @@ The output is in the `dist/` folder.
 
 - **A PR check** (`.github/workflows/pr-notes-check.yml`) verifies that:
   - the block says "已更新" if the PR changed the file and "无需更新" if it didn't;
-  - the file's format is valid, with zh-CN and en required (missing zh-TW / ja fall back to zh-CN / en);
+  - the file's format is valid, with all four languages (zh-CN, zh-TW, en, ja) in every entry;
   - the base version is the latest released version. If it isn't, a release has happened and the file hasn't been cleared yet; the check fails and says what to change.
 
   The details are at the top of `scripts/release-notes.js`. The rest of the PR description is for the detailed changes and is not collected.

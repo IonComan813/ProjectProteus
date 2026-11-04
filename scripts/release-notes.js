@@ -11,7 +11,8 @@
 //     ja: 一部のウィンドウが想定どおりに閉じない問題を修正しました
 //
 // 「基准版本」是上一个发布的版本：文件里是这之后的改动。每一条以「- 语言:」开头，同一条的其他语言缩进写在下面。
-// zh-CN 和 en 必须有（Release 页面是中英双语）；zh-TW、ja 缺了时分别用 zh-CN、en 代替。<!-- --> 里的是注释，空行可以随便加。
+// 每一条都必须有 zh-CN、zh-TW、en、ja 四种语言（Release 页面用 zh-CN 和 en，软件的更新提示按界面语言显示）。
+// <!-- --> 里的是注释，空行可以随便加。
 //
 // 每个 PR 都要维护这个文件：
 //   - 有用户能感觉到的改动：在文件里加条目；和以前的条目冲突的（例如这次改掉、撤销了以前加的功能），删掉或改成最新的说法。
@@ -23,7 +24,7 @@
 //   - 已更新：加入 1 条；删去和它冲突的「……」
 //
 // 没有改这个文件时写「- 无需更新」（后面可以加原因）。PR 检查会核对：改了文件就要写「已更新」，没改就要写「无需更新」；
-// 文件格式正确；基准版本是最新发布的版本（不是的话说明刚发布过版本、还没有清空）。
+// 文件格式正确、每一条四种语言都有；基准版本是最新发布的版本（不是的话说明刚发布过版本、还没有清空）。
 // PR 正文的其他部分只写详细的改动说明，不再收集。
 //
 // 用法：
@@ -73,13 +74,12 @@ function parseFile(text) {
   if (!result.base) result.errors.push('缺少「基准版本: vX.Y.Z」一行。');
   result.entries.forEach((e, i) => {
     const name = `第 ${i + 1} 条（${(e['zh-CN'] || e.en || Object.values(e)[0]).slice(0, 20)}…）`;
-    for (const lang of ['zh-CN', 'en']) if (!e[lang]) result.errors.push(`${name}缺少 ${lang}（Release 页面是中英双语）。`);
-    for (const lang of ['zh-TW', 'ja']) if (!e[lang]) result.warnings.push(`${name}没有 ${lang}，软件里会用 ${FALLBACK[lang]} 的代替。`);
+    for (const lang of LANGS) if (!e[lang]) result.errors.push(`${name}缺少 ${lang}（每一条都要有 ${LANGS.join('、')} 四种语言）。`);
   });
   return result;
 }
 
-// 条目按四种语言整理（缺的语言用 FALLBACK 代替）：{ 语言: [文字] }
+// 条目按四种语言整理：{ 语言: [文字] }。检查保证四种语言都有；万一缺了（例如发布时文件不合格），用 FALLBACK 代替
 function notesOf(entries) {
   const out = Object.fromEntries(LANGS.map((l) => [l, []]));
   for (const e of entries) {
@@ -186,7 +186,7 @@ function collect(tag, out) {
     const file = parseFile(fs.readFileSync(NOTES_FILE, 'utf8'));
     for (const w of [...file.errors, ...file.warnings]) console.log(`::warning::${NOTES_FILE}: ${w}`);
     result.from = file.base;
-    result.notes = notesOf(file.entries.filter((e) => e['zh-CN'] && e.en));
+    result.notes = notesOf(file.entries.filter((e) => e['zh-CN'] && e.en)); // 不合格的文件也尽量发布：至少要有中英文
     if (file.base === tag) console.log(`::warning::${NOTES_FILE} is based on ${tag} itself: were the notes cleared already?`);
     console.log(`Release notes for ${tag} (changes since ${file.base || '?'}), ${result.notes['zh-CN'].length} entries:`);
   } catch (e) {

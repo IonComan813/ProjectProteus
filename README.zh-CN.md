@@ -540,7 +540,7 @@ npm run android:apk  # 打包安卓版（需要安装 Android SDK 和 JDK 21）
 
 - **PR 检查**（`.github/workflows/pr-notes-check.yml`）会核对：
   - 改了这个文件就要写「已更新」，没改就要写「无需更新」；
-  - 文件格式正确，zh-CN 和 en 必须有，zh-TW、ja 缺了时用 zh-CN、en 代替；
+  - 文件格式正确，每一条都有 zh-CN、zh-TW、en、ja 四种语言；
   - 基准版本是最新发布的版本。不是的话说明刚发布过版本、还没清空，检查不通过，并提示怎么改。
 
   格式细节见 `scripts/release-notes.js` 开头的说明。PR 正文的其他部分写详细的改动说明，不再收集。
