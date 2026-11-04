@@ -13,7 +13,7 @@
   zh-TW: 回覆被中斷（安全攔截、網路中斷或手動停止）時，記憶長度下方註明沒收到的輸出或全部用量，不再顯示不準的數字
   en: When a reply is interrupted (safety stop, network problem or stopped by you), the note under the memory length says which usage was not reported instead of showing an inaccurate number
   ja: 返信が中断されたとき（安全上の停止、ネットワーク、手動での停止）、記憶の長さの下に受け取れなかった出力または使用量を明記し、不正確な数字は表示しません
-- zh-CN: 发送后一个字回复都没有（请求出错、被拦截或停止）时，刚发的消息退回输入框，改一改再发送就是重试；编辑过的消息没得到回复时，原因常驻显示在这个版本的消息下方
-  zh-TW: 傳送後一個字回覆都沒有（請求出錯、被攔截或停止）時，剛傳送的訊息退回輸入框，改一改再傳送就是重試；編輯過的訊息沒得到回覆時，原因常駐顯示在這個版本的訊息下方
-  en: If sending gets no reply at all (the request failed, was blocked or was stopped), the message goes back into the input box so you can edit it and send again; when an edited message gets no reply, the reason stays shown below that version of the message
-  ja: 送信しても返信がまったくなかったとき（リクエストのエラー、ブロック、停止）は、送ったメッセージが入力欄に戻るので、直してもう一度送信すれば再試行できます。編集したメッセージに返信がなかったときは、その版のメッセージの下に理由を表示したままにします
+- zh-CN: 发送后一个字回复都没有（请求出错、被拦截或停止）时，刚发的消息退回输入框，改一改再发送就是重试；编辑过的消息或重新生成没得到回复时，原因常驻显示在这个版本上
+  zh-TW: 傳送後一個字回覆都沒有（請求出錯、被攔截或停止）時，剛傳送的訊息退回輸入框，改一改再傳送就是重試；編輯過的訊息或重新生成沒得到回覆時，原因常駐顯示在這個版本上
+  en: If sending gets no reply at all (the request failed, was blocked or was stopped), the message goes back into the input box so you can edit it and send again; when an edited message or a regenerated reply gets no reply, the reason stays shown on that version
+  ja: 送信しても返信がまったくなかったとき（リクエストのエラー、ブロック、停止）は、送ったメッセージが入力欄に戻るので、直してもう一度送信すれば再試行できます。編集したメッセージや再生成で返信がなかったときは、その版に理由を表示したままにします
