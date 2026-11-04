@@ -491,15 +491,15 @@ function hideUpdateProgress() {
   lockApp(false);
 }
 
-// 下载和安装期间锁定软件：进度条以外的东西都不能点、不能用键盘操作（inert），
-// 进度条也不能用 Esc 或点外面关掉；按键只留给进度条上的 ×（Tab、Enter、空格）。安卓的返回键见 app.js 的 bindBackButton
+// 下载和安装期间锁定软件：进度条以外的东西都不能点、不能用键盘操作（inert），进度条也不能用 Esc 或点外面关掉。
+// 所有按键都不起作用：× 只能用鼠标点或手指点（Enter 一般不用来中止操作，免得误按）。安卓的返回键见 app.js 的 bindBackButton
 let appLocked = null; // 锁定时为被设成 inert 的元素
 let lockBound = false;
 function lockApp(on) {
   if (!lockBound) {
     lockBound = true;
-    // 点在变暗的区域上什么都不做，焦点也留在原处（不然 × 就用不了键盘了）
-    els.updateProgress.addEventListener('mousedown', (e) => { if (!els.updateProgressBox.contains(e.target)) e.preventDefault(); });
+    // 点在变暗的区域上什么都不做，焦点也留在原处；点 × 时焦点也不移到 × 上
+    els.updateProgress.addEventListener('mousedown', (e) => e.preventDefault());
   }
   if (on && !appLocked) {
     appLocked = [...document.body.children].filter((el) => el !== els.updateProgress && !el.inert);
@@ -510,15 +510,11 @@ function lockApp(on) {
     appLocked = null;
     document.removeEventListener('keydown', blockKeys, true);
   }
-  if (on) {
-    // 焦点放到 × 上（下载完成后 × 不显示，放到进度条上），免得留在输入框里
-    const target = els.updateProgressStop.hidden ? els.updateProgressBox : els.updateProgressStop;
-    if (!els.updateProgress.contains(document.activeElement)) target.focus();
-  }
+  // 焦点放到进度条上（不是 ×），免得留在输入框里
+  if (on && document.activeElement !== els.updateProgressBox) els.updateProgressBox.focus();
 }
 
 function blockKeys(e) {
-  if (els.updateProgress.contains(e.target) && ['Tab', 'Enter', ' '].includes(e.key)) return;
   e.preventDefault();
   e.stopImmediatePropagation();
 }
