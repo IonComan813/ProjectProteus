@@ -30,6 +30,7 @@
 # 没有添加 Secrets 时跳过上传（只给出警告）；没有 UPDATE_BASE_URL 时，打出的安装包不检查更新。
 # 共享 token 校准数据（worker/calibration，和更新服务器分开的 Worker 与存储桶）：Variables 里的 CALIB_BASE_URL
 # 是那个 Worker 的地址（结尾不带 /），由 scripts/set-server-url.js 写进 js/tokens.js；没有时打出的安装包不共享校准数据。
+# （共享功能目前关闭：js/tokens.js 的 CALIB_SHARING 为 false 时，填了 CALIB_BASE_URL 也不共享。）
 #
 # 更新说明：发布时收集这个版本和上一个版本之间合并的 PR 正文开头的「## 更新说明」（格式见 scripts/release-notes.js），
 # 正式版从上一个正式版算起，测试版从上一个版本算起。中英双语的一段放在 Release 说明的最前面，

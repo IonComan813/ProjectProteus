@@ -20,7 +20,6 @@ const ROUNDS_MAX = 40;
 const DEFAULT_SETTINGS = {
   lang: null,          // null = 按系统语言自动选择（不支持的语言用英语）
   rememberKeys: true,  // false = API Key 只在本次打开期间有效，不写入本机存储（公用电脑）
-  shareCalib: true,    // 把本机的 token 校准数据（中转站域名、模型名、系数）匿名共享给其他用户（tokens.js）
   rounds: 12,
   artWidth: null,      // 左栏宽度（像素），null = 自动
   inputHeight: 88,     // 输入框高度（像素）
@@ -2458,8 +2457,6 @@ function fillSettingsForm() {
   els.temperature.value = s.temperature;
   els.langSelect.value = LANG;
   els.rememberKeys.checked = s.rememberKeys !== false;
-  els.shareCalib.checked = s.shareCalib !== false;
-  TokenCalib.setSharing(s.shareCalib !== false);
   fillProviderFields();
 }
 
@@ -2939,11 +2936,6 @@ function bindSettings() {
     clearTimeout(saveTimer);
     await DB.set('settings', storableSettings());
   });
-  els.shareCalib.addEventListener('change', () => {
-    s().shareCalib = els.shareCalib.checked;
-    TokenCalib.setSharing(els.shareCalib.checked);
-    saveSettingsSoon();
-  });
   els.btnClearAll.addEventListener('click', async () => {
     if (state.generating) return toast(t('conv.stopFirst'));
     if (!(await ask(t('set.clearAllConfirm', pageVars()), { ok: t('set.clearAll'), danger: true }))) return;
@@ -3297,7 +3289,7 @@ function init() {
   });
   // 第一次打开时先显示开源协议说明（见 showLicenseNotice）
   const licensed = booted.then(showLicenseNotice);
-  // 拉取其他用户共享的 token 校准数据，推送本机还没推送的（静默，见 tokens.js；只在打包的原生应用里）
+  // 拉取其他用户共享的 token 校准数据，推送本机还没推送的（静默，见 tokens.js。共享目前关闭，这里什么都不做）
   booted.then(() => TokenCalib.sync(() => { if (state.conv) updateEstimate(); }), () => {});
   // 启动时立刻检查更新（只在原生应用里），和读取数据同时进行；有要提示的版本时等数据读完、
   // 开源协议说明关掉后再显示（读取数据失败时不显示）

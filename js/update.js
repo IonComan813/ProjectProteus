@@ -457,9 +457,11 @@ function watchDownload(version, cancel, finish) {
 function showUpdateProgress(version, received, total, waiting) {
   const mb = (n) => (n / 1024 / 1024).toFixed(1);
   const percent = total > 0 ? Math.min(100, Math.floor((received / total) * 100)) : null;
+  // 文案里版本号后面不接省略号「…」：接了看起来就像版本号太长被截断了
   els.updateProgressText.textContent = percent == null
     ? t('update.progressUnknown', { version })
     : t('update.progress', { version, percent });
+  els.updateProgressText.title = els.updateProgressText.textContent; // 窗口很窄、真的放不下时，鼠标移上去能看到全文
   els.updateProgressSize.textContent = waiting ? '' : total > 0 ? t('update.progressSize', { received: mb(received), total: mb(total) }) : t('update.progressSizeUnknown', { received: mb(received) });
   els.updateProgressBar.classList.toggle('indeterminate', percent == null);
   els.updateProgressFill.style.width = percent == null ? '' : percent + '%';
@@ -473,6 +475,7 @@ function showUpdateProgress(version, received, total, waiting) {
 // 下载完成后，进度条那里只显示一句话（进度条满格，没有 ×）
 function showUpdateMessage(text) {
   els.updateProgressText.textContent = text;
+  els.updateProgressText.title = '';
   els.updateProgressSize.textContent = '';
   els.updateProgressBar.classList.remove('indeterminate');
   els.updateProgressFill.style.width = '100%';

@@ -61,7 +61,7 @@ Windows / macOS / Linux 的原生应用自带 Chromium 浏览器内核，不需�
 
 ### 数据保存在哪里
 
-所有数据（设定、对话、图片、API Key）都只保存在**这台设备上**：原生应用保存在应用自己的数据文件夹里，网页版保存在打开它的浏览器里。不同设备之间、原生应用和网页版之间的数据都互不相通，可以用「完整备份（全部对话）」转移。唯一会离开这台设备的是原生应用匿名共享的 token 校准数字（中转站域名、模型名和几个系数，不含对话内容和 API Key），可以在设置里关掉，见[共享 token 校准数据](#共享-token-校准数据)。
+所有数据（设定、对话、图片、API Key）都只保存在**这台设备上**：原生应用保存在应用自己的数据文件夹里，网页版保存在打开它的浏览器里。不同设备之间、原生应用和网页版之间的数据都互不相通，可以用「完整备份（全部对话）」转移。
 
 换电脑、重装系统，或者（网页版）清除浏览器数据都会看不到原来的内容，所以请定期用右侧「导出 / 备份…」里的「完整备份（全部对话）」导出一份。
 
@@ -299,7 +299,7 @@ Anthropic 格式（Claude 官方、Anthropic 兼容的中转站）放在请求�
 - 按中转站（接口地址）和中转站下的模型分别记录。不同中转站的同名模型、中转站和官方接口的同名模型分开计算；同一个中转站在两种兼容模式下的地址只差结尾的 `/v1` 时算作同一个中转站。在一个中转站里第一次用的模型，先沿用这个中转站其他模型的结果
 - 中日韩文字和其他文字分别校准（不同语言换算成 token 的比例不同），也会学到中转站额外加的固定开销
 - 同一个对话里，下一次请求按这个对话上一次请求的实际用量加上两次之间变化的部分估算，所以发过一次之后通常就很接近了。估算下方同时显示这个对话上一次请求的实际输入和输出 token
-- 有了实际数据（本机的，或者其他用户共享的）后，提示里的「粗略估计」变成「按实际用量校准」。只记录数字，不记录对话内容；「清除软件数据」时一起删除，「完整备份（全部对话）」里一起备份，换设备后接着用
+- 有了实际数据后，提示里的「粗略估计」变成「按实际用量校准」。只记录数字，不记录对话内容；「清除软件数据」时一起删除，「完整备份（全部对话）」里一起备份，换设备后接着用
 - 读取用量：Anthropic 格式（官方和兼容的中转站）的输入用量是 `input_tokens` 加上写入、读取缓存的 token；OpenAI 格式（OpenAI 官方、Gemini 和兼容的中转站）是 `prompt_tokens`。OpenAI 格式的流式回复要在请求里加 `stream_options` 才会报告用量（Gemini 的 OpenAI 兼容接口也支持）。个别接口不认这个参数会报错，这时 Proteus 去掉它自动重发一次，并记住这个接口地址以后不再加；这样的接口如果也不报告用量，就一直显示粗略估计
 
 **什么时候实际用量会和估算差得极远**：实际值不到粗略估算的 1/5，或者超过 50 倍时，这次的数字只显示出来，不用来校准，也不用来修正这个对话的下一次估算。这样的数字通常不是分词的差别（不同模型、不同语言的分词差别一般在几成以内），而是接口报告的方式有问题：
@@ -314,21 +314,9 @@ Anthropic 格式（Claude 官方、Anthropic 兼容的中转站）放在请求�
 - **中转站偷偷加了很长的 system prompt**（例如用 Claude Code、Cursor 一类的账号转出来的渠道，常带上万 token 的提示词）：短对话的实际值会是估算的十几二十倍，这部分由固定开销 c 学到，对话越长占比越小
 - **中转站用别的分词器计数**（例如一律用 OpenAI 的 tiktoken 给 Claude 计数）：差一两成到三四成，按中转站分开校准就是为了这个
 
-### 共享 token 校准数据
+### 共享 token 校准数据（目前关闭）
 
-原生应用启动时从服务器下载其他用户共享的校准系数（按中转站的域名和模型名）。第一次在某个中转站用某个模型时，只要别人用过，估算一开始就比较准；有了本机的数据后以本机为主。整个过程在后台静默进行，界面上只显示最终的估算。设置面板「软件数据」里的「匿名共享 token 校准数据」勾选时（默认勾选），本机的校准也会匿名上传：
-
-- **什么时候上传**：某个模型在本机至少请求过 2 次、而且最近一次的估算误差在 10% 以内（或者已经请求过 5 次）时，如果共享数据里还没有这个模型，或者和共享数据相差 15% 以上，就上传。同一个模型 7 天内最多上传一次
-- **上传什么**：中转站的域名（不含路径）、模型名、三个系数和数据量，以及一个随机生成的设备编号（只用来让同一台设备的数据替换而不是叠加）。**不上传** API Key、接口路径、对话内容。IP 地址、localhost、内网域名（`.local`、`.lan`、`.internal` 等）和非 https 的地址不上传
-- **公开什么**：服务器每小时汇总一次。同一个 IP 对同一个模型只算一票，**至少 3 票**才公开，取中位数；只自己在用的私人中转站域名不会出现在公开数据里
-- 下载和上传都静默进行，成功失败都不提示；连不上时只用本机的数据。网页版和自己打包时没有配置服务器地址的安装包不下载也不上传
-- 共享的数据可能被人故意推送错误的数字，所以服务器端按 IP 限制频率、取中位数、限制系数范围，客户端也只把它当作起点：发过一两次请求后，估算就以本机的实际用量为主
-
-再下面的「查看下一轮将发送的内容」打开一个大窗口（电脑上盖在聊天区上，手机上盖在设置面板上），按发送的顺序列出下一次请求的每一块：系统设定里的 System Prompt、世界观、NPC角色、用户角色人设，以及记忆范围内的每条消息。显示的是实际发送的文字，包括标签，全文不省略，`{{user}}` `{{char}}` 已经替换；每一块的标题右侧是它的预估 token，最上面是总数。这是逻辑上的内容，不是接口请求的原始格式（地址、请求头、JSON）。
-
-- 输入框里有文字时，它会作为你这一次的消息出现在最后（重点指令接在它后面）；输入框是空的时，最后一块是你接下来要发送的消息，旁边有说明
-- 锁定的对话里，受保护的设定显示为「受保护的内容」
-- 点窗口以外的地方（或按 Esc）关闭
+校准只在本机进行，不上传也不下载任何数据。以前做过一个在用户之间匿名共享校准系数的功能（服务器在 `worker/calibration`，客户端在 `js/tokens.js`），代码保留、目前关闭；打开的方法写在 `js/tokens.js` 开头。
 
 ## 导出与备份
 
@@ -340,7 +328,7 @@ Anthropic 格式（Claude 官方、Anthropic 兼容的中转站）放在请求�
 | 对话记录（TXT / Markdown）（助理模式） | 当前对话的全部消息 | System Prompt |
 | 世界卡（JSON，可加密） | 当前对话的 System Prompt、世界观、NPC角色、重点指令、开场白（全部版本及是否发给模型）、艺术图 | 用户人设、`{{user}}` 值、剧情 |
 | 完整备份（当前对话）（JSON，可加密） | 当前对话的全部内容：System Prompt、世界观、NPC角色、用户人设、`{{user}}` 值、重点指令、开场白（全部版本及是否发给模型）、剧情（包括每条回复的所有版本）、艺术图 | 软件设置 |
-| 完整备份（全部对话）（JSON，可加密） | 所有对话（各自的全部内容）、软件设置（记忆长度、模型与接口、界面语言、布局等）和 token 校准数据（读取时和本机的合并） | API Key；从服务器下载的共享校准数据 |
+| 完整备份（全部对话）（JSON，可加密） | 所有对话（各自的全部内容）、软件设置（记忆长度、模型与接口、界面语言、布局等）和 token 校准数据（读取时和本机的合并） | API Key |
 | 日志（TXT） | 最近一次请求模型时实际发送的请求（接口地址、请求头、JSON 请求体）和收到的原始回复，用于排查问题。只记这次打开软件以来的最后一次，不保存 | API Key；加密世界卡里还没解锁的设定（显示为「受保护的内容」） |
 
 助理模式的对话里只显示对话记录、完整备份（全部对话）和日志，见[助理模式](#助理模式)。
@@ -476,7 +464,7 @@ css/style.css     样式
 js/i18n.js        界面多语言（简体中文、繁體中文、English、日本語）和默认 System Prompt
 js/db.js          本地存储（浏览器的 IndexedDB）
 js/crypto.js      世界卡加密
-js/tokens.js      token 估算，按接口报告的实际用量自动校准；拉取和推送共享的校准数据
+js/tokens.js      token 估算，按接口报告的实际用量自动校准
 js/providers.js   和各家模型接口通信
 js/render.js      消息显示（Markdown/HTML，沙箱隔离）
 js/stcard.js      读取酒馆（SillyTavern）的角色卡和世界书
@@ -489,7 +477,7 @@ electron/preload.js  给页面提供的原生功能（目前只有下载和安�
 android/          安卓版工程（Capacitor），capacitor.config.json 是它的配置；UpdateDownloaderPlugin.java 在软件里下载并安装更新（UpdateInstallReceiver.java 处理需要用户确认的情况）
 assets/           安卓版图标和启动画面的原图
 scripts/          打包用的小脚本（包括检查第三方许可证、生成第三方声明的 third-party-notices.js）
-worker/calibration/  共享 token 校准数据的服务器（Cloudflare Worker + R2），见「共享校准数据的服务器」
+worker/calibration/  共享 token 校准数据的服务器（Cloudflare Worker + R2；共享功能目前关闭，不需要部署）
 build/icon.png    应用图标
 package.json      依赖，以及 Windows / macOS / Linux 原生应用的打包配置
 ```
@@ -581,23 +569,9 @@ keytool -genkeypair -v -keystore proteus.jks -alias proteus -keyalg RSA -keysize
 
 没有添加两个 Secret 时，跳过上传，只给出警告；没有 `UPDATE_BASE_URL` 时，打出的安装包不检查更新（打包时由 `scripts/set-server-url.js` 把地址写进 `js/update.js`）。
 
-#### 共享校准数据的服务器（Cloudflare Worker）
+#### 共享校准数据的服务器（Cloudflare Worker，目前不用）
 
-[共享 token 校准数据](#共享-token-校准数据)的服务器在 `worker/calibration`：一个 Cloudflare Worker，数据存在**单独的**存储桶 `projectproteus-calibration` 里。不和放安装包的 `projectproteus-releases` 共用，也不能让客户端直接写 R2：写入的凭证放进客户端，任何人都能拆出来，把安装包换掉。Worker 只接收校验过的数字，自己写进自己的存储桶。
-
-1. 在 Cloudflare 的「我的个人资料 → API 令牌」里创建一个令牌，权限选「Workers 脚本：编辑」和「Workers R2 存储：编辑」
-2. 在仓库 Settings → Secrets and variables → Actions 里添加：
-
-| 类型 | 名称 | 内容 |
-|---|---|---|
-| Secret | `CLOUDFLARE_API_TOKEN` | 第 1 步的令牌 |
-| Secret | `CALIB_IP_SALT` | 任意一长串随机字符（例如 `openssl rand -hex 32`）。Worker 只保存 IP 加盐后的哈希；以后不要再改，改了以前的票会被当成别人的 |
-| Variable | `CLOUDFLARE_ACCOUNT_ID` | Cloudflare 账户 ID |
-
-3. 在 Actions 页面运行「Calibration worker」（以后 main 上 `worker/calibration` 有改动时自动部署），第一次会创建存储桶
-4. 把 Worker 的地址（例如 `https://proteus-calibration.<子域>.workers.dev`，结尾不带 `/`）填进仓库变量 `CALIB_BASE_URL`。之后打包的安装包才下载和上传校准数据（打包时由 `scripts/set-server-url.js` 写进 `js/tokens.js`）
-
-也可以在 `worker/calibration` 里用 `npx wrangler deploy` 手动部署（先 `npx wrangler r2 bucket create projectproteus-calibration` 和 `npx wrangler secret put IP_SALT`）。Worker 的接口和防滥用规则见 `worker/calibration/src/index.js` 开头的说明。
+共享 token 校准数据的功能目前关闭（见[共享 token 校准数据（目前关闭）](#共享-token-校准数据目前关闭)），**不需要部署这个 Worker，也不需要在 Cloudflare 上做任何设置**。代码在 `worker/calibration`，部署用的工作流是 `.github/workflows/calibration-worker.yml`（只能手动运行），需要的 Secret / Variable 写在工作流开头。
 
 #### 安卓冒烟测试
 

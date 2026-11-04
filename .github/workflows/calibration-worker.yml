@@ -1,4 +1,5 @@
-# 部署共享 token 校准数据的 Cloudflare Worker（worker/calibration）。main 上 worker/calibration 有改动时自动部署，也可以手动运行。
+# 部署共享 token 校准数据的 Cloudflare Worker（worker/calibration）。只能手动运行。
+# 共享功能目前关闭（js/tokens.js 的 CALIB_SHARING），不需要部署；以后打开时再用。
 # 需要在仓库 Settings → Secrets and variables → Actions 里添加：
 #   Secrets：CLOUDFLARE_API_TOKEN（Cloudflare 的 API 令牌，权限：Workers Scripts 编辑、Workers R2 Storage 编辑）
 #            CALIB_IP_SALT（任意一长串随机字符，Worker 用它给 IP 地址加盐求哈希；以后不要再改，改了以前的票会被当成别人的）
@@ -8,9 +9,6 @@ name: Calibration worker
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths: ['worker/calibration/**', '.github/workflows/calibration-worker.yml']
 
 permissions:
   contents: read

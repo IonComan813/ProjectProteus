@@ -14,21 +14,27 @@
 //     （用回归算上一次的估算和实际值的差，加到这一次的估算上）。“上一次”按对话、中转站和模型分别记，
 //     同一个对话换着用不同的接口或模型时互不覆盖。
 //
-// 共享校准数据（只在打包的原生应用里：CALIB_BASE_URL 由打包工作流填入，仓库里是空的，不共享）：
+// 共享校准数据（**目前关闭**：CALIB_SHARING 为 false 时不拉取、不推送、也不使用以前拉到的共享数据，只在本机校准。
+// 代码保留，以后要打开时：把 CALIB_SHARING 改成 true，部署 worker/calibration，在仓库变量 CALIB_BASE_URL 填 Worker 地址，
+// 并在设置里加回「匿名共享 token 校准数据」的勾选框（调用 setSharing）。打开后的行为如下，只在打包的原生应用里）：
 //   - 启动时从 <CALIB_BASE_URL>/v1/calibration.json 拉取其他用户共享的系数（按中转站的域名和模型名），存在本机，
 //     拉取失败时沿用上次拉到的。共享的系数只作为起点，有了本机的数据就以本机为主。
 //   - 本机某个模型的校准稳定后（至少 2 次请求，并且最近一次的估算误差在 10% 以内；或者已经有 5 次请求），
 //     如果共享数据里还没有它，或者和共享数据差得多，推送到 <CALIB_BASE_URL>/v1/contribute。同一个模型 7 天内最多推送一次。
 //     推送的只有：中转站的域名（不含路径和端口以外的部分）、模型名、系数和数据量，以及一个随机的设备编号
 //     （只用来让同一台设备的数据替换而不是叠加）。不推送 API Key、接口路径和任何对话内容。
-//     IP 地址、localhost、内网域名（.local、.lan、.internal 等）和非 https 的地址不推送。可以在设置里关掉推送。
+//     IP 地址、localhost、内网域名（.local、.lan、.internal 等）和非 https 的地址不推送。设置里可以关掉推送（setSharing）。
 //   - 拉取和推送都静默进行，成功失败都不提示；没有共享数据时只用本机的数据。服务器端见 worker/calibration。
 //
 // 只记录数字（字数、token 数），不记录任何对话内容。存在 localStorage，“清除软件数据”时一起删除；
 // 完整备份（全部对话）里带上本机的校准数据（不含共享数据和设备编号），读取备份时合并进来。
 
+// 是否共享校准数据（见上面的说明）。目前关闭
+const CALIB_SHARING = false;
 // 共享校准数据的服务器地址（结尾不带 /）。仓库里是空的（不共享）；打包工作流用仓库变量 CALIB_BASE_URL 填进来
 const CALIB_BASE_URL = '';
+// 两个条件都满足才共享
+const CALIB_ENABLED = CALIB_SHARING && !!CALIB_BASE_URL;
 
 // 中日韩标点、假名、汉字、韩文音节、全角符号
 const CJK_RE = /[　-鿿가-힯＀-￯]/g;
@@ -192,6 +198,7 @@ const TokenCalib = (() => {
 
   // 共享数据里这个中转站 + 模型的系数（没有的系数为 undefined），没有时为 null
   function cloudOf(relay, model) {
+    if (!CALIB_ENABLED) return null; // 共享关闭时，以前拉到的共享数据也不用
     const c = load().cloud;
     const host = c && hostOf(relay);
     const byModel = host && own(c.relays, host) ? c.relays[host] : null;
@@ -273,7 +280,7 @@ const TokenCalib = (() => {
 
   // ---- 共享 ----
 
-  let sharing = true;
+  let sharing = false; // 设置里的勾选框打开时由 setSharing 设为 true（勾选框目前去掉了）
   let pushTimer = null;
   let pushing = false;
   let lastPushAt = 0;
@@ -317,7 +324,7 @@ const TokenCalib = (() => {
 
   // 启动时调用：拉取共享数据，再推送还没推送的。onCloud 在拉到新数据后调用（刷新界面上的估算）
   async function sync(onCloud) {
-    if (!CALIB_BASE_URL) return;
+    if (!CALIB_ENABLED) return;
     try {
       const res = await request('/v1/calibration.json');
       if (res.ok) {
@@ -369,13 +376,13 @@ const TokenCalib = (() => {
   }
 
   function schedulePush() {
-    if (!CALIB_BASE_URL || !sharing || pushTimer) return;
+    if (!CALIB_ENABLED || !sharing || pushTimer) return;
     const wait = Math.max(5000, lastPushAt + PUSH_GAP_MS - Date.now());
     pushTimer = setTimeout(() => { pushTimer = null; void push(); }, wait);
   }
 
   async function push() {
-    if (!CALIB_BASE_URL || !sharing || pushing) return;
+    if (!CALIB_ENABLED || !sharing || pushing) return;
     const entries = pendingEntries();
     if (!entries.length) return;
     const st = load();
