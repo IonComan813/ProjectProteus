@@ -166,6 +166,9 @@ Each message is shown in its own isolated "sandbox" frame. Its styles and script
 
 ### Message actions (shown when you hover over a message)
 
+- **No reply at all after sending** (the request failed or was blocked, or you stopped it before any text): the message you just sent goes back into the input box and the conversation ends at the last reply again, so editing it and clicking "Send" retries. The red box above the input says why ("Stopped by you" if you stopped it before any text; stopping after part of the reply shows nothing, since the cut-off ending is visible)
+- **No reply at all after editing a user message (or clicking "Get reply")**: the message has several versions, so it stays where it is instead of going back into the input box. The reason stays shown below the message, also after switching to another version and back, as a reminder of what went wrong with that version. Click "Get reply" to retry; the note goes away once there is a reply
+
 - **Regenerate**: only on the last model reply. Old versions are kept and can be browsed with `‹ 2/3 ›`
 - **Edit**: only the **most recent** model reply and the **most recent** user message can be edited
   - Editing a model reply changes the current version directly without regenerating, as if you rewrote that part of the story
@@ -298,7 +301,7 @@ You can edit the number in the memory length box directly or adjust it with − 
 
 - It keeps separate records per relay (API address) and per model on that relay. The same model name on different relays, or on a relay and the official API, is counted separately; a relay whose addresses in the two compatible modes differ only by a trailing `/v1` counts as one relay. A model used for the first time on a relay starts from what the relay's other models have shown
 - Chinese/Japanese/Korean text and other text are calibrated separately (languages convert to tokens at different rates), and a fixed overhead added by a relay is learned too
-- Estimate = sum of the parts + added amount: each part (each piece of the system part and each message) is a × Chinese/Japanese/Korean characters + b × (rough estimate of the other text + message formatting), and the added amount is the learned fixed overhead c. Below the estimate you also see the estimated input tokens of the conversation's last request (as estimated when it was sent), and the actual input and output tokens the API reported, with the deviation ((estimate − actual) ÷ actual; negative means the estimate was too low)
+- Estimate = sum of the parts + added amount: each part (each piece of the system part and each message) is a × Chinese/Japanese/Korean characters + b × rough estimate of the other text (an empty part is 0), and the added amount is the learned fixed overhead c (content a relay adds itself, plus each message's formatting). A model used for the first time on a relay starts with that relay's a, b and c, so there can be an added amount before its first request. Below the estimate you also see the estimated input tokens of the conversation's last request (as estimated when it was sent), and the actual input and output tokens the API reported, with the deviation ((estimate − actual) ÷ actual; negative means the estimate was too low). When a reply is cut off or stopped, the API may not report the output usage (shown as "output tokens not reported"), and in the OpenAI format there may be no usage at all ("no usage reported by the API"). When a request fails without any reply, the message you sent goes back into the input box and the request doesn't appear, so "last request" still shows the one before
 - Calibration starts gradually from the first request (with no data the estimate is the rough one), so the hint always says "calibrated step by step from the usage the API reports". In "View what the next request will send" each part is multiplied by the calibrated coefficients, and the total at the top reads "sum of the parts + added amount = total"; the added amount is the fixed overhead c (for example content a relay adds itself) and can be negative. Only numbers are recorded, never conversation content; "Clear app data" deletes them, and "Full backup (all conversations)" includes them so you can carry on on another device
 - Reading usage: in the Anthropic format (official and compatible relays) the input is `input_tokens` plus the tokens written to and read from the cache; in the OpenAI format (OpenAI official, Gemini and compatible relays) it is `prompt_tokens`. Streaming replies in the OpenAI format only report usage when the request includes `stream_options` (Gemini's OpenAI-compatible API supports it too). A few APIs reject that parameter; Proteus then resends once without it and remembers the address so it isn't added again. If such an API doesn't report usage either, the estimate stays rough
 
@@ -529,8 +532,9 @@ The output is in the `dist/` folder.
 ```
 
 - **Every PR maintains this file**: it adds its own entries and removes or rewrites older entries it conflicts with (for example a feature it changes or takes back). By release time the file is a clean, accurate list of what's new in that version
+- **PRs that only change behind-the-scenes logic should write an entry too**: a short one, without details, such as "Improved some behind-the-scenes logic". Otherwise, if such PRs are all that happened between two versions, the release notes are empty and users can't tell what the update was. If there already is such an entry, don't add another; this is a recommendation, the check doesn't enforce it
 - **The first PR after a release** clears the entries and sets the base version (`基准版本`) to the version just released
-- **The PR description starts with** this block; the second line just says what was done, or "- 无需更新" when the file was not changed:
+- **The PR description starts with** this block; the second line just says what was done, or "- 无需更新" when the entries did not change:
 
   ```
   ## 更新说明文件
@@ -538,9 +542,10 @@ The output is in the `dist/` folder.
   ```
 
 - **A PR check** (`.github/workflows/pr-notes-check.yml`) verifies that:
-  - the block says "已更新" if the PR changed the file and "无需更新" if it didn't;
+  - the block says "已更新" if the PR changed the entries (added, removed or reworded any) and "无需更新" if it didn't. Clearing entries that were already released, changing the base version, or editing only comments does not count: the first PR after a release writes "无需更新" if it only clears the file, and "已更新" if it also adds its own entries;
   - the file's format is valid, with all four languages (zh-CN, zh-TW, en, ja) in every entry;
-  - the base version is the latest released version. If it isn't, a release has happened and the file hasn't been cleared yet; the check fails and says what to change.
+  - the base version is the latest released version. If it isn't, a release has happened and the file hasn't been cleared yet; the check fails and says what to change;
+  - if the file has no entries at all, there is only a warning (the release notes would be empty), not a failure.
 
   The details are at the top of `scripts/release-notes.js`. The rest of the PR description is for the detailed changes and is not collected.
 - **When a version is published**, the build workflow reads this file from that commit, puts a Chinese and English section at the top of the release notes, and writes all four languages into `version.json` on the update server. `version.json` only holds the notes of the latest version, plus the previous version's number: the update window shows this version's notes, and a pointer to the GitHub Releases page when versions in between were skipped

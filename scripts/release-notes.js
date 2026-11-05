@@ -17,14 +17,19 @@
 // 每个 PR 都要维护这个文件：
 //   - 有用户能感觉到的改动：在文件里加条目；和以前的条目冲突的（例如这次改掉、撤销了以前加的功能），删掉或改成最新的说法。
 //     这样到发布时，文件里就是干净准确的这个版本的更新说明
+//   - 只改了后台逻辑、用户感觉不到的：建议也写一条简短的说明，不展开，例如「优化了一些后台逻辑」（已经有这样一条时不用重复加）。
+//     否则两个版本之间只有这样的 PR 时，更新说明是空的，用户看不出更新了什么。这只是建议，检查不强制
 //   - 发布了新版本以后的第一个 PR：清空文件里的条目，把基准版本改成刚发布的版本
 // PR 正文的开头必须有这样一段（检查只看结构，第二行写一句做了什么即可）：
 //
 //   ## 更新说明文件
 //   - 已更新：加入 1 条；删去和它冲突的「……」
 //
-// 没有改这个文件时写「- 无需更新」（后面可以加原因）。PR 检查会核对：改了文件就要写「已更新」，没改就要写「无需更新」；
-// 文件格式正确、每一条四种语言都有；基准版本是最新发布的版本（不是的话说明刚发布过版本、还没有清空）。
+// 条目没有变化时写「- 无需更新」（后面可以加原因）。PR 检查会核对：这个 PR 改了条目（加、删、改）就要写「已更新」，
+// 没改就要写「无需更新」。只清空已经发布的条目、改基准版本，或者只改注释、空行，都不算改了条目：
+// 发版后的第一个 PR 只做了清空时写「无需更新」，清空之后又加了这次的条目时写「已更新」。
+// 另外核对文件格式正确、每一条四种语言都有；基准版本是最新发布的版本（不是的话说明刚发布过版本、还没有清空）。
+// 文件里一条都没有时只给出提醒（发布时更新说明会是空的），不算失败。
 // PR 正文的其他部分只写详细的改动说明，不再收集。
 //
 // 用法：
@@ -131,6 +136,26 @@ function latestTag() {
   return best;
 }
 
+// 目标分支的分叉点上这个文件里的条目，作为比较的起点。那边的基准版本和现在的不同（发布后清空、改了基准版本）时，
+// 那些条目已经在那个版本里发布了，清空它们不算这个 PR 的改动，起点当作没有条目。分叉点上还没有这个文件时也当作没有条目
+function baseEntries(baseSha, headSha, headBase) {
+  const forkPoint = git(['merge-base', baseSha, headSha]).trim();
+  let text;
+  try {
+    text = execFileSync(GIT, ['show', `${forkPoint}:${NOTES_FILE}`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+  } catch (_) {
+    return [];
+  }
+  const old = parseFile(text);
+  return old.base === headBase ? old.entries : [];
+}
+
+// 两组条目是否不同（逐条、逐种语言比较文字；顺序也算）
+function entriesChanged(before, after) {
+  const key = (entries) => JSON.stringify(entries.map((e) => LANGS.map((l) => e[l] || '')));
+  return key(before) !== key(after);
+}
+
 function check(eventFile) {
   const event = JSON.parse(fs.readFileSync(eventFile, 'utf8'));
   const pr = event.pull_request || {};
@@ -148,16 +173,23 @@ function check(eventFile) {
     warnings.push(...file.warnings.map((w) => `${NOTES_FILE}：${w}`));
   }
 
-  // 这个 PR 有没有改这个文件（和目标分支的分叉点比）
-  if (block.updated !== null && pr.base && pr.head) {
+  // 这个 PR 有没有改条目（和目标分支的分叉点比）
+  if (block.updated !== null && file && pr.base && pr.head) {
     let changed = null;
     try {
-      changed = !!git(['diff', '--name-only', `${pr.base.sha}...${pr.head.sha}`, '--', NOTES_FILE]).trim();
+      changed = entriesChanged(baseEntries(pr.base.sha, pr.head.sha, file.base), file.entries);
     } catch (e) {
       warnings.push(`没能比较这个 PR 的改动（${e.message.split('\n')[0]}），跳过「已更新 / 无需更新」的核对。`);
     }
-    if (changed === true && !block.updated) errors.push(`这个 PR 改了 ${NOTES_FILE}，「## 更新说明文件」下面应该写「- 已更新：……」。`);
-    if (changed === false && block.updated) errors.push(`这个 PR 没有改 ${NOTES_FILE}，却写了「已更新」。`);
+    if (changed === true && !block.updated) errors.push(`这个 PR 改了 ${NOTES_FILE} 里的条目，「## 更新说明文件」下面应该写「- 已更新：……」。`);
+    if (changed === false && block.updated) {
+      errors.push(`这个 PR 没有改 ${NOTES_FILE} 里的条目，却写了「已更新」（只清空已经发布的条目、改基准版本，或者只改注释，都写「无需更新」）。`);
+    }
+  }
+
+  // 文件里一条都没有：发布时更新说明会是空的。只提醒，不算失败
+  if (file && !file.entries.length) {
+    warnings.push(`${NOTES_FILE} 里没有条目，现在发布的话更新说明是空的。只改了后台逻辑的，建议也写一条简短的说明，例如「优化了一些后台逻辑」。`);
   }
 
   // 基准版本应该是最新发布的版本：不是的话，说明发布过新版本、文件还没有清空
@@ -172,7 +204,7 @@ function check(eventFile) {
   for (const w of warnings) console.log(`::warning::${w}`);
   if (errors.length) {
     for (const e of errors) console.log(`::error::${e}`);
-    console.log('\n规则见 scripts/release-notes.js 开头的说明。PR 正文开头例如：\n\n## 更新说明文件\n- 已更新：加入 1 条\n\n没有改那个文件时写「- 无需更新」。');
+    console.log('\n规则见 scripts/release-notes.js 开头的说明。PR 正文开头例如：\n\n## 更新说明文件\n- 已更新：加入 1 条\n\n条目没有变化（包括只清空已经发布的条目、改基准版本）时写「- 无需更新」。');
     process.exit(1);
   }
   console.log(`${NOTES_FILE}：基准版本 ${file.base}，${file.entries.length} 条。这个 PR：${block.updated ? '已更新' : '无需更新'}`);

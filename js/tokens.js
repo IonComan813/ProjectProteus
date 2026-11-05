@@ -10,7 +10,8 @@
 //     a、b 分别是两类文字的系数（不同语言换算成 token 的比例不同），c 是固定的额外开销（例如中转站自己加的内容）。
 //     没有数据时 a = b = 1、c = 0，就是粗略估算。模型级的起点：有共享数据时用共享数据，否则用中转站级的结果，
 //     所以中转站里新用的模型也能直接沿用。旧的数据逐次减少权重，计数方式变了（例如中转站换了上游）也能跟上。
-//   - 估算按块给出（estimate）：每块 = a × 中日韩字数 + b ×（其他部分的粗略估算 + 消息格式的开销），总数 = 各块之和 + c。
+//   - 估算按块给出（estimate）：每块 = a × 中日韩字数 + b × 其他部分的粗略估算（空的块就是 0），总数 = 各块之和 + c。
+//     每条消息的格式开销（角色标记等）不单独算：记忆长度固定时消息条数基本不变，这部分由 c 学到。
 //     界面上写成「各块之和 + 加值 = 总数」，加值就是 c。不再按这个对话上一次的实际用量修正，总数严格按这个式子算。
 //   - 每个对话记下上一次请求（按对话、中转站和模型分别记）发送时的估算和接口报告的实际用量，只用来显示，不参与估算。
 //
@@ -52,12 +53,11 @@ function estimateTokens(s) {
 
 const TokenCalib = (() => {
   const STORE_KEY = 'proteus.tokenCalib';
-  const MSG_OVERHEAD = 4;      // 每条消息（角色标记等）大约多出的 token
   const DECAY = 0.9;           // 每来一次新数据，旧数据的权重乘以它
   const PRIOR_COEF = 1;        // a、b 起点的权重（相当于约一次请求的数据）
   const PRIOR_CONST = 1 / (1500 * 1500); // c 的起点的权重：c 通常在几千以内
   const CLOUD_PRIOR_SCALE = 2; // 起点来自共享数据（多人的数据）时，权重加倍
-  const MIN_WEIGHT_SIZE = 300; // 很小的请求格式开销占比大，按至少这么大计算权重，免得它们左右系数
+  const MIN_WEIGHT_SIZE = 300; // 很小的请求固定开销占比大，按至少这么大计算权重，免得它们左右系数
   const MAX_ANCHORS = 300;     // 最多记住多少个“对话 + 中转站 + 模型”的上一次请求
   // 实际值 ÷ 粗略估算超出这个范围的不进回归（只显示出来），原因见 observe
   const RATIO_MIN = 0.2;
@@ -85,7 +85,7 @@ const TokenCalib = (() => {
   // { relays: { 中转站: { s: 统计, models: { 模型名: { s: 统计, k: 进回归的请求次数, err: 最近一次估算的相对误差,
   //                                                     jump: 上一次的大偏差 { x, y, dir }，或已确认的变化 { dir, confirmed }（见 observe） } } } },
   //   anchors: { anchorKey(对话id, 中转站, 模型): { x: 特征, y: 实际输入, out: 实际输出, est: 发送时的估算（界面上显示的那个数）, t: 时间 } }
-  //              （这个对话的上一次请求，只用来显示）,
+  //              （这个对话的上一次请求，只用来显示。没收到接口报告的用量时 y、out 为 null，也没有 x；没收到输出用量时 out 为 null）,
   //   cloud: { t: 拉取时间, relays: { 域名: { 模型名: { a, b, c } } } }（共享数据，没有的系数不写）,
   //   client: 随机的设备编号, pushed: { 域名\n模型名: { t: 推送时间, th: 推送的系数 } } }
   let store = null;
@@ -141,15 +141,15 @@ const TokenCalib = (() => {
     return [cjk, (s.length - cjk) / 4];
   }
 
-  // 一次请求（system 文字 + 最终发送的消息列表）：[中日韩字数, 其他部分 + 每条消息的开销, 1]
+  // 一次请求（system 文字 + 最终发送的消息列表）：[中日韩字数, 其他部分的粗略估算, 1]。
+  // 以前的版本在第二项里加了每条消息 4 的格式开销；那时记下的数据照样能用（差别由 c 吸收，旧数据也会逐次衰减）
   function requestFeatures(system, messages) {
     let cjk = 0;
     let rest = 0;
-    let n = 0;
-    const add = (s) => { const [c, r] = textFeatures(s); cjk += c; rest += r; n++; };
+    const add = (s) => { const [c, r] = textFeatures(s); cjk += c; rest += r; };
     if (system) add(system);
     for (const m of messages) add(m.content);
-    return [cjk, rest + n * MSG_OVERHEAD, 1];
+    return [cjk, rest, 1];
   }
 
   // ---- 回归 ----
@@ -236,28 +236,38 @@ const TokenCalib = (() => {
     return Math.max(0, Math.round(th[0] * c + th[1] * r));
   }
 
-  // 一次请求的预估输入 token，按块给出。systemTexts：system 部分的各块（合起来算一条消息，格式开销加在第一块上）；
-  // messageTexts：最终发送的各条消息。每块 = a × 中日韩字数 + b ×（其他部分的粗略估算 + 格式开销），四舍五入；
+  // 一次请求的预估输入 token，按块给出。systemTexts：system 部分的各块；messageTexts：最终发送的各条消息。
+  // 每块 = a × 中日韩字数 + b × 其他部分的粗略估算，四舍五入（空的块是 0）；
   // 加值 = c（四舍五入）；总数 = 各块之和 + 加值，严格相等（总数不会小于 0：c 是负数且各块很小时，加值相应调整）。
   // 返回 { system: [各块], messages: [各块], extra: 加值, total: 总数 }
   function estimate(relay, model, systemTexts, messageTexts) {
     const th = coefOf(relay, model).theta;
-    const one = (text, msgs) => {
+    const one = (text) => {
       const [c, r] = textFeatures(text);
-      return Math.max(0, Math.round(th[0] * c + th[1] * (r + msgs * MSG_OVERHEAD)));
+      return Math.max(0, Math.round(th[0] * c + th[1] * r));
     };
-    const system = systemTexts.map((text, i) => one(text, i === 0 ? 1 : 0));
-    const messages = messageTexts.map((text) => one(text, 1));
+    const system = systemTexts.map(one);
+    const messages = messageTexts.map(one);
     const sum = system.reduce((p, q) => p + q, 0) + messages.reduce((p, q) => p + q, 0);
     const extra = Math.max(Math.round(th[2]), -sum);
     return { system, messages, extra, total: sum + extra };
   }
 
   // 这个对话上一次请求（同一中转站和模型）：{ input: 实际输入, output: 实际输出, est: 发送时的估算 }，没有时为 null。
-  // 以前的数据没有 est，为 null
+  // 没收到的项为 null（input 为 null：没收到接口报告的用量；output 为 null：没收到输出用量）；以前的数据没有 est，为 null
   function lastOf(relay, model, convId) {
     const a = convId && relay && model ? load().anchors[anchorKey(convId, relay, model)] : null;
-    return a ? { input: a.y, output: a.out, est: finite(a.est) ? a.est : null } : null;
+    if (!a) return null;
+    return { input: finite(a.y) && a.y > 0 ? a.y : null, output: finite(a.out) && a.out > 0 ? a.out : null, est: finite(a.est) ? a.est : null };
+  }
+
+  // 记下这个对话的这次请求没收到接口报告的用量（回复中途断开、停止，或接口不报告用量）。只用来显示，不进回归
+  function observeNone(relay, model, convId, est) {
+    if (!safeKey(relay) || !safeKey(model) || !convId) return;
+    const st = load();
+    st.anchors[anchorKey(convId, relay, model)] = { y: null, out: null, est: finite(est) && est >= 0 ? est : null, t: Date.now() };
+    trimAnchors(st.anchors);
+    save();
   }
 
   // 记录一次请求的实际用量。x 是发送时算的特征，input / output 是接口报告的输入、输出 token，
@@ -494,10 +504,13 @@ const TokenCalib = (() => {
           const [convId, relay, model] = JSON.parse(oldKey);
           if (own(idMap, convId)) key = anchorKey(idMap[convId], relay, model);
         } catch (_) { continue; } // 认不出的跳过
-        if (!safeKey(key) || !isObj(a) || !validX(a.x) || !finite(a.y) || a.y <= 0 || !finite(a.t)) continue;
+        if (!safeKey(key) || !isObj(a) || !finite(a.t)) continue;
+        const got = finite(a.y) && a.y > 0; // 收到了接口报告的用量；没收到的（observeNone）只有 est
+        if (got ? !validX(a.x) : a.y !== null) continue;
         const cur = own(st.anchors, key) ? st.anchors[key] : null;
         if (cur && cur.t >= a.t) continue;
-        const copy = { x: a.x, y: a.y, out: finite(a.out) && a.out > 0 ? a.out : null, est: finite(a.est) && a.est >= 0 ? a.est : null, t: a.t };
+        const est = finite(a.est) && a.est >= 0 ? a.est : null;
+        const copy = got ? { x: a.x, y: a.y, out: finite(a.out) && a.out > 0 ? a.out : null, est, t: a.t } : { y: null, out: null, est, t: a.t };
         st.anchors[key] = copy;
       }
       trimAnchors(st.anchors);
@@ -507,7 +520,7 @@ const TokenCalib = (() => {
   }
 
   return {
-    relayOf, requestFeatures, coefOf, textTokens, estimate, lastOf, observe, forget,
+    relayOf, requestFeatures, coefOf, textTokens, estimate, lastOf, observe, observeNone, forget,
     setSharing, sync, exportData, importData,
     _test: { hostOf, pendingEntries, push },
   };

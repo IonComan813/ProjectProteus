@@ -1,15 +1,20 @@
 <!--
 下一个版本的更新说明：上一个版本（基准版本）以来、用户能感觉到的改动。发布时写进 Release 页面和软件的更新提示。
 每个 PR 都要维护：加入这次的条目；删掉或改写和它冲突的旧条目（例如这次改掉、撤销了以前加的功能）。
+只改了后台逻辑的，建议也写一条简短的说明，例如「优化了一些后台逻辑」（已经有这样一条时不用重复加）。
 发布新版本后的第一个 PR：清空下面的条目，把基准版本改成刚发布的版本。格式见 scripts/release-notes.js 开头的说明。
 -->
-基准版本: v0.5.0
+基准版本: v0.5.1
 
-- zh-CN: 更新提示只显示最新版本的更新内容；跳过了中间的版本时，提示到 GitHub Release 页面查看其他版本的说明
-  zh-TW: 更新提示只顯示最新版本的更新內容；跳過了中間的版本時，提示到 GitHub Release 頁面查看其他版本的說明
-  en: The update window shows what's new in the latest version only; if versions in between were skipped, it points to the GitHub Releases page for their notes
-  ja: 更新の通知には最新バージョンの変更内容だけを表示します。途中のバージョンを飛ばした場合は、それらの変更内容を GitHub の Release ページで確認するよう案内します
-- zh-CN: token 估算的提示改为「下一次请求约 N 输入 token」，下面显示这个对话上一次请求的输入 token 估值、接口报告的实际输入和输出 token，以及估算的偏差；「查看下一轮将发送的内容」顶部写成「各块之和 + 加值 = 总数」，加值是学到的固定开销（例如中转站自己加的内容）
-  zh-TW: token 估算的提示改為「下一次請求約 N 輸入 token」，下面顯示這個對話上一次請求的輸入 token 估值、介面回報的實際輸入和輸出 token，以及估算的偏差；「查看下一輪將傳送的內容」頂部寫成「各塊之和 + 加值 = 總數」，加值是學到的固定開銷（例如中轉站自己加的內容）
-  en: The token estimate now reads "Next request ≈ N input tokens", followed by the conversation's last request: its estimated input tokens, the actual input and output tokens reported by the API, and how far off the estimate was. The total in "View what the next request will send" is shown as "sum of the parts + added amount = total", where the added amount is the learned fixed overhead (for example content a relay adds itself)
-  ja: トークンの見積もりは「次のリクエスト 約 N 入力トークン」と表示し、その下にこの会話の前回のリクエストの入力トークン見積もり、API が報告した実際の入力・出力トークン、見積もりの誤差を表示します。「次に送信する内容を見る」の合計は「各部分の合計 + 加算分 = 合計」の形で表示します。加算分は学習した固定のオーバーヘッド（中継サーバーが独自に加える内容など）です
+- zh-CN: 「查看下一轮将发送的内容」里空的消息显示 0 token
+  zh-TW: 「查看下一輪將傳送的內容」裡空的訊息顯示 0 token
+  en: Empty messages in "View what the next request will send" now show 0 tokens
+  ja: 「次に送信する内容を見る」で空のメッセージは 0 トークンと表示します
+- zh-CN: 回复被中断（安全拦截、网络中断或手动停止）时，记忆长度下方注明没收到的输出或全部用量，不再显示不准的数字
+  zh-TW: 回覆被中斷（安全攔截、網路中斷或手動停止）時，記憶長度下方註明沒收到的輸出或全部用量，不再顯示不準的數字
+  en: When a reply is interrupted (safety stop, network problem or stopped by you), the note under the memory length says which usage was not reported instead of showing an inaccurate number
+  ja: 返信が中断されたとき（安全上の停止、ネットワーク、手動での停止）、記憶の長さの下に受け取れなかった出力または使用量を明記し、不正確な数字は表示しません
+- zh-CN: 发送后一个字回复都没有（请求出错、被拦截或停止）时，刚发的消息退回输入框，改一改再发送就是重试；编辑过的消息没得到回复时，原因常驻显示在这个版本的消息下方
+  zh-TW: 傳送後一個字回覆都沒有（請求出錯、被攔截或停止）時，剛傳送的訊息退回輸入框，改一改再傳送就是重試；編輯過的訊息沒得到回覆時，原因常駐顯示在這個版本的訊息下方
+  en: If sending gets no reply at all (the request failed, was blocked or was stopped), the message goes back into the input box so you can edit it and send again; when an edited message gets no reply, the reason stays shown below that version of the message
+  ja: 送信しても返信がまったくなかったとき（リクエストのエラー、ブロック、停止）は、送ったメッセージが入力欄に戻るので、直してもう一度送信すれば再試行できます。編集したメッセージに返信がなかったときは、その版のメッセージの下に理由を表示したままにします

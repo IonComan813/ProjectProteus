@@ -342,6 +342,18 @@ body.resizing iframe { pointer-events: none; }
   padding-bottom: 6px;
 }
 
+/* 用户消息下方常驻的说明：这个版本为什么没得到回复 */
+.msg-error {
+  margin-top: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  border-radius: var(--radius);
+  white-space: pre-wrap;
+  font-size: 13px;
+}
+.msg-error[hidden] { display: none; }
+
 .msg-actions {
   display: flex;
   gap: 2px;
