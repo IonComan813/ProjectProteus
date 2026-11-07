@@ -26,3 +26,11 @@
   zh-TW: 「在這台裝置上記住 API Key」註明是全域設定，對所有服務商生效
   en: "Remember API keys on this device" now says it is a global setting that applies to all providers
   ja: 「この端末に API キーを保存する」が全体の設定で、すべてのサービスに適用されることを明記しました
+- zh-CN: 三家官方服务商改名为「Claude 官方」「ChatGPT 官方」「Gemini 官方」
+  zh-TW: 三家官方服務商改名為「Claude 官方」「ChatGPT 官方」「Gemini 官方」
+  en: The three official providers are now called "Claude (official)", "ChatGPT (official)" and "Gemini (official)"
+  ja: 3 つの公式サービスの名前を「Claude 公式」「ChatGPT 公式」「Gemini 公式」に変更しました
+- zh-CN: 「模型与接口」底部不再显示免费 API 导航页的链接
+  zh-TW: 「模型與介面」底部不再顯示免費 API 導航頁的連結
+  en: The links to free API directories at the bottom of "Model & API" have been removed
+  ja: 「モデルと API」の下にあった無料 API まとめページへのリンクを削除しました

@@ -435,9 +435,9 @@ Proteus runs on your own device. API keys are stored only in the app's data on t
 
 | Option | Notes |
 |---|---|
-| Anthropic (Claude) | Calls Claude directly |
-| OpenAI | |
-| Google Gemini | Uses Gemini's OpenAI-compatible API; get an API key from [Google AI Studio](https://aistudio.google.com/). On the free tier, larger models are often busy (HTTP 503) or slow to respond, so a small model such as `gemini-3.5-flash-lite` is a good start; if you get a 503, wait a moment and click "Get reply" or "Regenerate" |
+| Claude (official) | Calls Claude directly (Anthropic's API) |
+| ChatGPT (official) | OpenAI's API (the API key comes from the OpenAI developer platform, separate from a ChatGPT subscription) |
+| Gemini (official) | Uses Gemini's OpenAI-compatible API; get an API key from [Google AI Studio](https://aistudio.google.com/). On the free tier, larger models are often busy (HTTP 503) or slow to respond, so a small model such as `gemini-3.5-flash-lite` is a good start; if you get a 503, wait a moment and click "Get reply" or "Regenerate" |
 | ＋ Add a provider… | OpenRouter, DeepSeek, various relays, etc.; add as many as you like. In the window that opens, enter a name (anything you like), choose the compatibility mode (OpenAI-compatible: most relays; Anthropic-compatible: the few relays that offer Claude's native format), the API address (OpenAI-compatible ones usually end with `/v1`; for OpenRouter: `https://openrouter.ai/api/v1`) and API key, and click "Get model list" to test it and pick a model. You can save whether or not that works, as long as the name, compatibility mode and API address are filled in. Esc or clicking outside doesn't close this window (so you don't lose what you typed); use "Cancel" or "Save". Once saved it appears in the provider list; changes to its name, compatibility mode, address, key or model under "Model & API" are saved automatically, and you can delete it there |
 
 Settings you had under "Other OpenAI-compatible" or "Other Anthropic-compatible" in earlier versions each become an added provider after the update, named after the API address's domain.

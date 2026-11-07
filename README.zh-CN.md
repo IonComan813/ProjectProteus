@@ -436,9 +436,9 @@ Proteus 在使用者自己的设备上运行，API Key 只保存在本机的软�
 
 | 选项 | 说明 |
 |---|---|
-| Anthropic（Claude 官方） | 直接调用 Claude |
-| OpenAI 官方 | |
-| Google Gemini | 使用 Gemini 的 OpenAI 兼容接口，在 [Google AI Studio](https://aistudio.google.com/) 申请 API Key 即可。免费额度下较大的模型经常繁忙（HTTP 503）或长时间无响应，建议先用 `gemini-3.5-flash-lite` 这类小模型；遇到 503 时稍等再点「生成回复」或「重新生成」即可 |
+| Claude 官方 | 直接调用 Claude（Anthropic 的接口） |
+| ChatGPT 官方 | OpenAI 的接口（API Key 在 OpenAI 开发者平台申请，和 ChatGPT 会员订阅是两回事） |
+| Gemini 官方 | 使用 Gemini 的 OpenAI 兼容接口，在 [Google AI Studio](https://aistudio.google.com/) 申请 API Key 即可。免费额度下较大的模型经常繁忙（HTTP 503）或长时间无响应，建议先用 `gemini-3.5-flash-lite` 这类小模型；遇到 503 时稍等再点「生成回复」或「重新生成」即可 |
 | ＋ 添加服务商… | OpenRouter、DeepSeek、各种中转站等，可以添加任意多个。在弹出的窗口里填名称（随意起）、选兼容模式（OpenAI 兼容：大多数中转站；Anthropic 兼容：提供 Claude 原生格式的少部分中转站）、填接口地址（OpenAI 兼容的通常以 `/v1` 结尾，OpenRouter 是 `https://openrouter.ai/api/v1`）和 API Key，可以点「获取模型列表」测试并选一个模型。获取成不成功都可以保存，至少要填名称、兼容模式和接口地址。这个窗口按 Esc 或点窗口以外的地方不会关闭（免得丢掉填好的内容），只能点「取消」或「保存」。保存后它出现在服务商列表里；之后在「模型与接口」里改它的名称、兼容模式、地址、Key 或模型都会自动保存，也可以删除它 |
 
 以前版本的「其他 OpenAI 兼容格式」「其他 Anthropic 兼容格式」填过的设置，升级后各自变成一个添加的服务商，名称是接口地址的域名。
