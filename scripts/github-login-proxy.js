@@ -19,8 +19,18 @@ const PORT = Number(process.argv[2]) || 8787;
 const PATHS = new Set(['/login/device/code', '/login/oauth/access_token']);
 const MAX_BODY = 16 * 1024;
 
-const cors = {
-  'Access-Control-Allow-Origin': '*',
+// 只允许海神网页版自己的来源跨域访问（不用 *，免得代理开着时任何网站都能借用它）：
+//   直接打开 index.html（file://）时来源是 null；用本机的网页服务器打开时是 http://localhost 或 http://127.0.0.1（任意端口）
+const ALLOWED_ORIGIN = /^(null|http:\/\/(localhost|127\.0\.0\.1)(:\d{1,5})?)$/;
+
+// 这次请求要带的跨域响应头。来源不在上面的范围里时不带：浏览器会拦下，网页读不到回复
+function corsFor(req) {
+  const origin = req.headers.origin;
+  if (typeof origin !== 'string' || !ALLOWED_ORIGIN.test(origin)) return {};
+  return { 'Access-Control-Allow-Origin': origin, Vary: 'Origin', ...CORS_COMMON };
+}
+
+const CORS_COMMON = {
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
   'Access-Control-Allow-Headers': 'content-type, accept',
   // Chrome 的「私有网络访问」检查：从网页（包括本地文件打开的网页）访问本机地址时要有这个
@@ -30,6 +40,7 @@ const cors = {
 
 const server = http.createServer((req, res) => {
   const path = (req.url || '').split('?')[0];
+  const cors = corsFor(req);
   if (req.method === 'OPTIONS') {
     res.writeHead(204, cors);
     return res.end();
