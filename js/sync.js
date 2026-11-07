@@ -51,6 +51,16 @@ const syncSafeId = (id) => typeof id === 'string' && /^[\w-]{1,100}$/.test(id);
 const isWebPage = () => !NATIVE && !window.proteusDesktop;
 const syncSleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// 提交说明：「Proteus · 时间 · 做了什么」，时间是本机时间（带时区），文字按界面语言
+function commitMessage(key, vars = {}) {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  const off = -d.getTimezoneOffset();
+  const tz = `UTC${off >= 0 ? '+' : '-'}${Math.floor(Math.abs(off) / 60)}${off % 60 ? ':' + p(Math.abs(off) % 60) : ''}`;
+  const time = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())} (${tz})`;
+  return `Proteus · ${time} · ${t(key, vars)}`;
+}
+
 class SyncError extends Error {
   constructor(message, status = 0) {
     super(message);
@@ -431,9 +441,45 @@ function syncShowDone(flow, message, error = false) {
 
 // ---------------- 登录 ----------------
 
+// 网页版：本机的登录代理开着没有
+async function syncProxyUp() {
+  try {
+    const res = await fetch(GITHUB_LOGIN_PROXY + '/ping', { cache: 'no-store' });
+    const j = await res.json();
+    return !!j && j.app === 'proteus-login-proxy';
+  } catch (_) {
+    return false;
+  }
+}
+
+// 网页版：登录前先确认本机代理已经开启（网页不能自己启动本机程序）。没开时说明怎么开，开好后继续。返回是否继续
+async function syncWaitForProxy(flow) {
+  if (await syncProxyUp()) return true;
+  const cmd = 'node scripts/github-login-proxy.js';
+  const status = syncMessage('');
+  for (;;) {
+    const r = await syncAsk(flow, [syncMessage(t('sync.proxyIntro')), el('pre', 'sync-cmd', cmd), syncMessage(t('sync.proxyAfter')), status], [
+      { label: t('btn.cancel'), value: 'cancel', ghost: true },
+      { label: t('sync.copyCommand'), value: 'copy' },
+      { label: t('sync.proxyReady'), value: 'ready', primary: true },
+    ]);
+    if (r === 'copy') {
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(cmd).then(() => toast(t('sync.commandCopied')), () => {});
+      continue;
+    }
+    if (r !== 'ready') { syncDialogClose(); return false; }
+    status.textContent = t('sync.proxyChecking');
+    if (await syncProxyUp()) return true;
+    status.textContent = t('sync.proxyStillDown');
+    status.classList.add('error');
+  }
+}
+
 async function syncLogin() {
   const flow = syncDialogOpen(t('sync.loginTitle'));
   for (;;) {
+    // 网页版每次（包括重试）都先确认代理开着：登录成功后它会自己关掉
+    if (isWebPage() && !(await syncWaitForProxy(flow))) return;
     syncSetBody(syncMessage(t('sync.requestingCode')));
     syncSetButtons([{ label: t('btn.cancel'), ghost: true, onClick: syncDialogClose }]);
     let code;
@@ -556,10 +602,37 @@ function syncChooseRepo(flow, intro) {
   const field = (label, input) => { const l = el('label', 'field'); l.append(el('span', '', label), input); return l; };
   const input = (value, ph) => { const i = el('input'); i.type = 'text'; i.spellcheck = false; i.autocomplete = 'off'; i.value = value; if (ph) i.placeholder = ph; return i; };
 
-  const existing = input('', t('sync.existingPlaceholder'));
-  const useBtn = button(t('sync.useRepo'), () => void syncPickExisting(flow, existing.value, err), 'btn btn-small');
+  // 已有的仓库：列出账号能写入的仓库（最近更新的在前），点一个就用它；仓库多时可以输入文字筛选
+  const filter = input('', t('sync.repoFilter'));
+  const list = el('div', 'sync-repo-list');
+  list.append(el('div', 'sync-list-item', t('sync.loadingRepos')));
   const sec1 = el('div', 'sync-section');
-  sec1.append(el('div', 'sync-section-title', t('sync.useExisting')), field(t('sync.repoName'), existing), useBtn);
+  sec1.append(el('div', 'sync-section-title', t('sync.useExisting')), filter, list);
+  let repos = null;
+  const show = () => {
+    if (!repos) return;
+    const f = filter.value.trim().toLowerCase();
+    const items = repos.filter((r) => !f || r.full_name.toLowerCase().includes(f));
+    list.replaceChildren();
+    if (!items.length) list.append(el('div', 'sync-list-item', t(repos.length ? 'sync.noRepoMatch' : 'sync.noRepos')));
+    for (const info of items) {
+      const b = el('button', 'sync-repo-item');
+      b.type = 'button';
+      b.append(el('span', 'sync-repo-name', info.full_name),
+        el('span', 'sync-repo-tag' + (info.private ? '' : ' public'), t(info.private ? 'sync.private' : 'sync.public')));
+      if (info.updated_at) b.title = new Date(info.updated_at).toLocaleString();
+      b.addEventListener('click', () => {
+        err.textContent = t('sync.checking');
+        void syncUseRepo(flow, info, err).catch((e) => { if (syncAlive(flow)) err.textContent = e.message; });
+      });
+      list.append(b);
+    }
+  };
+  filter.addEventListener('input', show);
+  syncListRepos().then((r) => { repos = r; if (syncAlive(flow)) show(); }, (e) => {
+    if (!syncAlive(flow)) return;
+    list.replaceChildren(el('div', 'sync-list-item error', e.message));
+  });
 
   const name = input(SYNC_DEFAULT_REPO);
   const desc = input(t('sync.repoDescDefault'));
@@ -572,18 +645,16 @@ function syncChooseRepo(flow, intro) {
   syncSetButtons([{ label: t('sync.later'), ghost: true, onClick: syncDialogClose }]);
 }
 
-async function syncPickExisting(flow, text, err) {
-  const v = text.trim().replace(/^https:\/\/github\.com\//i, '').replace(/\.git$/i, '').replace(/\/+$/, '');
-  if (!v) return;
-  const [owner, name] = v.includes('/') ? v.split('/') : [state.settings.sync.login, v];
-  if (!owner || !name) return;
-  err.textContent = t('sync.checking');
-  try {
-    const info = await gh('GET', `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}`);
-    await syncUseRepo(flow, info, err);
-  } catch (e) {
-    if (syncAlive(flow)) err.textContent = e.status === 404 ? t('sync.repoNotFound', { name: v }) : e.message;
+// 账号能写入的全部仓库（自己的、作为协作者的、所在组织的），最近更新的在前。最多读 10 页（1000 个）
+async function syncListRepos() {
+  const out = [];
+  for (let page = 1; page <= 10; page++) {
+    const batch = await gh('GET', `/user/repos?per_page=100&page=${page}&sort=updated&affiliation=owner,collaborator,organization_member`);
+    if (!Array.isArray(batch)) break;
+    out.push(...batch.filter((r) => r && r.permissions && r.permissions.push));
+    if (batch.length < 100) break;
   }
+  return out;
 }
 
 async function syncCreateRepo(flow, name, desc, err) {
@@ -657,7 +728,7 @@ async function syncFirstPushQuestions(flow) {
   const enc = box(t('sync.qEncryptSettings'), false);
   const keys = box(t('sync.qEncryptKeys'), false);
   const art = box(t('sync.qUploadArt'), state.settings.sync.artDefault !== false);
-  const ok = await syncAsk(flow, [syncMessage(t('sync.firstPush')), enc.l, keys.l, art.l, el('p', 'hint', t('sync.firstPushHint'))], [
+  const ok = await syncAsk(flow, [syncMessage(t('sync.firstPush')), enc.l, keys.l, art.l, el('p', 'hint sync-first-hint', t('sync.firstPushHint'))], [
     { label: t('btn.cancel'), value: false, ghost: true },
     { label: t('sync.continue'), value: true, primary: true },
   ]);
@@ -720,7 +791,7 @@ async function syncPrepare(flow, needMarker) {
   saveSettingsSoon();
   // 空仓库（还没有任何提交）：先用普通的文件接口写入标记文件，有了第一个提交才能用 Git Data API
   if (insp.empty && marker) {
-    await gh('PUT', `${repoApi(r)}/contents/${SYNC_MARKER}`, { message: 'Proteus: set up sync', content: utf8ToB64(JSON.stringify(marker, null, 2)) });
+    await gh('PUT', `${repoApi(r)}/contents/${SYNC_MARKER}`, { message: commitMessage('sync.commit.setup'), content: utf8ToB64(JSON.stringify(marker, null, 2)) });
     newMarker = false;
   }
   return { r, insp, marker, newMarker };
@@ -773,7 +844,7 @@ async function syncPush(flow, progress, mode) {
   if (mode !== 'all' && !upload.length && !relaysAdded && !p.newMarker && insp.tree.has(SYNC_CALIB) && insp.tree.has(SYNC_SETTINGS)) {
     return t('sync.nothingNew');
   }
-  await commitFiles(r, files, mode === 'all' ? `Proteus: full backup (${upload.length})` : `Proteus: add ${upload.length} conversation(s)`,
+  await commitFiles(r, files, mode === 'all' ? commitMessage('sync.commit.pushAll', { n: upload.length, deleted }) : commitMessage('sync.commit.pushNew', { n: upload.length, relays: relaysAdded }),
     (i, total) => progress(t('sync.uploading', { n: i, total })));
   return mode === 'all' ? t('sync.pushedAll', { n: upload.length, deleted }) : t('sync.pushedNew', { n: upload.length, relays: relaysAdded });
 }
@@ -859,7 +930,7 @@ async function syncPushConv(flow, progress) {
   files[syncConvPath(c.id)] = await convFile(c, marker);
   files[SYNC_INDEX] = indexFile({ ...insp.meta, [c.id]: indexEntry(c) });
   if (!insp.tree.has(SYNC_SETTINGS)) files[SYNC_SETTINGS] = await settingsFile(localLlm(), { ...state.settings.apiKeys }, marker);
-  await commitFiles(r, files, `Proteus: back up "${convTitle(c)}"`, (i, total) => progress(t('sync.uploading', { n: i, total })));
+  await commitFiles(r, files, commitMessage('sync.commit.pushConv', { title: convTitle(c) }), (i, total) => progress(t('sync.uploading', { n: i, total })));
   return t('sync.pushedConv', { title: convTitle(c) });
 }
 
@@ -928,7 +999,7 @@ async function changeSyncEncryption(patch, checkbox) {
       if (pw === null) { checkbox.checked = !checkbox.checked; return; }
       m.check = await Locker.makeCheck(pw);
     }
-    await commitFiles(s.repo, { [SYNC_MARKER]: JSON.stringify(m, null, 2) }, 'Proteus: change encryption settings');
+    await commitFiles(s.repo, { [SYNC_MARKER]: JSON.stringify(m, null, 2) }, commitMessage('sync.commit.encryption'));
     s.marker = m;
     saveSettingsSoon();
     toast(t('sync.encryptionSaved'));

@@ -5,11 +5,13 @@
 //   https://github.com/login/oauth/access_token 轮询登录结果
 // 这个脚本在本机 127.0.0.1:8787 上转发这两个地址，并加上允许跨域的响应头。只转发这两个地址，其他一律拒绝；
 // 只监听本机，别的设备连不上。登录以后读写仓库用的 api.github.com 本身允许跨域，不经过这里。
+// 网页没法自己启动本机的程序，所以要手动运行它；网页版点「登录 GitHub」时会先检查它开了没有（GET /ping）。
+// 转发了一次成功的登录结果（回复里有 access_token）后自动关闭。
 //
 // 用法（需要 Node.js 18 或更新的版本）：
 //   node scripts/github-login-proxy.js            默认端口 8787
 //   node scripts/github-login-proxy.js 9000       换一个端口（网页版也要改：js/sync.js 的 GITHUB_LOGIN_PROXY）
-// 登录完成后可以按 Ctrl + C 关掉，读写仓库不需要它。
+// 登录成功后自动关闭（也可以随时按 Ctrl + C 关掉），读写仓库不需要它。
 
 const http = require('http');
 
@@ -19,7 +21,7 @@ const MAX_BODY = 16 * 1024;
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
   'Access-Control-Allow-Headers': 'content-type, accept',
   // Chrome 的「私有网络访问」检查：从网页（包括本地文件打开的网页）访问本机地址时要有这个
   'Access-Control-Allow-Private-Network': 'true',
@@ -31,6 +33,11 @@ const server = http.createServer((req, res) => {
   if (req.method === 'OPTIONS') {
     res.writeHead(204, cors);
     return res.end();
+  }
+  // 网页版用来检查代理开了没有
+  if (req.method === 'GET' && path === '/ping') {
+    res.writeHead(200, { ...cors, 'content-type': 'application/json' });
+    return res.end(JSON.stringify({ app: 'proteus-login-proxy' }));
   }
   if (req.method !== 'POST' || !PATHS.has(path)) {
     res.writeHead(404, { ...cors, 'content-type': 'text/plain' });
@@ -53,6 +60,11 @@ const server = http.createServer((req, res) => {
       const text = await r.text();
       res.writeHead(r.status, { ...cors, 'content-type': r.headers.get('content-type') || 'application/json' });
       res.end(text);
+      if (path === '/login/oauth/access_token' && r.ok && /"access_token"\s*:/.test(text)) {
+        console.log('GitHub sign-in succeeded; closing the proxy.');
+        server.close();
+        setTimeout(() => process.exit(0), 500).unref();
+      }
     } catch (e) {
       res.writeHead(502, { ...cors, 'content-type': 'application/json' });
       res.end(JSON.stringify({ error: 'proxy_failed', error_description: e.message }));
