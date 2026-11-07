@@ -484,6 +484,25 @@ body.resizing iframe { pointer-events: none; }
 .art-pane.locked img { user-select: none; -webkit-user-drag: none; pointer-events: none; }
 .remember-keys { margin-top: -2px; }
 /* 添加服务商的窗口 */
+/* GitHub 同步 */
+.sync-account { margin: 0 0 6px; }
+.sync-account a { color: var(--accent); overflow-wrap: anywhere; }
+.sync-group { font-size: 12px; color: var(--muted); margin-top: 10px; }
+.sync-check { margin-top: 8px; align-items: flex-start; }
+.sync-check input { margin-top: 2px; flex: none; }
+.sync-art-conv { margin-top: 8px; }
+.sync-box { width: min(560px, 90vw); }
+.sync-body { padding: 14px 16px 10px; overflow: auto; max-height: 70vh; }
+.sync-message { white-space: pre-wrap; line-height: 1.7; margin-bottom: 8px; word-break: break-word; }
+.sync-message.error { color: var(--danger); }
+.sync-message:empty { display: none; }
+.sync-code { font: 600 28px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 3px; text-align: center; margin: 10px 0 4px; color: var(--accent); user-select: all; }
+.sync-uri { text-align: center; color: var(--muted); font-size: 13px; margin-bottom: 10px; user-select: all; overflow-wrap: anywhere; }
+.sync-section { border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 10px; }
+.sync-section .btn { margin-top: 2px; }
+.sync-section-title { font-weight: 600; margin-bottom: 6px; }
+.sync-list { margin: 0 0 8px; }
+.sync-list-item { font-size: 13px; color: var(--muted); padding: 2px 0; overflow-wrap: anywhere; }
 .pw-fields.relay-fields { padding-top: 12px; }
 .relay-fields .field > input, .relay-fields .field > select { width: 100%; }
 .relay-fields .row { margin-top: 0; }

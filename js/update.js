@@ -238,7 +238,9 @@ function openMandatoryDialog(title, message, onEsc) {
 // 返回 { manifest } / { remindDays } / { skip: true }
 function showUpdateDialog(current, offers) {
   const latest = offers[0];
-  const message = t('update.message', { current, version: latest.version, notes: updateNotesText(current, latest) });
+  let message = t('update.message', { current, version: latest.version, notes: updateNotesText(current, latest) });
+  // 安卓：安装时软件会被系统关闭，装好后不会自动打开。下载完成时的提示用户不一定看得到（可能去做别的事了），所以在这里先说
+  if (updateFileKey() === 'android') message += '\n\n' + t('update.androidReopen');
   let menu = null;
   let toggle = null;
   const closeMenu = () => { if (menu && !menu.hidden) { menu.hidden = true; toggle.setAttribute('aria-expanded', 'false'); toggle.focus(); } };

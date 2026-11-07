@@ -8,6 +8,9 @@ contextBridge.exposeInMainWorld('proteusDesktop', {
   cancelUpdate: () => ipcRenderer.invoke('cancel-update'),
   // 安装下载好的更新（Windows 安装版静默安装后启动新版本，软件随即关闭）。返回 true 表示已经开始
   installUpdate: () => ipcRenderer.invoke('install-update'),
+  // GitHub 同步的登录凭据用系统钥匙串加密 / 解密（不可用时返回 null）
+  secureEncrypt: (text) => ipcRenderer.invoke('secure-encrypt', text),
+  secureDecrypt: (b64) => ipcRenderer.invoke('secure-decrypt', b64),
   // 开源协议的原文（首次打开时的协议说明用）
   licenseText: () => ipcRenderer.invoke('license-text'),
   // 下载进度和结果：callback({ state: 'progress', received, total }) / ({ state: 'done', kind }) / ({ state: 'failed' | 'aborted' })

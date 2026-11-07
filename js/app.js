@@ -34,6 +34,9 @@ const DEFAULT_SETTINGS = {
   useTemperature: false,
   temperature: 1,
   activeConvId: null,
+  // GitHub 同步（js/sync.js）：login 是登录的账号名，repo 是同步用的仓库 { owner, name, branch }，
+  // marker 是仓库里标记文件的副本（加密设置），artDefault 是全局的「同步艺术图」。登录凭据不在这里（DB 的 githubToken）
+  sync: { login: null, repo: null, marker: null, artDefault: true },
 };
 
 const state = {
@@ -1363,7 +1366,7 @@ async function rollback(i) {
 // ---------------- 发送与生成 ----------------
 
 // 点击是否落在确认框、输入框或信息弹窗里：这些窗口盖在其他东西上面，在里面点击不应该关掉下面打开的菜单和窗口
-const insideDialog = (el) => !!(el && el.closest && el.closest('#dialog, #textDialog, #pwDialog, #modal, #updateDialog'));
+const insideDialog = (el) => !!(el && el.closest && el.closest('#dialog, #textDialog, #pwDialog, #modal, #updateDialog, #relayDialog, #syncDialog'));
 
 // 带多个按钮的确认框，返回所选按钮的 value（关闭则为 null）
 function choose(title, message, options) {
@@ -2279,6 +2282,8 @@ async function restore(file) {
   if (r.error) return toast(t(r.error));
   if (r.st) return importST(r.st, r.art, file.name);
   const data = r.proteus;
+  // GitHub 同步仓库里的 settings.json（LLM 设置）和 calibration.json（token 校准数据），见 js/sync.js
+  if (await restoreSyncFile(data)) return;
 
   if (data.type === 'worldcard') {
     const name = data.name || t('export.unnamedWorld');
@@ -2469,6 +2474,8 @@ function bindBackButton() {
         return;
       }
     }
+    // GitHub 同步的窗口：返回键不关闭（和 Esc 一样），只能点里面的按钮
+    if (!els.syncDialog.hidden) return;
     if (!els.convCtxMenu.hidden) return closeConvCtxMenu();
     if (!els.allConvBox.hidden && allSel.size) { allSel.clear(); return showConvSelection(); } // 先取消勾选，再按一次关闭窗口
     if (!els.allConvBox.hidden) return closeAllConvs();
@@ -2526,6 +2533,7 @@ function fillConvFields() {
   els.settingsPane.classList.toggle('locked', locked);
   // 助理模式：右栏不显示世界观、NPC角色、用户人设和重点指令
   els.settingsPane.classList.toggle('assistant', assistant);
+  renderSyncConv(); // 艺术图下面的「此对话的艺术图同步到 GitHub 仓库」
   els.systemPrompt.value = locked ? '' : c.systemPrompt;
   els.worldText.value = locked ? '' : c.worldText;
   els.npcText.value = locked ? '' : c.npcText;
@@ -3077,6 +3085,7 @@ function applyLang(lang) {
   setLang(lang);
   fillProviderSelect();
   fillProviderFields();
+  renderSyncCard();
   renderFooter();
   els.btnToggleKey.textContent = t(els.apiKey.type === 'password' ? 'set.show' : 'set.hide');
   if (state.conv) {
@@ -3194,6 +3203,7 @@ function bindSettings() {
     removeRelay(relay);
   });
   bindRelayDialog();
+  bindSync();
   els.langSelect.addEventListener('change', () => {
     s().lang = els.langSelect.value;
     saveSettingsSoon();
@@ -3465,7 +3475,7 @@ function bindChat() {
     else if (c) void deleteConv(c);
   });
   // 有输入框或确认框打开时（例如正在重命名），对话列表不受点击、Esc 和窗口大小变化影响
-  const dialogOpen = () => !els.dialog.hidden || !els.textDialog.hidden || !els.pwDialog.hidden || !els.modal.hidden || !els.updateDialog.hidden || !els.relayDialog.hidden;
+  const dialogOpen = () => !els.dialog.hidden || !els.textDialog.hidden || !els.pwDialog.hidden || !els.modal.hidden || !els.updateDialog.hidden || !els.relayDialog.hidden || !els.syncDialog.hidden;
   // 点在列表和右键菜单以外：都收起；点在列表里（右键菜单以外）：只收起右键菜单。
   // 用 pointerdown：点在不可用的输入框上时浏览器不发 mousedown
   document.addEventListener('pointerdown', (e) => {
@@ -3537,7 +3547,7 @@ async function boot() {
   const saved = (await DB.get('settings')) || {};
   const sessionKeys = state.settings && state.settings.rememberKeys === false ? state.settings.apiKeys : null;
   state.settings = { ...DEFAULT_SETTINGS, ...saved };
-  for (const k of ['apiKeys', 'baseUrls', 'models', 'maxTokens', 'modelLists']) {
+  for (const k of ['apiKeys', 'baseUrls', 'models', 'maxTokens', 'modelLists', 'sync']) {
     state.settings[k] = { ...DEFAULT_SETTINGS[k], ...(saved[k] || {}) };
   }
   if (sessionKeys) state.settings.apiKeys = sessionKeys; // 不记住 Key 时，本次打开期间填过的 Key 继续有效

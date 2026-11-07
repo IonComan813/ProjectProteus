@@ -64,6 +64,24 @@ const Locker = (() => {
     return JSON.parse(dec.decode(await decryptBytes(lk)));
   }
 
+  // 只算密码的校验值 { salt, iterations, hash }（GitHub 同步：设一次密码，之后每次上传都用它生成锁，不用再问密码）
+  async function makeCheck(password) {
+    const salt = toB64(crypto.getRandomValues(new Uint8Array(16)));
+    return { salt, iterations: ITERATIONS, hash: await hashPassword(password, salt, ITERATIONS) };
+  }
+
+  // 用已有的校验值生成锁：和 lock 一样，只是不用重新输入密码
+  async function relock(fields, check) {
+    const box = await encryptBytes(enc.encode(JSON.stringify(fields)));
+    return { v: 1, salt: check.salt, iterations: check.iterations, hash: check.hash, iv: box.iv, data: box.data };
+  }
+
+  // 锁（或校验值）是不是用这个校验值的密码做的
+  function sameCheck(lk, check) {
+    return !!lk && !!check && lk.salt === check.salt && lk.hash === check.hash && lk.iterations === check.iterations;
+  }
+
+  // checkPassword 也可以用来核对 makeCheck 的校验值
   async function checkPassword(lk, password) {
     return (await hashPassword(password, lk.salt, lk.iterations)) === lk.hash;
   }
@@ -78,5 +96,5 @@ const Locker = (() => {
     return new Blob([await decryptBytes(box)], { type: box.type || 'image/png' });
   }
 
-  return { available, lock, open, checkPassword, encryptBlob, decryptBlob };
+  return { available, lock, makeCheck, relock, sameCheck, open, checkPassword, encryptBlob, decryptBlob };
 })();

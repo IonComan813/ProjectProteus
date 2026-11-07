@@ -228,6 +228,11 @@
           <button class="btn btn-small" id="btnDownloadArt" data-i18n="set.download">下载</button>
           <button class="btn btn-small btn-ghost" id="btnRemoveArt" data-i18n="set.remove">移除</button>
         </div>
+        <!-- GitHub 同步：登录并选好仓库后才显示（js/sync.js 的 renderSyncConv） -->
+        <label class="field-inline sync-art-conv" id="syncArtConvRow" hidden>
+          <input type="checkbox" id="syncArtConv"> <span data-i18n="sync.artConv">此对话的艺术图同步到 GitHub 仓库</span>
+        </label>
+        <p class="hint" id="syncArtConvHint" data-i18n="sync.artConvHint" hidden>全局设定将覆盖此处的设定</p>
       </section>
 
       <section class="card">
@@ -237,6 +242,51 @@
           <button class="btn btn-small btn-ghost" id="btnRestore" data-i18n="set.restoreBtn">读取世界卡 / 备份 / 酒馆卡</button>
         </div>
         <p class="hint" data-i18n="set.exportHint"></p>
+      </section>
+
+      <!-- GitHub 同步（js/sync.js）：没登录时只有登录按钮 -->
+      <section class="card" id="syncCard">
+        <h3 data-i18n="sync.title">GitHub 同步</h3>
+        <div id="syncLoggedOut">
+          <button class="btn btn-small" id="btnSyncLogin" data-i18n="sync.login">登录 GitHub</button>
+        </div>
+        <div id="syncLoggedIn" hidden>
+          <p class="hint sync-account"><span id="syncAccount"></span> <a id="syncRepoLink" target="_blank" rel="noopener"></a></p>
+          <div class="row" id="syncNoRepo">
+            <button class="btn btn-small" id="btnSyncSetup" data-i18n="sync.chooseRepo">选择或创建仓库</button>
+          </div>
+          <div id="syncOps">
+            <div class="sync-group" data-i18n="sync.thisConv">此对话</div>
+            <div class="row">
+              <button class="btn btn-small" id="btnSync_pushConv" data-i18n="sync.op.pushConv">备份此对话（覆盖）</button>
+              <button class="btn btn-small" id="btnSync_pullConv" data-i18n="sync.op.pullConv">从仓库下载此对话（覆盖）</button>
+            </div>
+            <div class="sync-group" data-i18n="sync.allConvs">全部对话</div>
+            <div class="row">
+              <button class="btn btn-small" id="btnSync_pushAll" data-i18n="sync.pushAll">全量备份（覆盖）</button>
+              <button class="btn btn-small" id="btnSync_pushNew" data-i18n="sync.pushNew">增量备份</button>
+              <button class="btn btn-small" id="btnSync_pullAll" data-i18n="sync.pullAll">下载到本地（覆盖）</button>
+              <button class="btn btn-small" id="btnSync_pullNew" data-i18n="sync.pullNew">下载到本地（增量）</button>
+            </div>
+            <p class="hint" data-i18n="sync.opsHint"></p>
+            <label class="field-inline sync-check">
+              <input type="checkbox" id="syncArtAll"> <span data-i18n="sync.artAll">同步艺术图（全局设定，改动会应用到所有对话）</span>
+            </label>
+            <div id="syncEncryptRow">
+              <label class="field-inline sync-check">
+                <input type="checkbox" id="syncEncSettings"> <span data-i18n="sync.encSettings">加密设定</span>
+              </label>
+              <label class="field-inline sync-check">
+                <input type="checkbox" id="syncEncKeys"> <span data-i18n="sync.encKeys">加密 API Key</span>
+              </label>
+              <p class="hint" data-i18n="sync.encHint"></p>
+            </div>
+          </div>
+          <div class="row">
+            <button class="btn btn-small btn-ghost" id="btnSyncChangeRepo" data-i18n="sync.changeRepo">更换仓库</button>
+            <button class="btn btn-small btn-ghost" id="btnSyncLogout" data-i18n="sync.logout">退出登录</button>
+          </div>
+        </div>
       </section>
 
       <section class="card">
@@ -266,6 +316,16 @@
       <div class="all-conv-list" id="allConvList"></div>
       <!-- 多选的说明：电脑上和触屏上只显示其中一句（CSS 按有没有鼠标悬停区分） -->
       <div class="all-conv-tip muted small"><span class="tip-mouse" data-i18n="conv.multiTipMouse">点击选中，再点一次或双击打开；按住 Ctrl 或 Shift 点击可以选中多个对话，右键删除</span><span class="tip-touch" data-i18n="conv.multiTipTouch">勾选右边的方框可以选中多个对话，长按其中任意一个删除</span></div>
+    </div>
+  </div>
+
+  <!-- GitHub 同步的窗口（js/sync.js）：登录、选择仓库、执行同步都在这里。按 Esc、点窗口以外的地方不关闭，只能点里面的按钮。
+       放在其他弹窗前面：里面问密码、确认时，密码框和确认框显示在它上面 -->
+  <div class="modal" id="syncDialog" hidden>
+    <div class="modal-box dialog-box sync-box" role="dialog" aria-modal="true" aria-labelledby="syncDialogTitle">
+      <div class="modal-head"><strong id="syncDialogTitle"></strong></div>
+      <div class="sync-body" id="syncBody"></div>
+      <div class="dialog-buttons" id="syncButtons"></div>
     </div>
   </div>
 
@@ -425,6 +485,7 @@
   <script src="js/render.js"></script>
   <script src="js/stcard.js"></script>
   <script src="js/update.js"></script>
+  <script src="js/sync.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
