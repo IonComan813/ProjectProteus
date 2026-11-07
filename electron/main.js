@@ -1,7 +1,7 @@
 // Windows / macOS / Linux 原生应用（Electron）的入口：用自带的 Chromium 内核打开 index.html。
 // 页面本身和浏览器版完全相同；这里只负责窗口、安全设置，以及去掉跨域限制。
 
-const { app, BrowserWindow, Menu, dialog, shell, session, ipcMain } = require('electron');
+const { app, BrowserWindow, Menu, dialog, shell, session, ipcMain, safeStorage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -135,7 +135,7 @@ function allowCors() {
     }
     headers['Access-Control-Allow-Origin'] = ['*'];
     headers['Access-Control-Allow-Headers'] = [CORS_HEADERS];
-    headers['Access-Control-Allow-Methods'] = ['GET, POST, OPTIONS'];
+    headers['Access-Control-Allow-Methods'] = ['GET, POST, PUT, PATCH, DELETE, OPTIONS']; // GitHub 同步要用 PATCH（js/sync.js）
     const result = { responseHeaders: headers };
     // 跨域预检请求（OPTIONS）如果被接口拒绝，也当作通过
     if (details.method === 'OPTIONS' && (details.statusCode < 200 || details.statusCode >= 300)) {
@@ -292,6 +292,17 @@ function setupUpdateDownloads() {
   ipcMain.handle('license-text', (e) => {
     if (!win || e.sender.id !== win.webContents.id) return '';
     try { return fs.readFileSync(path.join(ROOT, 'LICENSE'), 'utf8'); } catch (_) { return ''; }
+  });
+
+  // GitHub 同步的登录凭据：用系统的钥匙串（Windows DPAPI、macOS 钥匙串、Linux 的密钥服务）加密后由页面保存。
+  // 系统不提供时返回 null，页面改用自己的办法（js/sync.js 的 TokenVault）
+  ipcMain.handle('secure-encrypt', (e, text) => {
+    if (!win || e.sender.id !== win.webContents.id || typeof text !== 'string') return null;
+    try { return safeStorage.isEncryptionAvailable() ? safeStorage.encryptString(text).toString('base64') : null; } catch (_) { return null; }
+  });
+  ipcMain.handle('secure-decrypt', (e, b64) => {
+    if (!win || e.sender.id !== win.webContents.id || typeof b64 !== 'string') return null;
+    try { return safeStorage.decryptString(Buffer.from(b64, 'base64')); } catch (_) { return null; }
   });
 
   // 安装下载好的更新：页面显示「下载完成，正在启动安装程序…」，等没有正在生成的回复、保存好对话后调用
