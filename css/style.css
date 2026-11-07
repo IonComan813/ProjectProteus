@@ -85,21 +85,6 @@ body.resizing iframe { pointer-events: none; }
   color: var(--muted);
 }
 .art-placeholder-icon { font-size: 40px; opacity: .5; }
-/* 助理模式：没有艺术图时显示插画（代替 🖼 图标） */
-.art-chill { display: none; width: min(70%, 220px); height: auto; margin-bottom: 8px; }
-.art-pane.assistant .art-chill { display: block; }
-.art-pane.assistant .art-placeholder-icon { display: none; }
-.chill-sky { fill: #1f2230; }
-.chill-frame { fill: none; stroke: var(--border); stroke-width: 4; }
-.chill-frame-line { stroke: var(--border); stroke-width: 3; }
-.chill-moon { fill: var(--accent); opacity: .85; }
-.chill-star { fill: var(--text); opacity: .55; }
-.chill-sill { fill: var(--panel-2); }
-.chill-pot { fill: #8a6a4a; }
-.chill-leaf { fill: none; stroke: #7fa07a; stroke-width: 4; stroke-linecap: round; }
-.chill-mug { fill: var(--accent); opacity: .75; }
-.chill-handle { fill: none; stroke: var(--accent); stroke-width: 4; opacity: .75; }
-.chill-steam { fill: none; stroke: var(--muted); stroke-width: 2.5; stroke-linecap: round; opacity: .6; }
 
 /* ---------- 中栏 ---------- */
 .chat-pane {

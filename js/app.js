@@ -2524,9 +2524,8 @@ function fillConvFields() {
   const locked = !!c.lock;
   const assistant = isAssistant(c);
   els.settingsPane.classList.toggle('locked', locked);
-  // 助理模式：右栏不显示世界观、NPC角色、用户人设和重点指令；左栏没有艺术图时显示插画
+  // 助理模式：右栏不显示世界观、NPC角色、用户人设和重点指令
   els.settingsPane.classList.toggle('assistant', assistant);
-  els.artPane.classList.toggle('assistant', assistant);
   els.systemPrompt.value = locked ? '' : c.systemPrompt;
   els.worldText.value = locked ? '' : c.worldText;
   els.npcText.value = locked ? '' : c.npcText;

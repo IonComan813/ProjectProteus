@@ -14,20 +14,6 @@
       <img id="artImage" alt="" hidden>
       <div class="art-placeholder" id="artPlaceholder">
         <div class="art-placeholder-icon">🖼</div>
-        <!-- 助理模式没有艺术图时显示的插画：窗边的夜晚、一杯热茶和一盆小植物 -->
-        <svg class="art-chill" viewBox="0 0 240 280" aria-hidden="true">
-          <rect x="30" y="20" width="180" height="170" rx="14" class="chill-sky"/>
-          <path d="M120 20v170M30 105h180" class="chill-frame-line"/>
-          <rect x="30" y="20" width="180" height="170" rx="14" class="chill-frame"/>
-          <path d="M178 46a20 20 0 1 0 14 34a16 16 0 1 1 -14 -34z" class="chill-moon"/>
-          <g class="chill-star"><circle cx="58" cy="44" r="1.8"/><circle cx="92" cy="70" r="1.3"/><circle cx="150" cy="38" r="1.5"/><circle cx="70" cy="132" r="1.2"/><circle cx="160" cy="140" r="1.6"/><circle cx="196" cy="122" r="1.1"/><circle cx="100" cy="160" r="1.3"/></g>
-          <rect x="16" y="190" width="208" height="12" rx="6" class="chill-sill"/>
-          <path d="M70 146c-10 4 -16 14 -14 26M70 146c8 6 10 16 6 26M70 150c-2 8 -2 16 0 22" class="chill-leaf"/>
-          <path d="M56 172h28l-4 18h-20z" class="chill-pot"/>
-          <path d="M130 158c-4 -6 4 -10 0 -16M142 156c-4 -6 4 -10 0 -16M154 158c-4 -6 4 -10 0 -16" class="chill-steam"/>
-          <path d="M122 166h42v14a10 10 0 0 1 -10 10h-22a10 10 0 0 1 -10 -10z" class="chill-mug"/>
-          <path d="M164 170h5a6 6 0 0 1 0 12h-5" class="chill-handle"/>
-        </svg>
         <div data-i18n="art.upload"></div>
         <div class="muted small" data-i18n="art.hint"></div>
       </div>
@@ -196,7 +182,7 @@
           </div>
         </label>
         <label class="field-inline remember-keys">
-          <input type="checkbox" id="rememberKeys"> <span data-i18n="set.rememberKey">在这台设备上记住 API Key</span>
+          <input type="checkbox" id="rememberKeys"> <span data-i18n="set.rememberKey">在这台设备上记住 API Key（全局设置）</span>
         </label>
         <p class="hint" data-i18n="set.rememberKeyHint"></p>
         <div class="field"><span id="modelLabel" data-i18n="set.modelName">模型</span>
@@ -376,7 +362,7 @@
           </div>
         </label>
         <label class="field-inline remember-keys">
-          <input type="checkbox" id="relayRemember"> <span data-i18n="set.rememberKey">在这台设备上记住 API Key</span>
+          <input type="checkbox" id="relayRemember"> <span data-i18n="set.rememberKey">在这台设备上记住 API Key（全局设置）</span>
         </label>
         <div class="field relay-model"><span id="relayModelLabel" data-i18n="set.modelName">模型</span>
           <div class="row nowrap">
