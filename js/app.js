@@ -12,7 +12,7 @@
 //   - 助理模式的对话（conv.mode === 'assistant'）：普通的 LLM 对话，只发送 System Prompt 和对话记录。
 //     世界观、用户人设、{{user}} 的值、重点指令、开场白都不使用（保持为空），也不加密；艺术图照常可用。没有 mode 的就是角色扮演对话，
 //     所以存储和备份格式与角色扮演对话相同。
-//   - 软件设置（所有对话共用）：界面语言、记忆长度、模型与接口、API Key、布局。
+//   - 软件设置（所有对话共用）：界面语言、记忆长度、模型与接口（包括用户添加的服务商）、API Key、布局。
 
 const ROUNDS_MIN = 1;
 const ROUNDS_MAX = 40;
@@ -23,11 +23,12 @@ const DEFAULT_SETTINGS = {
   rounds: 12,
   artWidth: null,      // 左栏宽度（像素），null = 自动
   inputHeight: 88,     // 输入框高度（像素）
-  provider: 'anthropic',
+  provider: 'anthropic', // 官方服务商的键名（anthropic / openai / gemini），或者用户添加的服务商 relay:<id>
+  relays: [],          // 用户添加的服务商（中转站）：[{ id, name, format: 'openai' | 'anthropic' }]，按添加的顺序
   apiKeys: {},
   baseUrls: {},
   models: {},          // 各服务商的模型名。没有预填：模型名要用户自己获取列表后选，或直接输入
-  maxTokens: { anthropic: 16000, custom_anthropic: 16000 },
+  maxTokens: { anthropic: 16000 }, // 新添加的 Anthropic 兼容服务商也从 16000 开始（saveRelayDialog）
   modelLists: {},      // 各服务商“获取列表”得到的模型名，记下来供下拉选择
   effort: '',
   useTemperature: false,
@@ -583,8 +584,8 @@ function openConvMenu() {
   highlightConv(convMenu.items.indexOf(state.conv), true);
 }
 
-// 「全部对话」窗口：所有对话按最近活动的时间排列。点对话切换过去，右键（触屏上长按）重命名或删除，
-// 点窗口以外的地方或按 Esc 关闭。
+// 「全部对话」窗口：所有对话按最近活动的时间排列。电脑上点一下选中一个对话，再点一次或双击切换过去（键盘按 Enter 直接切换）；
+// 触屏上点一下直接切换。右键（触屏上长按）重命名或删除，点窗口以外的地方或按 Esc 关闭。
 // 可以选中多个对话一起删除：
 //   电脑：按住 Ctrl（Mac 上是 ⌘）点击，选中或取消选中一个；按住 Shift 点击，选中从上次点的那个到这个之间的全部
 //         （同时按住 Ctrl 时加到已选中的里面）。右键任一选中的对话弹出删除。
@@ -630,6 +631,9 @@ function fillAllConvs() {
     const item = button(convLabel(c), (e) => {
       if (e.shiftKey) return selectConvRange(c, e.ctrlKey || e.metaKey);
       if (e.ctrlKey || e.metaKey) return toggleConvSelected(c);
+      // 电脑上：点一下只选中这一个，再点一次（或双击）才切换过去。键盘的 Enter / 空格（detail 为 0）和触屏的点按直接切换
+      const open = e.detail === 0 || isTouchList() || e.detail > 1 || (allSel.size === 1 && allSel.has(c.id));
+      if (!open) return selectOnlyConv(c);
       closeAllConvs();
       if (c !== state.conv) void switchConv(c.id);
     }, 'all-conv-item');
@@ -660,6 +664,19 @@ function showConvSelection() {
     row.querySelector('.all-conv-item').setAttribute('aria-pressed', String(on));
     row.querySelector('.all-conv-check').checked = on;
   }
+}
+
+// 触屏（没有鼠标悬停）：和 CSS 里显示勾选框的条件相同
+const isTouchList = () => window.matchMedia('(hover: none)').matches;
+
+// 电脑上不按 Ctrl / Shift 点击：只选中这一个，它也是 Shift 选择的起点
+function selectOnlyConv(c) {
+  allSel.clear();
+  allSel.add(c.id);
+  allAnchor = c.id;
+  closeConvCtxMenu();
+  showConvSelection();
+  focusAllConv(c);
 }
 
 function toggleConvSelected(c) {
@@ -1516,7 +1533,7 @@ async function runGeneration(m, context, sent = null) {
   try {
     const req = requestOf(conv, context);
     const k = calibKey(cfg);
-    const sent = finalMessages(PROVIDERS[cfg.provider].format, req.messages);
+    const sent = finalMessages(formatOf(cfg), req.messages);
     const est = TokenCalib.estimate(k.relay, k.model, systemBlocks(conv).map((b) => b.text), sent.map((m) => m.content)).total;
     calib = { ...k, x: TokenCalib.requestFeatures(req.system, sent), est };
     result = await streamChat(cfg, req.system, req.messages, {
@@ -2443,6 +2460,8 @@ function bindBackButton() {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
       return;
     }
+    // 添加服务商的窗口：返回键不关闭（和 Esc 一样，免得丢掉填好的内容），只能点「取消」
+    if (!els.relayDialog.hidden) return;
     for (const id of ['pwDialog', 'textDialog', 'dialog']) {
       if (!els[id].hidden) {
         document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
@@ -2505,6 +2524,9 @@ function fillConvFields() {
   const locked = !!c.lock;
   const assistant = isAssistant(c);
   els.settingsPane.classList.toggle('locked', locked);
+  // 助理模式：右栏不显示世界观、NPC角色、用户人设和重点指令；左栏没有艺术图时显示插画
+  els.settingsPane.classList.toggle('assistant', assistant);
+  els.artPane.classList.toggle('assistant', assistant);
   els.systemPrompt.value = locked ? '' : c.systemPrompt;
   els.worldText.value = locked ? '' : c.worldText;
   els.npcText.value = locked ? '' : c.npcText;
@@ -2550,15 +2572,33 @@ function fillSettingsForm() {
   fillProviderFields();
 }
 
+// 服务商下拉框：三家官方、用户添加的服务商（显示它的名称），最后是「＋ 添加服务商…」
+const ADD_RELAY = '__add__';
 function fillProviderSelect() {
-  els.provider.innerHTML = Object.keys(PROVIDERS)
-    .map((k) => `<option value="${k}">${escapeHtml(t('provider.' + k))}</option>`).join('');
+  const opt = (value, label) => `<option value="${escapeHtml(value)}">${escapeHtml(label)}</option>`;
+  els.provider.innerHTML = Object.keys(PROVIDERS).map((k) => opt(k, t('provider.' + k))).join('')
+    + state.settings.relays.map((r) => opt(RELAY_PREFIX + r.id, r.name)).join('')
+    + opt(ADD_RELAY, t('relay.addOption'));
+  els.provider.value = state.settings.provider;
+}
+
+// 当前选的是用户添加的服务商时，返回它（{ id, name, format }），否则为 null
+function currentRelay() {
+  const p = state.settings.provider;
+  return p.startsWith(RELAY_PREFIX) ? state.settings.relays.find((r) => RELAY_PREFIX + r.id === p) || null : null;
 }
 
 function fillProviderFields() {
   const s = state.settings;
-  const p = PROVIDERS[s.provider];
+  const p = providerOf(s.provider);
+  const relay = currentRelay();
   els.provider.value = s.provider;
+  els.relayOptions.hidden = !relay;
+  els.relayDeleteRow.hidden = !relay;
+  if (relay) {
+    if (document.activeElement !== els.relayEditName) els.relayEditName.value = relay.name;
+    els.relayEditFormat.value = relay.format;
+  }
   els.baseUrl.value = s.baseUrls[s.provider] || '';
   els.baseUrl.placeholder = p.baseUrl || t('set.baseUrlExample');
   els.apiKey.value = s.apiKeys[s.provider] || '';
@@ -2570,6 +2610,186 @@ function fillProviderFields() {
   els.anthropicOptions.hidden = p.format !== 'anthropic';
   els.openaiOptions.hidden = p.format !== 'openai';
   els.temperature.disabled = !s.useTemperature;
+}
+
+// ---- 用户添加的服务商 ----
+
+// 读取设置时：只留认得出的条目；以前的「其他 OpenAI / Anthropic 兼容格式」填过地址或 Key 的，各变成一个用户添加的服务商。
+// 迁移了以前的设置时返回 true（要马上保存，否则下次打开又迁移一次）
+function migrateRelays(s) {
+  let migrated = false;
+  const seen = new Set();
+  s.relays = (Array.isArray(s.relays) ? s.relays : []).filter((r) => r && typeof r.id === 'string' && r.id && !seen.has(r.id) && seen.add(r.id))
+    .map((r) => ({ id: r.id, name: String(r.name || '').trim() || hostName(s.baseUrls[RELAY_PREFIX + r.id]) || t('relay.unnamed'), format: r.format === 'anthropic' ? 'anthropic' : 'openai' }));
+  for (const [old, format] of [['custom_openai', 'openai'], ['custom_anthropic', 'anthropic']]) {
+    const used = (s.baseUrls[old] || '').trim() || (s.apiKeys[old] || '').trim();
+    const key = used ? RELAY_PREFIX + uid() : null;
+    if (key) {
+      const id = key.slice(RELAY_PREFIX.length);
+      s.relays.push({ id, name: uniqueRelayName(hostName(s.baseUrls[old]) || t('relay.formatShort.' + format), s), format });
+    }
+    for (const k of ['apiKeys', 'baseUrls', 'models', 'maxTokens', 'modelLists']) {
+      if (key && s[k][old] !== undefined) s[k][key] = s[k][old];
+      delete s[k][old];
+    }
+    if (s.provider === old) s.provider = key || 'anthropic';
+    if (key) migrated = true;
+  }
+  return migrated;
+}
+
+// 接口地址的域名（认不出时为 ''）：迁移以前的设置时用作名称
+function hostName(url) {
+  try { return new URL((url || '').trim()).hostname; } catch (_) { return ''; }
+}
+
+// 和已有的名称重复时加上 (2)、(3)……（只在迁移时用；添加窗口里重名直接提示）
+function uniqueRelayName(name, s = state.settings) {
+  const taken = (n) => s.relays.some((r) => r.name === n) || Object.keys(PROVIDERS).some((k) => t('provider.' + k) === n);
+  if (!taken(name)) return name;
+  let i = 2;
+  while (taken(`${name} (${i})`)) i++;
+  return `${name} (${i})`;
+}
+
+function removeRelay(relay) {
+  const s = state.settings;
+  const key = RELAY_PREFIX + relay.id;
+  s.relays = s.relays.filter((r) => r !== relay);
+  for (const k of ['apiKeys', 'baseUrls', 'models', 'maxTokens', 'modelLists']) delete s[k][key];
+  if (s.provider === key) s.provider = 'anthropic';
+  setCustomProviders(s.relays);
+  fillProviderSelect();
+  fillProviderFields();
+  saveSettingsSoon();
+  updateEstimate();
+  toast(t('relay.deleted', { name: relay.name }));
+}
+
+// 「添加服务商」窗口。relayDraft 是窗口打开期间的状态：models 是获取到的模型列表，fetching 是正在获取的那一次（关掉窗口后作废）
+let relayDraft = null;
+
+function openRelayDialog() {
+  relayDraft = { models: null, fetching: null };
+  els.relayName.value = '';
+  els.relayFormat.value = '';
+  els.relayUrl.value = '';
+  els.relayKey.value = '';
+  els.relayKey.type = 'password';
+  els.btnRelayToggleKey.textContent = t('set.show');
+  els.relayRemember.checked = state.settings.rememberKeys !== false;
+  fillRelayModels();
+  setRelayStatus('');
+  updateRelaySave();
+  els.relayDialog.hidden = false;
+  els.relayName.focus();
+}
+
+function closeRelayDialog() {
+  els.relayDialog.hidden = true;
+  relayDraft = null;
+}
+
+function fillRelayModels() {
+  const list = relayDraft && relayDraft.models;
+  els.relayModel.innerHTML = '';
+  const add = (value, label) => {
+    const o = document.createElement('option');
+    o.value = value;
+    o.textContent = label;
+    els.relayModel.appendChild(o);
+  };
+  if (!list) add('', t('relay.modelNotFetched'));
+  else {
+    add('', t(list.length ? 'relay.modelNone' : 'relay.modelEmpty'));
+    for (const m of list) add(m, m);
+  }
+  els.relayModel.disabled = !list || !list.length;
+}
+
+function setRelayStatus(text, error = false) {
+  els.relayStatus.textContent = text;
+  els.relayStatus.classList.toggle('error', error);
+}
+
+// 填了名称、选了兼容模式、填了接口地址才能保存
+function updateRelaySave() {
+  els.relaySave.disabled = !els.relayName.value.trim() || !els.relayFormat.value || !els.relayUrl.value.trim();
+  els.btnRelayFetch.disabled = !els.relayFormat.value || !els.relayUrl.value.trim() || !!(relayDraft && relayDraft.fetching);
+}
+
+async function fetchRelayModels() {
+  const draft = relayDraft;
+  if (!draft || draft.fetching) return;
+  const cfg = { provider: '', format: els.relayFormat.value, baseUrl: els.relayUrl.value.trim(), apiKey: els.relayKey.value.trim() };
+  const run = {};
+  draft.fetching = run;
+  updateRelaySave();
+  setRelayStatus(t('relay.fetching'));
+  try {
+    const list = await fetchModels(cfg);
+    if (relayDraft !== draft || draft.fetching !== run) return;
+    draft.models = list;
+    fillRelayModels();
+    setRelayStatus(t(list.length ? 'relay.fetched' : 'relay.fetchedNone', { n: list.length }));
+  } catch (e) {
+    if (relayDraft !== draft || draft.fetching !== run) return;
+    setRelayStatus(t('relay.fetchFailed', { error: e.message }), true);
+  } finally {
+    if (relayDraft === draft && draft.fetching === run) draft.fetching = null;
+    if (relayDraft === draft) updateRelaySave();
+  }
+}
+
+async function saveRelayDialog() {
+  const s = state.settings;
+  const name = els.relayName.value.trim();
+  const format = els.relayFormat.value;
+  const url = els.relayUrl.value.trim();
+  if (!name || !format || !url) return;
+  const taken = s.relays.some((r) => r.name === name) || Object.keys(PROVIDERS).some((k) => t('provider.' + k) === name);
+  if (taken) {
+    setRelayStatus(t('relay.nameTaken', { name }), true);
+    return els.relayName.focus();
+  }
+  const id = uid();
+  const key = RELAY_PREFIX + id;
+  s.relays.push({ id, name, format: format === 'anthropic' ? 'anthropic' : 'openai' });
+  s.baseUrls[key] = url;
+  s.apiKeys[key] = els.relayKey.value.trim();
+  if (els.relayModel.value) s.models[key] = els.relayModel.value;
+  if (relayDraft && relayDraft.models) s.modelLists[key] = relayDraft.models;
+  if (format === 'anthropic') s.maxTokens[key] = 16000;
+  s.provider = key;
+  s.rememberKeys = els.relayRemember.checked;
+  closeRelayDialog();
+  setCustomProviders(s.relays);
+  fillProviderSelect();
+  fillSettingsForm();
+  clearTimeout(saveTimer);
+  await DB.set('settings', storableSettings());
+  updateEstimate();
+  toast(t('relay.saved', { name }));
+}
+
+function bindRelayDialog() {
+  for (const el of [els.relayName, els.relayUrl]) el.addEventListener('input', () => { setRelayStatus(''); updateRelaySave(); });
+  els.relayFormat.addEventListener('change', updateRelaySave);
+  // 改了地址、Key 或兼容模式后，之前获取的列表不一定还对，但仍然留着可选（用户自己知道）；重新获取会替换它
+  els.btnRelayToggleKey.addEventListener('click', () => {
+    const show = els.relayKey.type === 'password';
+    els.relayKey.type = show ? 'text' : 'password';
+    els.btnRelayToggleKey.textContent = t(show ? 'set.hide' : 'set.show');
+  });
+  els.btnRelayFetch.addEventListener('click', () => void fetchRelayModels());
+  els.relayCancel.addEventListener('click', closeRelayDialog);
+  els.relaySave.addEventListener('click', () => void saveRelayDialog());
+  // 不能用 Esc 关闭：拦下来，免得关掉窗口后面的设置面板、列表等。Enter 也不当作保存（容易误按）
+  document.addEventListener('keydown', (e) => {
+    if (els.relayDialog.hidden || e.key !== 'Escape') return;
+    e.stopPropagation();
+    e.preventDefault();
+  }, true);
 }
 
 // ---- 模型下拉列表 ----
@@ -2669,7 +2889,7 @@ function nextRequestBlocks() {
   const system = systemBlocks(conv);
 
   // 消息：和真正发出时一样合并连续同一角色的消息，Anthropic 格式开头补“前情省略”
-  const messages = finalMessages(PROVIDERS[state.settings.provider].format, req.messages);
+  const messages = finalMessages(formatOf({ provider: state.settings.provider }), req.messages);
   return { system, messages, pending };
 }
 
@@ -2937,11 +3157,44 @@ function bindSettings() {
     saveSettingsSoon();
   });
   els.provider.addEventListener('change', () => {
+    if (els.provider.value === ADD_RELAY) {
+      els.provider.value = s().provider; // 下拉框先回到当前的服务商；保存后才切换到新的
+      return void openRelayDialog();
+    }
     s().provider = els.provider.value;
     fillProviderFields();
     saveSettingsSoon();
     updateEstimate();
   });
+  // 用户添加的服务商：改名称、兼容模式马上保存。名称清空时不保存，离开输入框后恢复原来的名称
+  els.relayEditName.addEventListener('input', () => {
+    const relay = currentRelay();
+    const name = els.relayEditName.value.trim();
+    if (!relay || !name) return;
+    relay.name = name;
+    const opt = [...els.provider.options].find((o) => o.value === RELAY_PREFIX + relay.id);
+    if (opt) opt.textContent = name;
+    saveSettingsSoon();
+  });
+  els.relayEditName.addEventListener('blur', () => {
+    const relay = currentRelay();
+    if (relay) els.relayEditName.value = relay.name;
+  });
+  els.relayEditFormat.addEventListener('change', () => {
+    const relay = currentRelay();
+    if (!relay) return;
+    relay.format = els.relayEditFormat.value === 'anthropic' ? 'anthropic' : 'openai';
+    setCustomProviders(s().relays);
+    fillProviderFields();
+    saveSettingsSoon();
+    updateEstimate();
+  });
+  els.btnDeleteRelay.addEventListener('click', async () => {
+    const relay = currentRelay();
+    if (!relay || !(await ask(t('relay.deleteConfirm', { name: relay.name }), { ok: t('relay.delete'), danger: true }))) return;
+    removeRelay(relay);
+  });
+  bindRelayDialog();
   els.langSelect.addEventListener('change', () => {
     s().lang = els.langSelect.value;
     saveSettingsSoon();
@@ -3213,7 +3466,7 @@ function bindChat() {
     else if (c) void deleteConv(c);
   });
   // 有输入框或确认框打开时（例如正在重命名），对话列表不受点击、Esc 和窗口大小变化影响
-  const dialogOpen = () => !els.dialog.hidden || !els.textDialog.hidden || !els.pwDialog.hidden || !els.modal.hidden || !els.updateDialog.hidden;
+  const dialogOpen = () => !els.dialog.hidden || !els.textDialog.hidden || !els.pwDialog.hidden || !els.modal.hidden || !els.updateDialog.hidden || !els.relayDialog.hidden;
   // 点在列表和右键菜单以外：都收起；点在列表里（右键菜单以外）：只收起右键菜单。
   // 用 pointerdown：点在不可用的输入框上时浏览器不发 mousedown
   document.addEventListener('pointerdown', (e) => {
@@ -3299,9 +3552,11 @@ async function boot() {
     }
     s.provider = 'custom_openai';
   }
-  if (!PROVIDERS[state.settings.provider]) state.settings.provider = 'anthropic';
   state.settings.rounds = Math.min(ROUNDS_MAX, Math.max(ROUNDS_MIN, Number(state.settings.rounds) || 12));
   setLang(state.settings.lang || detectLang());
+  if (migrateRelays(state.settings)) saveSettingsSoon(); // 迁移时可能要用界面语言的文字当名称，所以在 setLang 之后
+  setCustomProviders(state.settings.relays);
+  if (!providerOf(state.settings.provider)) state.settings.provider = 'anthropic';
 
   // 旧版本把 System Prompt、世界观、人设和艺术图放在全局，迁移到每个对话里
   const legacy = { systemPrompt: saved.systemPrompt, worldText: saved.worldText, persona: saved.persona };

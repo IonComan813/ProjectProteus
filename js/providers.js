@@ -16,15 +16,30 @@ const PROVIDERS = {
     format: 'openai', // 使用 Gemini 提供的 OpenAI 兼容接口
     baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
   },
-  custom_openai: {
-    format: 'openai',
-    baseUrl: '',
-  },
-  custom_anthropic: {
-    format: 'anthropic',
-    baseUrl: '',
-  },
 };
+
+// 用户自己添加的服务商（中转站）：设置里的 relays = [{ id, name, format }]，键名是 relay:<id>，
+// 接口地址、Key、模型等和官方服务商一样按键名存。由 app.js 在读取设置和增删改之后调用 setCustomProviders 登记
+const RELAY_PREFIX = 'relay:';
+let customProviders = {};
+
+function setCustomProviders(relays) {
+  customProviders = {};
+  for (const r of relays || []) customProviders[RELAY_PREFIX + r.id] = { format: r.format === 'anthropic' ? 'anthropic' : 'openai', baseUrl: '' };
+}
+
+// 服务商的格式和默认地址，没有这个服务商时为 null
+function providerOf(key) {
+  return Object.prototype.hasOwnProperty.call(PROVIDERS, key) ? PROVIDERS[key]
+    : Object.prototype.hasOwnProperty.call(customProviders, key) ? customProviders[key] : null;
+}
+
+// 请求用的格式：cfg.format（添加服务商的窗口里，还没保存时）或者服务商的格式
+function formatOf(cfg) {
+  if (cfg.format) return cfg.format;
+  const p = providerOf(cfg.provider);
+  return p ? p.format : 'openai';
+}
 
 const ANTHROPIC_VERSION = '2026-10-21';
 // 这些 Claude 模型在官方接口上支持“被安全分类器拒绝时自动换模型重试”。
@@ -50,7 +65,8 @@ function mergeSameRole(messages) {
 
 // 实际使用的接口地址（没填时用服务商的默认地址）
 function baseOf(cfg) {
-  return trimSlash(cfg.baseUrl || PROVIDERS[cfg.provider].baseUrl);
+  const p = providerOf(cfg.provider);
+  return trimSlash(cfg.baseUrl || (p ? p.baseUrl : ''));
 }
 
 // 最终发送的消息列表：合并连续同一角色的消息；Anthropic 要求第一条必须是用户消息，开头不是时补“前情省略”
@@ -95,13 +111,13 @@ function usageOf(u, format) {
 
 // 组装真正发给接口的请求（不发送，只返回 url / headers / body），方便“预览”功能复用。
 function buildRequest(cfg, system, messages) {
-  const provider = PROVIDERS[cfg.provider];
+  const format = formatOf(cfg);
   const base = baseOf(cfg);
   if (!base) throw new Error(t('api.needBaseUrl'));
   if (!cfg.model) throw new Error(t('api.needModel'));
-  const msgs = finalMessages(provider.format, messages);
+  const msgs = finalMessages(format, messages);
 
-  if (provider.format === 'anthropic') {
+  if (format === 'anthropic') {
     const body = {
       model: cfg.model,
       max_tokens: cfg.maxTokens || 8192,
@@ -372,11 +388,10 @@ async function streamChat(cfg, system, messages, { signal, onText, onThinking, o
 
 // 获取模型列表
 async function fetchModels(cfg) {
-  const provider = PROVIDERS[cfg.provider];
   const base = baseOf(cfg);
   if (!base) throw new Error(t('api.needBaseUrl'));
   let url, headers;
-  if (provider.format === 'anthropic') {
+  if (formatOf(cfg) === 'anthropic') {
     url = base + '/v1/models?limit=100';
     headers = {
       'x-api-key': cfg.apiKey,

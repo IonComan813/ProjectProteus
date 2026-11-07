@@ -14,6 +14,20 @@
       <img id="artImage" alt="" hidden>
       <div class="art-placeholder" id="artPlaceholder">
         <div class="art-placeholder-icon">🖼</div>
+        <!-- 助理模式没有艺术图时显示的插画：窗边的夜晚、一杯热茶和一盆小植物 -->
+        <svg class="art-chill" viewBox="0 0 240 280" aria-hidden="true">
+          <rect x="30" y="20" width="180" height="170" rx="14" class="chill-sky"/>
+          <path d="M120 20v170M30 105h180" class="chill-frame-line"/>
+          <rect x="30" y="20" width="180" height="170" rx="14" class="chill-frame"/>
+          <path d="M178 46a20 20 0 1 0 14 34a16 16 0 1 1 -14 -34z" class="chill-moon"/>
+          <g class="chill-star"><circle cx="58" cy="44" r="1.8"/><circle cx="92" cy="70" r="1.3"/><circle cx="150" cy="38" r="1.5"/><circle cx="70" cy="132" r="1.2"/><circle cx="160" cy="140" r="1.6"/><circle cx="196" cy="122" r="1.1"/><circle cx="100" cy="160" r="1.3"/></g>
+          <rect x="16" y="190" width="208" height="12" rx="6" class="chill-sill"/>
+          <path d="M70 146c-10 4 -16 14 -14 26M70 146c8 6 10 16 6 26M70 150c-2 8 -2 16 0 22" class="chill-leaf"/>
+          <path d="M56 172h28l-4 18h-20z" class="chill-pot"/>
+          <path d="M130 158c-4 -6 4 -10 0 -16M142 156c-4 -6 4 -10 0 -16M154 158c-4 -6 4 -10 0 -16" class="chill-steam"/>
+          <path d="M122 166h42v14a10 10 0 0 1 -10 10h-22a10 10 0 0 1 -10 -10z" class="chill-mug"/>
+          <path d="M164 170h5a6 6 0 0 1 0 12h-5" class="chill-handle"/>
+        </svg>
         <div data-i18n="art.upload"></div>
         <div class="muted small" data-i18n="art.hint"></div>
       </div>
@@ -96,7 +110,7 @@
         </div>
       </section>
 
-      <section class="card">
+      <section class="card roleplay-only">
         <h3 id="hWorld" data-i18n="set.world">世界观</h3>
         <p class="hint" data-i18n="set.worldHint"></p>
         <textarea id="worldText" aria-labelledby="hWorld" class="scroll-box unlockable" rows="7" data-i18n-ph="set.worldPlaceholder"></textarea>
@@ -109,7 +123,7 @@
         </div>
       </section>
 
-      <section class="card">
+      <section class="card roleplay-only">
         <h3 id="hNpc" data-i18n="set.npc">NPC角色</h3>
         <p class="hint" data-i18n="set.npcHint"></p>
         <!-- {{char}} 的值：显示和发送时，内容里的 {{char}} 换成这里填的值。读取酒馆角色卡时自动填上角色名 -->
@@ -122,7 +136,7 @@
         </div>
       </section>
 
-      <section class="card">
+      <section class="card roleplay-only">
         <h3 id="hPersona" data-i18n="set.persona">用户角色人设</h3>
         <p class="hint" data-i18n="set.personaHint"></p>
         <!-- {{user}} 的值：显示和发送时，内容里的 {{user}} 换成这里填的值 -->
@@ -130,7 +144,7 @@
         <textarea id="persona" aria-labelledby="hPersona" class="scroll-box" rows="5" data-i18n-ph="set.personaPlaceholder"></textarea>
       </section>
 
-      <section class="card">
+      <section class="card roleplay-only">
         <h3 id="hPostHistory" data-i18n="set.postHistory">重点指令（Post-History Instructions）</h3>
         <textarea id="postHistory" aria-labelledby="hPostHistory" class="scroll-box unlockable" rows="4" data-i18n-ph="set.postHistoryPlaceholder"></textarea>
         <div class="lock-box lock-only" data-i18n="lock.protected"></div>
@@ -156,9 +170,22 @@
 
       <section class="card">
         <h3 data-i18n="set.model">模型与接口</h3>
+        <!-- 服务商：三家官方、用户添加的服务商，最后一项「＋ 添加服务商…」打开添加窗口 -->
         <label class="field"><span data-i18n="set.provider">服务商</span>
           <select id="provider"></select>
         </label>
+        <!-- 用户添加的服务商：名称和兼容模式可以改，也可以删除。改了马上保存 -->
+        <div id="relayOptions" hidden>
+          <label class="field"><span data-i18n="relay.name">名称</span>
+            <input type="text" id="relayEditName" maxlength="60" spellcheck="false" autocomplete="off">
+          </label>
+          <label class="field"><span data-i18n="relay.format">兼容模式</span>
+            <select id="relayEditFormat">
+              <option value="openai" data-i18n="relay.formatOpenai">OpenAI 兼容模式（大多数中转站）</option>
+              <option value="anthropic" data-i18n="relay.formatAnthropic">Anthropic 兼容模式（少部分中转站）</option>
+            </select>
+          </label>
+        </div>
         <label class="field"><span data-i18n="set.baseUrl">接口地址（Base URL）</span>
           <input type="text" id="baseUrl" spellcheck="false">
         </label>
@@ -172,7 +199,6 @@
           <input type="checkbox" id="rememberKeys"> <span data-i18n="set.rememberKey">在这台设备上记住 API Key</span>
         </label>
         <p class="hint" data-i18n="set.rememberKeyHint"></p>
-        <p class="hint" data-i18n="set.keyHint"></p>
         <div class="field"><span id="modelLabel" data-i18n="set.modelName">模型</span>
           <div class="row nowrap">
             <!-- 可以直接输入模型名，也可以点 ▾ 从列表里选 -->
@@ -205,6 +231,9 @@
           <p class="hint" data-i18n="set.temperatureHint"></p>
         </div>
         <!-- 免费 API 的导航页：网址不翻译，只有前面的文字随界面语言变化 -->
+        <div class="row" id="relayDeleteRow" hidden>
+          <button class="btn btn-small btn-ghost danger" id="btnDeleteRelay" data-i18n="relay.delete">删除这个服务商</button>
+        </div>
         <p class="hint free-apis"><span data-i18n="set.freeApis">免费API导航页：</span><br><a href="https://github.com/kirito8/free-newapi" target="_blank" rel="noopener">https://github.com/kirito8/free-newapi</a><br><a href="https://gongyizhan.com/" target="_blank" rel="noopener">https://gongyizhan.com/</a></p>
       </section>
 
@@ -252,7 +281,7 @@
       <div class="modal-head"><strong data-i18n="conv.allTitle">全部对话</strong><span class="muted small" data-i18n="expand.hint">点击窗口以外的地方关闭</span></div>
       <div class="all-conv-list" id="allConvList"></div>
       <!-- 多选的说明：电脑上和触屏上只显示其中一句（CSS 按有没有鼠标悬停区分） -->
-      <div class="all-conv-tip muted small"><span class="tip-mouse" data-i18n="conv.multiTipMouse">按住 Ctrl 或 Shift 点击可以选中多个对话，右键删除</span><span class="tip-touch" data-i18n="conv.multiTipTouch">勾选右边的方框可以选中多个对话，长按其中任意一个删除</span></div>
+      <div class="all-conv-tip muted small"><span class="tip-mouse" data-i18n="conv.multiTipMouse">点击选中，再点一次或双击打开；按住 Ctrl 或 Shift 点击可以选中多个对话，右键删除</span><span class="tip-touch" data-i18n="conv.multiTipTouch">勾选右边的方框可以选中多个对话，长按其中任意一个删除</span></div>
     </div>
   </div>
 
@@ -316,6 +345,51 @@
       <div class="dialog-buttons">
         <button class="btn btn-ghost" id="pwCancel" data-i18n="btn.cancel">取消</button>
         <button class="btn btn-primary" id="pwOk" data-i18n="pw.ok">确定</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 添加服务商：名称、兼容模式、接口地址、API Key，可以获取模型列表选一个模型。
+       至少填了名称、兼容模式和接口地址才能保存（获取列表成不成功都可以保存）。
+       按 Esc、点窗口以外的地方都不会关闭（免得丢掉填好的内容），只能点「取消」或「保存」 -->
+  <div class="modal" id="relayDialog" hidden>
+    <div class="modal-box dialog-box" role="dialog" aria-modal="true" aria-labelledby="relayDialogTitle">
+      <div class="modal-head"><strong id="relayDialogTitle" data-i18n="relay.addTitle">添加服务商</strong></div>
+      <div class="pw-fields relay-fields">
+        <label class="field"><span data-i18n="relay.name">名称</span>
+          <input type="text" id="relayName" maxlength="60" spellcheck="false" autocomplete="off" data-i18n-ph="relay.namePlaceholder">
+        </label>
+        <label class="field"><span data-i18n="relay.format">兼容模式</span>
+          <select id="relayFormat">
+            <option value="" data-i18n="relay.formatChoose">请选择</option>
+            <option value="openai" data-i18n="relay.formatOpenai">OpenAI 兼容模式（大多数中转站）</option>
+            <option value="anthropic" data-i18n="relay.formatAnthropic">Anthropic 兼容模式（少部分中转站）</option>
+          </select>
+        </label>
+        <label class="field"><span data-i18n="set.baseUrl">接口地址（Base URL）</span>
+          <input type="text" id="relayUrl" spellcheck="false" autocomplete="off" data-i18n-ph="set.baseUrlExample">
+        </label>
+        <label class="field"><span data-i18n="set.apiKey">API Key</span>
+          <div class="row nowrap">
+            <input type="password" id="relayKey" spellcheck="false" autocomplete="off" placeholder="sk-...">
+            <button type="button" class="btn btn-small btn-ghost" id="btnRelayToggleKey" data-i18n="set.show">显示</button>
+          </div>
+        </label>
+        <label class="field-inline remember-keys">
+          <input type="checkbox" id="relayRemember"> <span data-i18n="set.rememberKey">在这台设备上记住 API Key</span>
+        </label>
+        <div class="field relay-model"><span id="relayModelLabel" data-i18n="set.modelName">模型</span>
+          <div class="row nowrap">
+            <select id="relayModel" aria-labelledby="relayModelLabel" disabled></select>
+            <button type="button" class="btn btn-small" id="btnRelayFetch" data-i18n="relay.fetch">获取模型列表</button>
+          </div>
+          <div class="relay-status" id="relayStatus" role="status"></div>
+        </div>
+        <p class="hint" data-i18n="relay.editLater">以上设置保存后都可以在右侧「模型与接口」里更改。</p>
+      </div>
+      <div class="dialog-buttons">
+        <button type="button" class="btn btn-ghost" id="relayCancel" data-i18n="btn.cancel">取消</button>
+        <button type="button" class="btn btn-primary" id="relaySave" data-i18n="relay.save">保存</button>
       </div>
     </div>
   </div>
