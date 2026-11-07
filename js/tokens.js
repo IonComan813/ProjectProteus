@@ -9,7 +9,14 @@
 //   - 每一级用加权的线性回归：实际输入 ≈ a × 中日韩字数 + b × 其他部分的粗略估算 + c。
 //     a、b 分别是两类文字的系数（不同语言换算成 token 的比例不同），c 是固定的额外开销（例如中转站自己加的内容）。
 //     没有数据时 a = b = 1、c = 0，就是粗略估算。模型级的起点：有共享数据时用共享数据，否则用中转站级的结果，
-//     所以中转站里新用的模型也能直接沿用。旧的数据逐次减少权重，计数方式变了（例如中转站换了上游）也能跟上。
+//     所以中转站里新用的模型也能直接沿用。起点在这个模型第一次有数据时记下来（m.mu），之后不再跟着中转站级的结果变：
+//     同一个中转站的几个模型来回切换时互不拉动。中转站级的统计照常更新，只给以后新用的模型当起点。
+//     旧的数据逐次减少权重，计数方式变了（例如中转站换了上游）也能跟上。
+//   - 稳定之后修正得慢一些：每次估算误差（更新之前的）的平滑值在 5% 以内、并且至少有 5 次数据时算稳定，
+//     旧数据的衰减从 0.9 变为 0.97（每次新数据的影响从约 1/10 变为约 1/30），偏差不会被个别请求重新拉大。
+//     平滑误差超过 10%，或者确认情况变了（见 observe），回到 0.9，尽快跟上。
+//   - 噪音：实际值和粗略估算差得离谱的不进回归（见 observe）。已经校准过（至少 3 次数据）的模型，
+//     和校准后的估算相差 3 倍以上的第一次完全不计入，下一次又往同一个方向差很多时才认定情况变了、补上。
 //   - 估算按块给出（estimate）：每块 = a × 中日韩字数 + b × 其他部分的粗略估算（空的块就是 0），总数 = 各块之和 + c。
 //     每条消息的格式开销（角色标记等）不单独算：记忆长度固定时消息条数基本不变，这部分由 c 学到。
 //     界面上写成「各块之和 + 加值 = 总数」，加值就是 c。不再按这个对话上一次的实际用量修正，总数严格按这个式子算。
@@ -55,8 +62,13 @@ const TokenCalib = (() => {
   const STORE_KEY = 'proteus.tokenCalib';
   const DECAY = 0.9;           // 每来一次新数据，旧数据的权重乘以它
   const PRIOR_COEF = 1;        // a、b 起点的权重（相当于约一次请求的数据）
-  const PRIOR_CONST = 1 / (1500 * 1500); // c 的起点的权重：c 通常在几千以内
+  // c 的起点的权重：c 通常在几千以内。以前是 1 / 1500²，太强了：几千 token 的请求里 c 会被拉回起点将近一半，
+  // 中转站加了一两千 token 隐藏内容的模型一直估少十几个百分点
+  const PRIOR_CONST = 1 / (5000 * 5000);
   const CLOUD_PRIOR_SCALE = 2; // 起点来自共享数据（多人的数据）时，权重加倍
+  // 模型有了自己的数据以后，起点的权重跟着旧数据一起衰减（m.pw），最少留这么多：只用来让没有数据的那类文字的系数保持在起点。
+  // 不衰减的话起点一直有约一次请求的分量，模型的系数总被拉向起点（记下来的起点不会再变，拉偏的部分就一直在）
+  const PRIOR_FLOOR = 0.05;
   const MIN_WEIGHT_SIZE = 300; // 很小的请求固定开销占比大，按至少这么大计算权重，免得它们左右系数
   const MAX_ANCHORS = 300;     // 最多记住多少个“对话 + 中转站 + 模型”的上一次请求
   // 实际值 ÷ 粗略估算超出这个范围的不进回归（只显示出来），原因见 observe
@@ -66,6 +78,14 @@ const TokenCalib = (() => {
   const JUMP_MIN_K = 3;        // 至少有这么多次数据，才有可信的估算可以比较
   const JUMP_ERR = 0.3;        // 实际值和估算相差这么多以上算大偏差
   const JUMP_WEIGHT = 0.3;     // 第一次大偏差只按这个权重计入
+  const CHANGE_KEEP = 0.3;     // 确认情况变了时，这个模型的旧数据只留这么多权重（稳定期攒下的数据多，不这样跟得太慢）
+  const OUTLIER = 3;           // 和估算相差这么多倍以上（大于 3 倍或小于 1/3）：第一次完全不计入
+  // 稳定之后（见开头的说明）：
+  const STABLE_DECAY = 0.97;   // 稳定后旧数据的衰减
+  const CALM_K = 5;            // 至少这么多次数据才可能算稳定
+  const CALM_ERR = 0.05;       // 平滑误差在这以内算稳定
+  const UNCALM_ERR = 0.1;      // 稳定后平滑误差超过这个，不再算稳定
+  const EMA_ALPHA = 0.3;       // 平滑误差：新的一次占的比重
   const COEF_MIN = 0.1;
   const COEF_MAX = 10;
   const CONST_MIN = -5000;
@@ -83,7 +103,9 @@ const TokenCalib = (() => {
 
   // ---- 读写 ----
   // { relays: { 中转站: { s: 统计, models: { 模型名: { s: 统计, k: 进回归的请求次数, err: 最近一次估算的相对误差,
-  //                                                     jump: 上一次的大偏差 { x, y, dir }，或已确认的变化 { dir, confirmed }（见 observe） } } } },
+  //                                                     mu: 起点 [a, b, c]（第一次有数据时记下），muCloud: 起点是否来自共享数据,
+  //                                                     pw: 起点现在的权重（从 1 逐次衰减到 PRIOR_FLOOR），ema: 平滑误差, stable: 是否稳定（见开头的说明）,
+  //                                                     jump: 上一次的大偏差 { x, y, dir, w: 当时计入的权重 }，或已确认的变化 { dir, confirmed }（见 observe） } } } },
   //   anchors: { anchorKey(对话id, 中转站, 模型): { x: 特征, y: 实际输入, out: 实际输出, est: 发送时的估算（界面上显示的那个数）, t: 时间 } }
   //              （这个对话的上一次请求，只用来显示。没收到接口报告的用量时 y、out 为 null，也没有 x；没收到输出用量时 out 为 null）,
   //   cloud: { t: 拉取时间, relays: { 域名: { 模型名: { a, b, c } } } }（共享数据，没有的系数不写）,
@@ -159,19 +181,21 @@ const TokenCalib = (() => {
   const PRIOR = [PRIOR_COEF, PRIOR_COEF, PRIOR_CONST];
   const CLOUD_PRIOR = PRIOR.map((p) => p * CLOUD_PRIOR_SCALE);
 
-  // 加入一次请求的数据。weight 是这次数据的权重（默认 1）；decay 为 false 时旧数据不衰减（补记以前少算的权重时用）
-  function addTo(s, x, y, weight = 1, decay = true) {
+  // 加入一次请求的数据。weight 是这次数据的权重（默认 1）；decay 是旧数据乘的衰减，为 false 时旧数据不衰减（补记以前少算的权重时用）
+  function addTo(s, x, y, weight = 1, decay = DECAY) {
     const w = weight / Math.pow(Math.max(y, MIN_WEIGHT_SIZE), 2); // 按相对误差拟合：大请求和小请求同样重要
-    if (decay) {
-      for (let i = 0; i < 9; i++) s.A[i] *= DECAY;
-      for (let i = 0; i < 3; i++) s.b[i] *= DECAY;
-      s.n *= DECAY;
-    }
+    if (decay) scaleStats(s, decay);
     s.n += weight;
     for (let i = 0; i < 3; i++) {
       for (let j = 0; j < 3; j++) s.A[i * 3 + j] += w * x[i] * x[j];
       s.b[i] += w * x[i] * y;
     }
+  }
+
+  function scaleStats(s, f) {
+    for (let i = 0; i < 9; i++) s.A[i] *= f;
+    for (let i = 0; i < 3; i++) s.b[i] *= f;
+    s.n *= f;
   }
 
   // 3×3 线性方程组（高斯消元，选主元）
@@ -217,16 +241,27 @@ const TokenCalib = (() => {
 
   // ---- 对外：估算 ----
 
-  // 这个中转站 + 模型的系数。source：'local'（有本机的数据）、'cloud'（只有共享数据）或 null（粗略估算）
+  // 现在新用这个模型的话，它的起点：有共享数据时用共享数据（缺的系数用中转站级的），否则用中转站级的结果
+  function startOf(relay, model) {
+    const r = relay && own(load().relays, relay) ? load().relays[relay] : null;
+    const cloud = relay && model ? cloudOf(relay, model) : null;
+    let mu = thetaOf(r && r.s, DEFAULT_THETA);
+    if (cloud) mu = [finite(cloud.a) ? cloud.a : mu[0], finite(cloud.b) ? cloud.b : mu[1], finite(cloud.c) ? cloud.c : mu[2]];
+    return { mu, cloud: !!cloud };
+  }
+
+  const validTheta = (th) => Array.isArray(th) && th.length === 3 && th.every(finite);
+
+  // 这个中转站 + 模型的系数。source：'local'（有本机的数据）、'cloud'（只有共享数据）或 null（粗略估算）。
+  // 已经有数据的模型用它自己记下的起点（m.mu），不再跟着中转站级的结果变
   function coefOf(relay, model) {
     const r = relay && own(load().relays, relay) ? load().relays[relay] : null;
     const m = r && model && own(r.models, model) ? r.models[model] : null;
-    const relayTheta = thetaOf(r && r.s, DEFAULT_THETA);
-    const cloud = relay && model ? cloudOf(relay, model) : null;
-    let mu = relayTheta;
-    if (cloud) mu = [finite(cloud.a) ? cloud.a : mu[0], finite(cloud.b) ? cloud.b : mu[1], finite(cloud.c) ? cloud.c : mu[2]];
-    const source = m && m.s.n ? 'local' : cloud ? 'cloud' : r && r.s.n ? 'local' : null;
-    return { theta: thetaOf(m && m.s, mu, cloud ? CLOUD_PRIOR : PRIOR), source };
+    const start = m && validTheta(m.mu) ? { mu: m.mu, cloud: !!m.muCloud } : startOf(relay, model);
+    const source = m && m.s.n ? 'local' : start.cloud ? 'cloud' : r && r.s.n ? 'local' : null;
+    const pw = m && finite(m.pw) ? clamp(m.pw, PRIOR_FLOOR, 1) : 1;
+    const prior = (start.cloud ? CLOUD_PRIOR : PRIOR).map((p) => p * pw);
+    return { theta: thetaOf(m && m.s, start.mu, prior), source };
   }
 
   // 一段文字校准后的 token 数（不含消息开销和固定开销）
@@ -285,34 +320,58 @@ const TokenCalib = (() => {
     if (!odd) {
       const r = st.relays[relay] || (st.relays[relay] = { s: emptyStats(), models: {} });
       const m = r.models[model] || (r.models[model] = { s: emptyStats(), k: 0, err: null });
+      // 第一次有数据时记下起点（以前的版本没有记的，在这里补记），之后中转站级的结果再变也不影响这个模型
+      if (!validTheta(m.mu)) {
+        const start = startOf(relay, model);
+        m.mu = start.mu;
+        m.muCloud = start.cloud;
+      }
       // 更新之前，回归估得准不准：用来判断校准是否已经稳定，以及这次是不是大偏差
       const before = dot(coefOf(relay, model).theta, x);
-      m.err = Math.abs(before - input) / input;
+      const err = Math.abs(before - input) / input;
+      m.err = err;
       // 已经校准过的模型碰到大偏差：可能是偶发的怪数字，也可能是情况真的变了（中转站换了上游、模型名指向了新模型、
       // 开始加隐藏的提示词，或者换了一种粗略公式估得不准的语言）。
-      //   第一次：只按 JUMP_WEIGHT 计入，记下来（m.jump）
-      //   下一次又往同一个方向偏差很大：认定情况变了，把上次少算的权重补上，这次按正常权重计入；
+      //   第一次：只按 JUMP_WEIGHT 计入；差到 OUTLIER 倍以上的完全不计入（当作噪音）。记下来（m.jump）
+      //   下一次又往同一个方向偏差很大：认定情况变了，把上次少算的权重补上，这次按正常权重计入，并且不再算稳定；
       //     之后回归赶上来之前（还是同一个方向的大偏差）也都按正常权重计入
-      //   下一次正常，或者往反方向偏：上次是偶发的，只留下 JUMP_WEIGHT 的影响
+      //   下一次正常，或者往反方向偏：上次是偶发的，只留下当时计入的那一点影响（噪音则完全没有影响）
       const dir = Math.sign(input - before);
-      const jump = (m.k || 0) >= JUMP_MIN_K && Math.abs(input - before) / Math.max(before, 1) > JUMP_ERR;
+      const calibrated = (m.k || 0) >= JUMP_MIN_K;
+      const jump = calibrated && Math.abs(input - before) / Math.max(before, 1) > JUMP_ERR;
+      const outlier = calibrated && (input > before * OUTLIER || input * OUTLIER < before);
       const prev = m.jump;
       delete m.jump;
       let weight = 1;
       if (jump && prev && prev.dir === dir) {
+        // 刚确认时，变化之前的旧数据大部分不再作数
+        if (!prev.confirmed) scaleStats(m.s, CHANGE_KEEP);
         // 补上次少算的权重（已经确认过的不用补）。那次已经过去一次请求，这次计入时会对所有旧数据再衰减一次
         if (!prev.confirmed && validX(prev.x) && finite(prev.y)) {
-          addTo(r.s, prev.x, prev.y, 1 - JUMP_WEIGHT, false);
-          addTo(m.s, prev.x, prev.y, 1 - JUMP_WEIGHT, false);
+          const was = finite(prev.w) ? clamp(prev.w, 0, 1) : JUMP_WEIGHT; // 以前的版本没有记 w：当时按 JUMP_WEIGHT 计入
+          if (was < 1) {
+            addTo(r.s, prev.x, prev.y, 1 - was, false);
+            addTo(m.s, prev.x, prev.y, 1 - was, false);
+          }
+          if (!was) m.k = (m.k || 0) + 1; // 当时完全没计入，现在算进回归了
         }
         m.jump = { dir, confirmed: true };
+        m.stable = false;
+        m.ema = null; // 情况变了：平滑误差从这次重新算
       } else if (jump) {
-        weight = JUMP_WEIGHT;
-        m.jump = { x, y: input, dir };
+        weight = outlier ? 0 : JUMP_WEIGHT;
+        m.jump = { x, y: input, dir, w: weight };
       }
-      m.k = (m.k || 0) + 1;
-      addTo(r.s, x, input, weight);
-      addTo(m.s, x, input, weight);
+      if (weight) {
+        // 平滑误差只算正常计入的请求：第一次大偏差可能是偶发的，不让它打断稳定
+        if (weight === 1) m.ema = finite(m.ema) ? m.ema + EMA_ALPHA * (err - m.ema) : err;
+        m.k = (m.k || 0) + 1;
+        if (m.stable && !(m.ema <= UNCALM_ERR)) m.stable = false;
+        else if (!m.stable && m.k >= CALM_K && m.ema <= CALM_ERR) m.stable = true;
+        addTo(r.s, x, input, weight);
+        addTo(m.s, x, input, weight, m.stable ? STABLE_DECAY : DECAY);
+        m.pw = Math.max(PRIOR_FLOOR, (finite(m.pw) ? m.pw : 1) * DECAY);
+      }
     }
     if (convId) {
       const anchor = { x, y: input, out: output > 0 ? output : null, est: finite(est) && est >= 0 ? est : null, t: Date.now() };
@@ -493,7 +552,12 @@ const TokenCalib = (() => {
         if (!safeKey(model) || !isObj(m) || !validStats(m.s)) continue;
         const cur = own(mine.models, model) ? mine.models[model] : null;
         if (cur && cur.s.n >= m.s.n) continue;
-        mine.models[model] = { s: m.s, k: Number.isInteger(m.k) && m.k >= 0 ? m.k : 0, err: finite(m.err) ? m.err : null };
+        const copy = { s: m.s, k: Number.isInteger(m.k) && m.k >= 0 ? m.k : 0, err: finite(m.err) ? m.err : null };
+        if (validTheta(m.mu)) { copy.mu = clampTheta(m.mu); copy.muCloud = m.muCloud === true; }
+        if (finite(m.ema) && m.ema >= 0) copy.ema = m.ema;
+        if (finite(m.pw)) copy.pw = clamp(m.pw, PRIOR_FLOOR, 1);
+        if (m.stable === true) copy.stable = true;
+        mine.models[model] = copy;
       }
     }
     if (isObj(d.anchors)) {

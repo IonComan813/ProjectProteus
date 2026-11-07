@@ -467,6 +467,8 @@ body.resizing iframe { pointer-events: none; }
 /* 锁定的对话（来自加密世界卡） */
 .settings-pane.locked .unlockable { display: none !important; }
 .settings-pane:not(.locked) .lock-only { display: none !important; }
+/* 助理模式不用的卡片（世界观、NPC角色、用户人设、重点指令）不显示 */
+.settings-pane.assistant .roleplay-only { display: none !important; }
 .lock-card { border-color: var(--accent); }
 .lock-box {
   padding: 18px 12px;
@@ -481,6 +483,17 @@ body.resizing iframe { pointer-events: none; }
 .art-pane.locked { cursor: default; }
 .art-pane.locked img { user-select: none; -webkit-user-drag: none; pointer-events: none; }
 .remember-keys { margin-top: -2px; }
+/* 添加服务商的窗口 */
+.pw-fields.relay-fields { padding-top: 12px; }
+.relay-fields .field > input, .relay-fields .field > select { width: 100%; }
+.relay-fields .row { margin-top: 0; }
+.relay-fields .row input { flex: 1; min-width: 0; }
+.relay-model select { flex: 1; min-width: 0; margin-top: 3px; }
+.relay-model .row .btn { margin-top: 3px; }
+.relay-status { min-height: 1.5em; max-height: 7.5em; overflow: auto; margin-top: 4px; font-size: 12px; color: var(--muted); white-space: pre-wrap; word-break: break-word; }
+.relay-fields input[type=checkbox] { width: auto; flex: none; }
+.relay-status.error { color: var(--danger); }
+.relay-fields .remember-keys { margin: 0 0 10px; }
 
 /* 模型选择：输入框 + 自己画的下拉列表（能列出“获取列表”拉到的模型，也能边输入边筛选） */
 .combo { position: relative; flex: 1; min-width: 0; }
