@@ -491,6 +491,8 @@ body.resizing iframe { pointer-events: none; }
 .sync-check { margin-top: 8px; align-items: flex-start; }
 .sync-check input { margin-top: 2px; flex: none; }
 .sync-art-conv { margin-top: 8px; }
+.sync-check-note { display: block; margin-top: 2px; } /* 选框文字下面的第二行：和第一行的文字左对齐 */
+.hint.after-row { margin-top: 10px; } /* 紧跟在一排按钮或选框下面的说明，和它们拉开一点 */
 .sync-box { width: min(560px, 90vw); }
 .sync-body { padding: 14px 16px 10px; overflow: auto; max-height: 70vh; }
 .sync-message { white-space: pre-wrap; line-height: 1.7; margin-bottom: 8px; word-break: break-word; }

@@ -645,11 +645,11 @@ function syncChooseRepo(flow, intro) {
   syncSetButtons([{ label: t('sync.later'), ghost: true, onClick: syncDialogClose }]);
 }
 
-// 账号能写入的全部仓库（自己的、作为协作者的、所在组织的），最近更新的在前。最多读 10 页（1000 个）
+// 账号自己的仓库（不列作为协作者、所在组织的：一般不会拿别人的仓库存自己的设定和聊天记录），最近更新的在前。最多读 10 页（1000 个）
 async function syncListRepos() {
   const out = [];
   for (let page = 1; page <= 10; page++) {
-    const batch = await gh('GET', `/user/repos?per_page=100&page=${page}&sort=updated&affiliation=owner,collaborator,organization_member`);
+    const batch = await gh('GET', `/user/repos?per_page=100&page=${page}&sort=updated&affiliation=owner`);
     if (!Array.isArray(batch)) break;
     out.push(...batch.filter((r) => r && r.permissions && r.permissions.push));
     if (batch.length < 100) break;
@@ -759,7 +759,7 @@ async function syncRun(flow, op, inDialog = false) {
   syncBusy = true;
   renderSyncCard();
   try {
-    const msg = await SYNC_IMPL[op](flow, progress);
+    const msg = await SYNC_IMPL[op](flow, progress, inDialog);
     if (msg === null) return syncDialogClose(); // 用户取消
     if (msg === 'reload') return; // 已经重新载入（boot 后显示了结果）
     syncShowDone(flow, msg);
@@ -773,11 +773,13 @@ async function syncRun(flow, op, inDialog = false) {
 }
 
 // 仓库和标记：没有选仓库、仓库不是海神的，都报错。needMarker：上传前没有标记时问三件事
-async function syncPrepare(flow, needMarker) {
+// confirm(insp)：看过仓库里有什么之后、问加密之前，让用户确认这次操作（返回 false 则取消）
+async function syncPrepare(flow, needMarker, confirm) {
   const r = state.settings.sync.repo;
   if (!r) throw new SyncError(t('sync.noRepo'));
   const insp = await inspectRepo(r);
   if (insp.foreign) throw new SyncError(t('sync.foreignRepo', { name: repoLabel(r) }));
+  if (confirm && !(await confirm(insp))) return null;
   let marker = insp.marker;
   let newMarker = false;
   if (!marker && needMarker) {
@@ -797,13 +799,37 @@ async function syncPrepare(flow, needMarker) {
   return { r, insp, marker, newMarker };
 }
 
+// 确认这次操作：显示说明和「取消」「操作名」。确认后窗口回到「正在处理…」
+async function syncConfirm(flow, op, message, danger = false) {
+  const ok = await syncAsk(flow, [syncMessage(message, danger)], [
+    { label: t('btn.cancel'), value: false, ghost: true },
+    { label: t('sync.op.' + op), value: true, primary: !danger, danger },
+  ]);
+  if (ok !== true) return false;
+  syncSetBody(syncMessage(t('sync.working')));
+  syncSetButtons([]);
+  return true;
+}
+
 function indexFile(meta) {
   return JSON.stringify({ app: 'proteus', type: 'sync-index', version: 1, conversations: meta }, null, 2);
 }
 
-async function syncPush(flow, progress, mode) {
+// confirmed：在选择仓库的窗口里刚选了这个操作，不用再确认
+async function syncPush(flow, progress, mode, confirmed) {
   await flushConvSave();
-  const p = await syncPrepare(flow, true);
+  const confirm = confirmed ? null : (insp) => {
+    const local = state.conversations.filter((c) => syncSafeId(c.id));
+    const repo = repoLabel(state.settings.sync.repo);
+    if (mode === 'all') {
+      const mine = new Set(local.map((c) => c.id));
+      const remove = insp.ids.filter((id) => !mine.has(id)).length;
+      return syncConfirm(flow, 'pushAll', t('sync.pushAllConfirm', { n: local.length, repo, remove }), remove > 0);
+    }
+    const remote = new Set(insp.ids);
+    return syncConfirm(flow, 'pushNew', t('sync.pushNewConfirm', { n: local.filter((c) => !remote.has(c.id)).length, repo }));
+  };
+  const p = await syncPrepare(flow, true, confirm);
   if (!p) return null;
   const { r, insp, marker } = p;
   const files = {};
@@ -849,7 +875,7 @@ async function syncPush(flow, progress, mode) {
   return mode === 'all' ? t('sync.pushedAll', { n: upload.length, deleted }) : t('sync.pushedNew', { n: upload.length, relays: relaysAdded });
 }
 
-async function syncPull(flow, progress, mode) {
+async function syncPull(flow, progress, mode, confirmed) {
   if (state.generating) throw new SyncError(t('conv.stopFirst'));
   await flushConvSave();
   const p = await syncPrepare(flow, false);
@@ -858,6 +884,7 @@ async function syncPull(flow, progress, mode) {
   if (!insp.ids.length && !insp.tree.has(SYNC_SETTINGS)) return t('sync.repoEmpty');
   const localIds = new Set(state.conversations.map((c) => c.id));
   const want = mode === 'all' ? insp.ids : insp.ids.filter((id) => !localIds.has(id));
+  if (mode !== 'all' && !confirmed && !(await syncConfirm(flow, 'pullNew', t('sync.pullNewConfirm', { n: want.length, repo: repoLabel(r) })))) return null;
   if (mode === 'all') {
     const remove = state.conversations.filter((c) => !insp.ids.includes(c.id)).length;
     const ok = await syncAsk(flow, [syncMessage(t('sync.pullAllConfirm', { n: insp.ids.length, local: state.conversations.length, remove }), true)], [
@@ -922,7 +949,8 @@ async function syncPushConv(flow, progress) {
   await flushConvSave();
   const c = state.conv;
   if (!syncSafeId(c.id)) throw new SyncError(t('sync.badId'));
-  const p = await syncPrepare(flow, true);
+  const p = await syncPrepare(flow, true, (insp) => syncConfirm(flow, 'pushConv',
+    t(insp.ids.includes(c.id) ? 'sync.pushConvConfirm' : 'sync.pushConvConfirmNew', { title: convTitle(c), repo: repoLabel(state.settings.sync.repo) })));
   if (!p) return null;
   const { r, insp, marker } = p;
   const files = {};
@@ -963,10 +991,10 @@ async function syncPullConv(flow, progress) {
 }
 
 const SYNC_IMPL = {
-  pushAll: (flow, progress) => syncPush(flow, progress, 'all'),
-  pushNew: (flow, progress) => syncPush(flow, progress, 'new'),
-  pullAll: (flow, progress) => syncPull(flow, progress, 'all'),
-  pullNew: (flow, progress) => syncPull(flow, progress, 'new'),
+  pushAll: (flow, progress, confirmed) => syncPush(flow, progress, 'all', confirmed),
+  pushNew: (flow, progress, confirmed) => syncPush(flow, progress, 'new', confirmed),
+  pullAll: (flow, progress, confirmed) => syncPull(flow, progress, 'all', confirmed),
+  pullNew: (flow, progress, confirmed) => syncPull(flow, progress, 'new', confirmed),
   pushConv: syncPushConv,
   pullConv: syncPullConv,
 };
@@ -1045,7 +1073,6 @@ function renderSyncConv() {
   const s = state.settings.sync;
   const show = !!s.login && !!s.repo;
   els.syncArtConvRow.hidden = !show;
-  els.syncArtConvHint.hidden = !show;
   if (show) els.syncArtConv.checked = syncArtOf(state.conv);
 }
 
