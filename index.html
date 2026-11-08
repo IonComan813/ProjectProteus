@@ -173,9 +173,18 @@
           </label>
         </div>
         <label class="field"><span data-i18n="set.baseUrl">接口地址（Base URL）</span>
+          <!-- 内置的服务商地址固定，只显示（readonly）；Command Code、Vertex 的地址随模型（是不是 Claude）变化 -->
           <input type="text" id="baseUrl" spellcheck="false">
         </label>
-        <label class="field"><span data-i18n="set.apiKey">API Key</span>
+        <p class="hint" id="providerNote" hidden></p>
+        <!-- Vertex：没有 API Key，导入 Google 服务账号的 JSON 文件 -->
+        <div class="field" id="vertexKeyField" hidden><span data-i18n="set.vertexKey">服务账号 JSON</span>
+          <div class="row nowrap">
+            <button class="btn btn-small" id="btnImportVertex" data-i18n="set.vertexImport">导入服务账号 JSON…</button>
+            <span class="muted small" id="vertexKeyStatus"></span>
+          </div>
+        </div>
+        <label class="field" id="apiKeyField"><span data-i18n="set.apiKey">API Key</span>
           <div class="row nowrap">
             <input type="password" id="apiKey" spellcheck="false" autocomplete="off" placeholder="sk-...">
             <button class="btn btn-small btn-ghost" id="btnToggleKey" data-i18n="set.show">显示</button>
@@ -306,6 +315,7 @@
   <input type="file" id="fileWorld" aria-labelledby="btnUploadWorld" accept=".txt,.md,text/plain,text/markdown" hidden>
   <input type="file" id="fileArt" aria-labelledby="btnUploadArt" accept="image/*" hidden>
   <input type="file" id="fileRestore" aria-labelledby="btnRestore" accept=".json,.png,application/json,image/png" hidden>
+  <input type="file" id="fileVertex" aria-labelledby="btnImportVertex" accept=".json,application/json" hidden>
   <input type="file" id="fileTavern" aria-labelledby="btnNewTavern" accept=".json,.png,application/json,image/png" hidden>
 
   <!-- 全部对话：对话列表最后的「…」打开，按最近活动的时间排列。点窗口以外的地方关闭。

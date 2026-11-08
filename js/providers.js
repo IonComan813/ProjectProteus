@@ -2,6 +2,16 @@
 //   - Anthropic 格式（Claude 官方，以及兼容它的中转站）
 //   - OpenAI 格式（OpenAI 官方、Gemini、OpenRouter、DeepSeek 和大多数中转站）
 // 所有请求都用流式输出，文字会一边生成一边显示。
+//
+// 内置的服务商（PROVIDERS）接口地址固定，界面上只显示、不能改；用户自己添加的服务商（relay:<id>）地址自己填。
+// 内置服务商的字段：
+//   format       请求格式
+//   baseUrl      接口地址
+//   claudeFormat 模型名里有 claude 时改用的格式（Command Code、Vertex：Claude 模型只有 Anthropic 格式的接口）
+//   claudeBase   这时用的接口地址（Command Code）
+//   modelsUrls   获取模型列表时，标准位置取不到再试的地址（OpenCode 的列表不在 /models）
+//   listFormat   获取模型列表用的格式（Command Code 的列表在 OpenAI 格式的 /models，包括 Claude 模型）
+//   auth         'google'：没有 API Key，用导入的 Google 服务账号 JSON 换访问令牌（Vertex，见下面的 GoogleAuth）
 
 const PROVIDERS = {
   anthropic: {
@@ -13,10 +23,35 @@ const PROVIDERS = {
     baseUrl: 'https://api.openai.com/v1',
   },
   gemini: {
-    format: 'openai', // 使用 Gemini 提供的 OpenAI 兼容接口
+    format: 'openai', // 使用 Gemini（Google AI Studio）提供的 OpenAI 兼容接口
     baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
   },
+  // Google Vertex AI：Gemini 走 Vertex 的 OpenAI 兼容接口（模型名要带 google/ 前缀，没写时自动加），
+  // Claude 走 Anthropic 格式的 streamRawPredict（地址里写模型名，请求体里不写 model，写 anthropic_version）。
+  // 地点固定为 global；项目 ID 来自导入的服务账号 JSON
+  vertex: {
+    format: 'openai',
+    claudeFormat: 'anthropic',
+    auth: 'google',
+  },
+  // OpenCode（Console / Zen）：OpenAI 兼容接口，所有模型都可以用（平台自动转换）。模型列表在 /inference/v1/models
+  opencode: {
+    format: 'openai',
+    baseUrl: 'https://opencode.ai/inference/openai/v1',
+    modelsUrls: ['https://opencode.ai/inference/v1/models'],
+  },
+  // Command Code（Provider API）：其他模型用 OpenAI 格式，Claude 模型只有 Anthropic 格式（/provider/v1/messages）
+  commandcode: {
+    format: 'openai',
+    baseUrl: 'https://api.commandcode.ai/provider/v1',
+    claudeFormat: 'anthropic',
+    claudeBase: 'https://api.commandcode.ai/provider',
+    listFormat: 'openai',
+  },
 };
+
+const isBuiltinProvider = (key) => Object.prototype.hasOwnProperty.call(PROVIDERS, key);
+const isClaudeModel = (model) => /claude/i.test(model || '');
 
 // 用户自己添加的服务商（中转站）：设置里的 relays = [{ id, name, format }]，键名是 relay:<id>，
 // 接口地址、Key、模型等和官方服务商一样按键名存。由 app.js 在读取设置和增删改之后调用 setCustomProviders 登记
@@ -34,11 +69,14 @@ function providerOf(key) {
     : Object.prototype.hasOwnProperty.call(customProviders, key) ? customProviders[key] : null;
 }
 
-// 请求用的格式：cfg.format（添加服务商的窗口里，还没保存时）或者服务商的格式
+// 请求用的格式：cfg.format（添加服务商的窗口里，还没保存时）或者服务商的格式。
+// Command Code、Vertex 按模型名自动切换：Claude 模型用 Anthropic 格式
 function formatOf(cfg) {
   if (cfg.format) return cfg.format;
   const p = providerOf(cfg.provider);
-  return p ? p.format : 'openai';
+  if (!p) return 'openai';
+  if (p.claudeFormat && isClaudeModel(cfg.model)) return p.claudeFormat;
+  return p.format;
 }
 
 const ANTHROPIC_VERSION = '2026-10-21';
@@ -63,10 +101,100 @@ function mergeSameRole(messages) {
   return out;
 }
 
-// 实际使用的接口地址（没填时用服务商的默认地址）
+// 实际使用的接口地址。内置服务商用固定的地址（不看设置里填的），用户添加的服务商用填的地址
 function baseOf(cfg) {
   const p = providerOf(cfg.provider);
+  if (p && isBuiltinProvider(cfg.provider) && !cfg.format) {
+    if (p.auth === 'google') return vertexBase(cfg);
+    if (p.claudeBase && isClaudeModel(cfg.model)) return p.claudeBase;
+    return p.baseUrl;
+  }
   return trimSlash(cfg.baseUrl || (p ? p.baseUrl : ''));
+}
+
+// ---- Google Vertex AI ----
+// 服务账号 JSON（导入时只留下要用的字段，存在 apiKeys.vertex 里，和 API Key 一样受「记住 API Key」控制）：
+//   { type: 'service_account', project_id, client_email, private_key, private_key_id }
+// 它不是 API Key：里面是服务账号的 RSA 私钥。用它签一个 JWT（RS256），到 Google 换一个 1 小时有效的访问令牌，
+// 请求时带 Authorization: Bearer <令牌>；快过期时重新换。换令牌的地址固定，不用 JSON 里写的 token_uri
+const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
+const VERTEX_HOST = 'https://aiplatform.googleapis.com';
+
+// 解析导入的服务账号 JSON，认不出时为 null
+function parseServiceAccount(text) {
+  let j;
+  try { j = typeof text === 'string' ? JSON.parse(text) : text; } catch (_) { return null; }
+  if (!j || j.type !== 'service_account') return null;
+  const ok = ['project_id', 'client_email', 'private_key'].every((k) => typeof j[k] === 'string' && j[k]);
+  if (!ok || !/-----BEGIN PRIVATE KEY-----/.test(j.private_key)) return null;
+  return { type: 'service_account', project_id: j.project_id, client_email: j.client_email, private_key: j.private_key,
+    private_key_id: typeof j.private_key_id === 'string' ? j.private_key_id : '' };
+}
+
+function vertexBase(cfg) {
+  const sa = parseServiceAccount(cfg.apiKey);
+  const project = sa ? encodeURIComponent(sa.project_id) : '{project}';
+  const root = `${VERTEX_HOST}/v1/projects/${project}/locations/global`;
+  return isClaudeModel(cfg.model) ? `${root}/publishers/anthropic/models` : `${root}/endpoints/openapi`;
+}
+
+// Gemini 走 OpenAI 兼容接口时模型名要带 google/ 前缀
+const vertexModel = (model) => (model.includes('/') ? model : 'google/' + model);
+
+const GoogleAuth = (() => {
+  const cache = new Map(); // client_email + private_key_id → { token, until }
+  const b64url = (bytes) => btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const b64urlText = (s) => b64url(new TextEncoder().encode(s));
+
+  async function sign(sa, input) {
+    const pem = sa.private_key.replace(/-----(BEGIN|END) PRIVATE KEY-----/g, '').replace(/\s+/g, '');
+    const der = Uint8Array.from(atob(pem), (c) => c.charCodeAt(0));
+    const key = await crypto.subtle.importKey('pkcs8', der, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['sign']);
+    return new Uint8Array(await crypto.subtle.sign('RSASSA-PKCS1-v1_5', key, new TextEncoder().encode(input)));
+  }
+
+  // 访问令牌（缓存到过期前 5 分钟）
+  async function token(saText) {
+    const sa = parseServiceAccount(saText);
+    if (!sa) throw new Error(t('api.vertexNeedJson'));
+    const id = sa.client_email + '\n' + sa.private_key_id;
+    const hit = cache.get(id);
+    if (hit && hit.until > Date.now()) return hit.token;
+    const now = Math.floor(Date.now() / 1000);
+    const header = { alg: 'RS256', typ: 'JWT' };
+    if (sa.private_key_id) header.kid = sa.private_key_id;
+    const claims = { iss: sa.client_email, scope: 'https://www.googleapis.com/auth/cloud-platform', aud: GOOGLE_TOKEN_URL, iat: now, exp: now + 3600 };
+    const input = b64urlText(JSON.stringify(header)) + '.' + b64urlText(JSON.stringify(claims));
+    let jwt;
+    try { jwt = input + '.' + b64url(await sign(sa, input)); } catch (e) {
+      throw new Error(t('api.vertexBadKey') + '\n' + e.message);
+    }
+    let res;
+    try {
+      res = await fetch(GOOGLE_TOKEN_URL, {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: jwt }).toString(),
+      });
+    } catch (e) {
+      throw new Error(t('api.connectFailedShort') + e.message);
+    }
+    const text = await res.text().catch(() => '');
+    let j = null;
+    try { j = JSON.parse(text); } catch (_) { /* 下面报错 */ }
+    if (!res.ok || !j || !j.access_token) throw new Error(t('api.vertexTokenFailed') + '\n' + (j && (j.error_description || j.error) || text || res.status));
+    cache.set(id, { token: j.access_token, until: Date.now() + Math.max(60, (Number(j.expires_in) || 3600) - 300) * 1000 });
+    return j.access_token;
+  }
+
+  return { token };
+})();
+
+// 请求要带的认证头：Vertex 用访问令牌，其他服务商的已经在 buildRequest 里写好
+async function authHeaders(cfg) {
+  const p = providerOf(cfg.provider);
+  if (!p || p.auth !== 'google' || cfg.format) return {};
+  return { authorization: 'Bearer ' + (await GoogleAuth.token(cfg.apiKey)) };
 }
 
 // 最终发送的消息列表：合并连续同一角色的消息；Anthropic 要求第一条必须是用户消息，开头不是时补“前情省略”
@@ -117,6 +245,16 @@ function buildRequest(cfg, system, messages) {
   if (!cfg.model) throw new Error(t('api.needModel'));
   const msgs = finalMessages(format, messages);
 
+  const google = !cfg.format && (providerOf(cfg.provider) || {}).auth === 'google';
+  if (format === 'anthropic' && google) {
+    // Vertex 上的 Claude：地址里写模型名，请求体里不写 model，anthropic_version 写在请求体里；认证头由 authHeaders 补上
+    const body = { anthropic_version: 'vertex-2023-10-16', max_tokens: cfg.maxTokens || 8192, stream: true, messages: msgs };
+    if (system) body.system = system;
+    if (cfg.effort) body.output_config = { effort: cfg.effort };
+    const headers = { 'content-type': 'application/json', authorization: 'Bearer <Google access token>' };
+    return { format: 'anthropic', base, url: `${base}/${encodeURIComponent(cfg.model)}:streamRawPredict`, headers, body };
+  }
+
   if (format === 'anthropic') {
     const body = {
       model: cfg.model,
@@ -143,7 +281,7 @@ function buildRequest(cfg, system, messages) {
 
   // OpenAI 格式
   const body = {
-    model: cfg.model,
+    model: google ? vertexModel(cfg.model) : cfg.model,
     stream: true,
     messages: system ? [{ role: 'system', content: system }, ...msgs] : msgs,
   };
@@ -156,7 +294,7 @@ function buildRequest(cfg, system, messages) {
   if (cfg.useTemperature) body.temperature = Number(cfg.temperature);
   const headers = {
     'content-type': 'application/json',
-    authorization: 'Bearer ' + cfg.apiKey,
+    authorization: 'Bearer ' + (google ? '<Google access token>' : cfg.apiKey),
   };
   // OpenRouter 没有单独的选项，按接口地址认出来，带上应用名
   if (/^https:\/\/openrouter\.ai\//i.test(base)) headers['X-Title'] = 'Proteus';
@@ -304,12 +442,14 @@ async function postChat(url, init, signal) {
 // 返回 { stopReason }。
 async function streamChat(cfg, system, messages, { signal, onText, onThinking, onUsage }) {
   const req = buildRequest(cfg, system, messages);
-  if (!cfg.apiKey) throw new Error(t('api.needKey'));
+  if (!cfg.apiKey) throw new Error(t((providerOf(cfg.provider) || {}).auth === 'google' ? 'api.vertexNeedJson' : 'api.needKey'));
   const log = lastExchange = { time: new Date(), request: { method: 'POST', url: req.url, headers: req.headers, body: req.body }, response: null, error: null };
+  const auth = await authHeaders(cfg); // Vertex：换访问令牌（日志里的认证头仍是占位文字）
+  const sendHeaders = { ...req.headers, ...auth };
   const record = (s) => { if (log.response.body.length < LOG_MAX) log.response.body += s; };
   const post = async (body) => {
     try {
-      const sent = await postChat(req.url, { method: 'POST', headers: req.headers, body: JSON.stringify(body), signal }, signal);
+      const sent = await postChat(req.url, { method: 'POST', headers: sendHeaders, body: JSON.stringify(body), signal }, signal);
       if (sent.native) log.request.via = 'native';
       return sent.res;
     } catch (e) {
@@ -386,29 +526,90 @@ async function streamChat(cfg, system, messages, { signal, onText, onThinking, o
   }
 }
 
-// 获取模型列表
+// 获取模型列表。先试标准位置，取不到（出错、连不上或列表是空的）再换几个常见的位置试：
+//   OpenAI 格式：<地址>/models → 服务商指定的地址 → 去掉 /v1 前一段路径（…/inference/openai/v1 → …/inference/v1/models）
+//                → 去掉结尾的 /v1 再加 /v1/models → <域名>/v1/models
+//   Anthropic 格式：<地址>/v1/models → <地址>/models
+// 都取不到时报第一个错误
 async function fetchModels(cfg) {
-  const base = baseOf(cfg);
+  const p = providerOf(cfg.provider) || {};
+  if (p.auth === 'google' && !cfg.format) return fetchVertexModels(cfg);
+  const lc = p.listFormat && !cfg.format ? { ...cfg, format: p.listFormat } : cfg;
+  const base = baseOf(p.listFormat && !cfg.format ? { ...cfg, model: '' } : cfg);
   if (!base) throw new Error(t('api.needBaseUrl'));
-  let url, headers;
-  if (formatOf(cfg) === 'anthropic') {
-    url = base + '/v1/models?limit=100';
-    headers = {
-      'x-api-key': cfg.apiKey,
-      'anthropic-version': ANTHROPIC_VERSION,
-      'anthropic-dangerous-direct-browser-access': 'true',
-    };
-  } else {
-    url = base + '/models';
-    headers = cfg.apiKey ? { authorization: 'Bearer ' + cfg.apiKey } : {};
+  const anthropic = formatOf(lc) === 'anthropic';
+  const headers = anthropic
+    ? { 'x-api-key': cfg.apiKey, 'anthropic-version': ANTHROPIC_VERSION, 'anthropic-dangerous-direct-browser-access': 'true' }
+    : (cfg.apiKey ? { authorization: 'Bearer ' + cfg.apiKey } : {});
+  return firstModelList(modelListUrls(base, anthropic, p.modelsUrls || []), headers);
+}
+
+function modelListUrls(base, anthropic, extra) {
+  const urls = [];
+  const add = (u) => { if (u && !urls.includes(u)) urls.push(u); };
+  if (anthropic) {
+    add(base + '/v1/models?limit=100');
+    add(base + '/models?limit=100');
+    return urls;
   }
-  let res;
-  try { res = await fetch(url, { headers }); } catch (e) {
-    throw new Error(t('api.connectFailedShort') + e.message);
+  add(base + '/models');
+  for (const u of extra) add(u);
+  let u;
+  try { u = new URL(base); } catch (_) { return urls; }
+  const path = u.pathname.replace(/\/+$/, '');
+  const m = /^(.*)\/[^/]+\/v1$/.exec(path);
+  if (m) add(u.origin + m[1] + '/v1/models');
+  if (/\/v1$/.test(path)) add(u.origin + path.slice(0, -3) + '/v1/models');
+  else add(u.origin + path + '/v1/models');
+  add(u.origin + '/v1/models');
+  return urls;
+}
+
+async function firstModelList(urls, headers) {
+  let firstError = null;
+  for (const url of urls) {
+    try {
+      let res;
+      try { res = await fetch(url, { headers }); } catch (e) {
+        throw new Error(t('api.connectFailedShort') + e.message);
+      }
+      if (!res.ok) throw await readError(res);
+      const list = modelNames(await res.json());
+      if (list.length) return list;
+      throw new Error(t('api.noModels'));
+    } catch (e) {
+      if (!firstError) firstError = e;
+    }
   }
-  if (!res.ok) throw await readError(res);
-  const j = await res.json();
-  const list = (j.data || j.models || []).map((m) => m.id || m.name).filter(Boolean)
-    .map((id) => id.replace(/^models\//, '')); // Gemini 的模型名带有 models/ 前缀，去掉后也能用
-  return list.sort();
+  throw firstError || new Error(t('api.noModels'));
+}
+
+// 各家模型列表的格式：{ data: [{ id }] }（OpenAI、Anthropic）、{ models: [{ name: 'models/…' }] }（Gemini）、
+// { publisherModels: [{ name: 'publishers/google/models/…' }] }（Vertex）
+function modelNames(j) {
+  const items = (j && (j.data || j.models || j.publisherModels)) || [];
+  return items.map((m) => (m && (m.id || m.name)) || '').filter((x) => typeof x === 'string' && x)
+    .map((id) => id.replace(/^models\//, '')) // Gemini 的模型名带有 models/ 前缀，去掉后也能用
+    .sort();
+}
+
+// Vertex 的模型列表：Google 的模型（google/…）和 Claude 模型，来自 Model Garden 的发布者模型列表。
+// 这个列表接口没有找到正式文档的确认，取不到时可以直接输入模型名（Gemini 写 google/gemini-…，Claude 写 claude-…）
+async function fetchVertexModels(cfg) {
+  const headers = await authHeaders(cfg);
+  const out = [];
+  let firstError = null;
+  for (const [publisher, prefix] of [['google', 'google/'], ['anthropic', '']]) {
+    try {
+      const list = await firstModelList([
+        `${VERTEX_HOST}/v1beta1/publishers/${publisher}/models?pageSize=200`,
+        `https://us-central1-aiplatform.googleapis.com/v1beta1/publishers/${publisher}/models?pageSize=200`,
+      ], headers);
+      for (const name of list) out.push(prefix + name.replace(/^publishers\/[^/]+\/models\//, ''));
+    } catch (e) {
+      if (!firstError) firstError = e;
+    }
+  }
+  if (!out.length) throw firstError || new Error(t('api.noModels'));
+  return out.sort();
 }

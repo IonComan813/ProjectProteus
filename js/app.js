@@ -2606,17 +2606,60 @@ function fillProviderFields() {
     if (document.activeElement !== els.relayEditName) els.relayEditName.value = relay.name;
     els.relayEditFormat.value = relay.format;
   }
-  els.baseUrl.value = s.baseUrls[s.provider] || '';
-  els.baseUrl.placeholder = p.baseUrl || t('set.baseUrlExample');
-  els.apiKey.value = s.apiKeys[s.provider] || '';
+  // 内置服务商的地址固定：只显示，不能改；用户添加的服务商才能填
+  const builtin = isBuiltinProvider(s.provider);
+  els.baseUrl.readOnly = builtin;
+  els.baseUrl.placeholder = builtin ? '' : t('set.baseUrlExample');
+  if (!builtin) els.baseUrl.value = s.baseUrls[s.provider] || '';
+  const note = PROVIDER_NOTES[s.provider];
+  els.providerNote.hidden = !note;
+  if (note) els.providerNote.textContent = t(note);
+  // Vertex 没有 API Key：换成导入服务账号 JSON 的按钮
+  const google = p.auth === 'google';
+  els.apiKeyField.hidden = google;
+  els.vertexKeyField.hidden = !google;
+  if (google) renderVertexKey();
+  else els.apiKey.value = s.apiKeys[s.provider] || '';
   els.model.value = s.models[s.provider] || '';
   els.maxTokens.value = s.maxTokens[s.provider] || '';
-  els.maxTokens.placeholder = t(p.format === 'anthropic' ? 'set.maxTokensAnthropic' : 'set.maxTokensOpenai');
   closeModelMenu();
   els.btnModelMenu.disabled = !modelOptions().length; // 还没获取列表时 ▾ 不能点
-  els.anthropicOptions.hidden = p.format !== 'anthropic';
-  els.openaiOptions.hidden = p.format !== 'openai';
   els.temperature.disabled = !s.useTemperature;
+  updateFormatFields();
+}
+
+// 内置服务商的说明（地址下面一行）
+const PROVIDER_NOTES = { vertex: 'set.note.vertex', opencode: 'set.note.opencode', commandcode: 'set.note.commandcode' };
+
+// 跟着模型变化的部分：Command Code、Vertex 按模型名（是不是 Claude）切换格式和地址，
+// 所以显示的地址、最大输出长度的提示、思考深度 / temperature 选项在改模型时也要更新
+function updateFormatFields() {
+  const cfg = providerCfg();
+  const format = formatOf(cfg);
+  if (isBuiltinProvider(cfg.provider)) els.baseUrl.value = baseOf(cfg);
+  els.maxTokens.placeholder = t(format === 'anthropic' ? 'set.maxTokensAnthropic' : 'set.maxTokensOpenai');
+  els.anthropicOptions.hidden = format !== 'anthropic';
+  els.openaiOptions.hidden = format !== 'openai';
+}
+
+// Vertex：导入的服务账号
+function renderVertexKey() {
+  const sa = parseServiceAccount(state.settings.apiKeys.vertex || '');
+  els.vertexKeyStatus.textContent = sa ? t('set.vertexStatus', { email: sa.client_email, project: sa.project_id }) : t('set.vertexNone');
+  els.btnImportVertex.textContent = t(sa ? 'set.vertexReimport' : 'set.vertexImport');
+}
+
+async function importVertexKey(file) {
+  let text = '';
+  try { text = await file.text(); } catch (_) { /* 下面报错 */ }
+  const sa = parseServiceAccount(text);
+  if (!sa) return showModal(t('set.vertexKey'), t('set.vertexInvalid'));
+  state.settings.apiKeys.vertex = JSON.stringify(sa);
+  saveSettingsSoon();
+  renderVertexKey();
+  updateFormatFields();
+  updateEstimate();
+  toast(t('set.vertexImported', { email: sa.client_email }));
 }
 
 // ---- 用户添加的服务商 ----
@@ -2642,6 +2685,23 @@ function migrateRelays(s) {
     if (s.provider === old) s.provider = key || 'anthropic';
     if (key) migrated = true;
   }
+  // 内置服务商的地址现在固定、不能改。以前给三家官方服务商改过地址的（多半是填了中转站），
+  // 那一套设置（地址、Key、模型等）搬成一个用户添加的服务商，免得升级后连不上
+  for (const k of ['anthropic', 'openai', 'gemini']) {
+    const url = trimSlash(s.baseUrls[k] || '');
+    if (url && url !== PROVIDERS[k].baseUrl) {
+      const id = uid();
+      const key = RELAY_PREFIX + id;
+      s.relays.push({ id, name: uniqueRelayName(hostName(url) || t('relay.formatShort.' + PROVIDERS[k].format), s), format: PROVIDERS[k].format });
+      s.baseUrls[key] = url;
+      for (const f of ['apiKeys', 'models', 'maxTokens', 'modelLists']) {
+        if (s[f][k] !== undefined) { s[f][key] = s[f][k]; delete s[f][k]; }
+      }
+      if (s.provider === k) s.provider = key;
+      migrated = true;
+    }
+  }
+  for (const k of Object.keys(PROVIDERS)) delete s.baseUrls[k];
   return migrated;
 }
 
@@ -2845,6 +2905,7 @@ function highlightModel(i, scroll) {
 function pickModel(m) {
   els.model.value = m;
   state.settings.models[state.settings.provider] = m;
+  updateFormatFields();
   saveSettingsSoon();
   updateEstimate();
   closeModelMenu();
@@ -2896,7 +2957,7 @@ function nextRequestBlocks() {
   const system = systemBlocks(conv);
 
   // 消息：和真正发出时一样合并连续同一角色的消息，Anthropic 格式开头补“前情省略”
-  const messages = finalMessages(formatOf({ provider: state.settings.provider }), req.messages);
+  const messages = finalMessages(formatOf(providerCfg()), req.messages); // Command Code、Vertex 的格式随模型变化
   return { system, messages, pending };
 }
 
@@ -3153,9 +3214,15 @@ function bindSettings() {
   els.btnRoundsMinus.addEventListener('click', () => setRounds(s().rounds - 1));
   els.btnRoundsPlus.addEventListener('click', () => setRounds(s().rounds + 1));
 
-  onSetting(els.baseUrl, (el) => { s().baseUrls[s().provider] = el.value.trim(); });
+  onSetting(els.baseUrl, (el) => { if (!isBuiltinProvider(s().provider)) s().baseUrls[s().provider] = el.value.trim(); });
   onSetting(els.apiKey, (el) => { s().apiKeys[s().provider] = el.value.trim(); });
-  onSetting(els.model, (el) => { s().models[s().provider] = el.value.trim(); });
+  onSetting(els.model, (el) => { s().models[s().provider] = el.value.trim(); updateFormatFields(); });
+  els.btnImportVertex.addEventListener('click', () => els.fileVertex.click());
+  els.fileVertex.addEventListener('change', () => {
+    const f = els.fileVertex.files[0];
+    els.fileVertex.value = '';
+    if (f) void importVertexKey(f);
+  });
   onSetting(els.maxTokens, (el) => { s().maxTokens[s().provider] = el.value ? Number(el.value) : ''; });
   onSetting(els.temperature, (el) => { s().temperature = Number(el.value); });
   els.effort.addEventListener('change', () => { s().effort = els.effort.value; saveSettingsSoon(); });
