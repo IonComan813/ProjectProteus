@@ -119,7 +119,7 @@ function createWindow() {
 // 去掉跨域限制：浏览器会拦截不允许网页直接访问的接口（部分中转站就是这样）。
 // 原生应用里，主页面发出的请求一律放行。消息显示用的沙箱小窗口不在此列。
 const CORS_HEADERS = 'authorization, content-type, x-api-key, anthropic-version, anthropic-beta, '
-  + 'anthropic-dangerous-direct-browser-access, x-title, http-referer';
+  + 'anthropic-dangerous-direct-browser-access, x-title, http-referer, x-openrouter-title';
 
 function fromMainPage(details) {
   return !!win && details.webContentsId === win.webContents.id

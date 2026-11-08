@@ -601,6 +601,14 @@ const I18N = {
     'api.vertexBadKey': "服务账号 JSON 里的私钥无法使用。",
     'api.vertexTokenFailed': "向 Google 换取访问令牌失败：",
     'api.noModels': "接口没有返回任何模型。",
+    'provider.openrouter': "OpenRouter",
+    'set.note.openrouter': "所有模型（包括 Claude、Gemini）都走同一个 OpenAI 兼容接口，模型名带厂商前缀，例如 anthropic/claude-sonnet-5-5。思考深度对各家模型都有效，由 OpenRouter 换算。",
+    'set.orSort': "OpenRouter 上游选择",
+    'set.orSortDefault': "默认（综合价格、速度和稳定性）",
+    'set.orSortPrice': "价格最低优先",
+    'set.orSortThroughput': "输出速度最快优先",
+    'set.orSortLatency': "响应最快（延迟最低）优先",
+    'set.orNoData': "不使用会保存请求数据的上游",
   },
 
   'zh-TW': {
@@ -1174,6 +1182,14 @@ const I18N = {
     'api.vertexBadKey': "服務帳戶 JSON 裡的私鑰無法使用。",
     'api.vertexTokenFailed': "向 Google 換取存取權杖失敗：",
     'api.noModels': "介面沒有回傳任何模型。",
+    'provider.openrouter': "OpenRouter",
+    'set.note.openrouter': "所有模型（包括 Claude、Gemini）都走同一個 OpenAI 相容介面，模型名稱帶廠商前綴，例如 anthropic/claude-sonnet-5-5。思考深度對各家模型都有效，由 OpenRouter 換算。",
+    'set.orSort': "OpenRouter 上游選擇",
+    'set.orSortDefault': "預設（綜合價格、速度和穩定性）",
+    'set.orSortPrice': "價格最低優先",
+    'set.orSortThroughput': "輸出速度最快優先",
+    'set.orSortLatency': "回應最快（延遲最低）優先",
+    'set.orNoData': "不使用會保存請求資料的上游",
   },
 
   en: {
@@ -1747,6 +1763,14 @@ const I18N = {
     'api.vertexBadKey': "The private key in the service account JSON can't be used.",
     'api.vertexTokenFailed': "Couldn't get an access token from Google:",
     'api.noModels': "The API returned no models.",
+    'provider.openrouter': "OpenRouter",
+    'set.note.openrouter': "All models (including Claude and Gemini) use the same OpenAI-compatible API; model names carry the vendor prefix, e.g. anthropic/claude-sonnet-5-5. Thinking depth works for every vendor's models; OpenRouter converts it.",
+    'set.orSort': "OpenRouter upstream choice",
+    'set.orSortDefault': "Default (balances price, speed and reliability)",
+    'set.orSortPrice': "Lowest price first",
+    'set.orSortThroughput': "Fastest output first",
+    'set.orSortLatency': "Quickest response (lowest latency) first",
+    'set.orNoData': "Don't use upstreams that store request data",
   },
 
   ja: {
@@ -2320,6 +2344,14 @@ const I18N = {
     'api.vertexBadKey': "サービスアカウント JSON の秘密鍵を使えません。",
     'api.vertexTokenFailed': "Google からアクセストークンを取得できませんでした：",
     'api.noModels': "API からモデルが返されませんでした。",
+    'provider.openrouter': "OpenRouter",
+    'set.note.openrouter': "すべてのモデル（Claude、Gemini を含む）が同じ OpenAI 互換 API を使います。モデル名にはベンダーの接頭辞が付きます（例：anthropic/claude-sonnet-5-5）。思考の深さはどのベンダーのモデルにも有効で、OpenRouter が換算します。",
+    'set.orSort': "OpenRouter の上流の選び方",
+    'set.orSortDefault': "デフォルト（価格・速度・安定性を総合）",
+    'set.orSortPrice': "価格の安さを優先",
+    'set.orSortThroughput': "出力の速さを優先",
+    'set.orSortLatency': "応答の速さ（低遅延）を優先",
+    'set.orNoData': "リクエストのデータを保存する上流を使わない",
   },
 };
 

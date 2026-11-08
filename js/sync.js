@@ -42,7 +42,7 @@ const SYNC_SETTINGS = 'settings.json';
 const SYNC_CALIB = 'calibration.json';
 const SYNC_CONV_RE = /^conversations\/([\w-]{1,100})\.json$/;
 const SYNC_HARMLESS = new Set(['README.md', 'LICENSE', '.gitignore', '.gitattributes']); // 新建仓库时 GitHub 可能自动加的
-const SYNC_LLM_KEYS = ['provider', 'relays', 'baseUrls', 'models', 'maxTokens', 'modelLists', 'effort', 'useTemperature', 'temperature'];
+const SYNC_LLM_KEYS = ['provider', 'relays', 'baseUrls', 'models', 'maxTokens', 'modelLists', 'effort', 'useTemperature', 'temperature', 'openrouterSort', 'openrouterNoData'];
 const SYNC_PER_PROVIDER = ['apiKeys', 'baseUrls', 'models', 'maxTokens', 'modelLists'];
 
 const syncIsObj = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
@@ -300,6 +300,8 @@ function cleanLlm(x) {
   if (typeof x.effort === 'string') out.effort = x.effort;
   if (typeof x.useTemperature === 'boolean') out.useTemperature = x.useTemperature;
   if (typeof x.temperature === 'number' && Number.isFinite(x.temperature)) out.temperature = x.temperature;
+  if (['', 'price', 'throughput', 'latency'].includes(x.openrouterSort)) out.openrouterSort = x.openrouterSort;
+  if (typeof x.openrouterNoData === 'boolean') out.openrouterNoData = x.openrouterNoData;
   return out;
 }
 

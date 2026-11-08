@@ -6,10 +6,10 @@
 -->
 基准版本: v0.5.4
 
-- zh-CN: 服务商列表新增 Google Vertex AI（导入服务账号 JSON 使用，Gemini 和 Claude 模型都能用）、OpenCode 和 Command Code（Claude 模型自动切换接口）
-  zh-TW: 服務商清單新增 Google Vertex AI（匯入服務帳戶 JSON 使用，Gemini 和 Claude 模型都能用）、OpenCode 和 Command Code（Claude 模型自動切換介面）
-  en: New built-in providers: Google Vertex AI (import a service account JSON; works with Gemini and Claude models), OpenCode, and Command Code (switches API automatically for Claude models)
-  ja: 内蔵サービスに Google Vertex AI（サービスアカウント JSON を読み込んで使用、Gemini と Claude の両モデルに対応）、OpenCode、Command Code（Claude モデルでは API を自動切り替え）を追加しました
+- zh-CN: 服务商列表新增 Google Vertex AI（导入服务账号 JSON 使用，Gemini 和 Claude 模型都能用）、OpenRouter（可以设思考深度和上游选择）、OpenCode 和 Command Code（Claude 模型自动切换接口）
+  zh-TW: 服務商清單新增 Google Vertex AI（匯入服務帳戶 JSON 使用，Gemini 和 Claude 模型都能用）、OpenRouter（可以設思考深度和上游選擇）、OpenCode 和 Command Code（Claude 模型自動切換介面）
+  en: New built-in providers: Google Vertex AI (import a service account JSON; works with Gemini and Claude models), OpenRouter (with thinking depth and upstream choice), OpenCode, and Command Code (switches API automatically for Claude models)
+  ja: 内蔵サービスに Google Vertex AI（サービスアカウント JSON を読み込んで使用、Gemini と Claude の両モデルに対応）、OpenRouter（思考の深さと上流の選び方を設定可能）、OpenCode、Command Code（Claude モデルでは API を自動切り替え）を追加しました
 - zh-CN: 内置服务商的接口地址改为固定、不能修改，以前给官方服务商改过的地址自动转成一个自己添加的服务商
   zh-TW: 內建服務商的介面位址改為固定、不能修改，以前給官方服務商改過的位址自動轉成一個自己新增的服務商
   en: Built-in providers now have fixed API addresses; an address you had changed on an official provider becomes a provider of your own automatically

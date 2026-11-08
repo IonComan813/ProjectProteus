@@ -34,6 +34,12 @@ const PROVIDERS = {
     claudeFormat: 'anthropic',
     auth: 'google',
   },
+  // OpenRouter：所有模型（包括 Claude、Gemini）都走同一个 OpenAI 兼容接口，模型名带厂商前缀（anthropic/claude-…）。
+  // 特色设置：思考深度（统一的 reasoning.effort，各家模型由 OpenRouter 换算）、按价格 / 吞吐 / 延迟选上游、不用会保存数据的上游
+  openrouter: {
+    format: 'openai',
+    baseUrl: 'https://openrouter.ai/api/v1',
+  },
   // OpenCode（Console / Zen）：OpenAI 兼容接口，所有模型都可以用（平台自动转换）。模型列表在 /inference/v1/models
   opencode: {
     format: 'openai',
@@ -50,6 +56,7 @@ const PROVIDERS = {
   },
 };
 
+const OPENROUTER_REFERER = 'https://github.com/IonComan813/ProjectProteus';
 const isBuiltinProvider = (key) => Object.prototype.hasOwnProperty.call(PROVIDERS, key);
 const isClaudeModel = (model) => /claude/i.test(model || '');
 
@@ -143,7 +150,7 @@ const vertexModel = (model) => (model.includes('/') ? model : 'google/' + model)
 
 const GoogleAuth = (() => {
   const cache = new Map(); // client_email + private_key_id → { token, until }
-  const b64url = (bytes) => btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const b64url = (bytes) => btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, ''); // = 只会出现在结尾（补位）
   const b64urlText = (s) => b64url(new TextEncoder().encode(s));
 
   async function sign(sa, input) {
@@ -292,12 +299,24 @@ function buildRequest(cfg, system, messages) {
     else body.max_tokens = cfg.maxTokens;
   }
   if (cfg.useTemperature) body.temperature = Number(cfg.temperature);
+  const openrouter = /^https:\/\/openrouter\.ai\//i.test(base);
+  if (openrouter) {
+    // OpenRouter 的特色设置（只在内置的 OpenRouter 服务商里能设）
+    if (cfg.provider === 'openrouter' && cfg.effort) body.reasoning = { effort: cfg.effort };
+    const route = {};
+    if (cfg.openrouterSort) route.sort = cfg.openrouterSort;
+    if (cfg.openrouterNoData) route.data_collection = 'deny';
+    if (cfg.provider === 'openrouter' && Object.keys(route).length) body.provider = route;
+  }
   const headers = {
     'content-type': 'application/json',
     authorization: 'Bearer ' + (google ? '<Google access token>' : cfg.apiKey),
   };
-  // OpenRouter 没有单独的选项，按接口地址认出来，带上应用名
-  if (/^https:\/\/openrouter\.ai\//i.test(base)) headers['X-Title'] = 'Proteus';
+  // OpenRouter（内置的，或者用户自己按地址添加的）：带上应用的网址和名称（OpenRouter 的应用归属，两个要一起发）
+  if (openrouter) {
+    headers['HTTP-Referer'] = OPENROUTER_REFERER;
+    headers['X-OpenRouter-Title'] = 'Proteus';
+  }
   return { format: 'openai', base, url: base + '/chat/completions', headers, body };
 }
 
@@ -507,7 +526,7 @@ async function streamChat(cfg, system, messages, { signal, onText, onThinking, o
         if (!choice) return;
         const d = choice.delta || {};
         if (d.content) onText(d.content);
-        else if (d.reasoning_content || d.reasoning) onThinking && onThinking();
+        else if (d.reasoning_content || d.reasoning || (Array.isArray(d.reasoning_details) && d.reasoning_details.length)) onThinking && onThinking(); // OpenRouter 用 reasoning_details
         if (choice.finish_reason) stopReason = choice.finish_reason;
       };
     // 请求的是流式回复；有的中转站不支持流式，直接回一整段 JSON（非流式回复），这时整段解析
@@ -556,7 +575,7 @@ function modelListUrls(base, anthropic, extra) {
   for (const u of extra) add(u);
   let u;
   try { u = new URL(base); } catch (_) { return urls; }
-  const path = u.pathname.replace(/\/+$/, '');
+  const path = trimSlash(u.pathname);
   const m = /^(.*)\/[^/]+\/v1$/.exec(path);
   if (m) add(u.origin + m[1] + '/v1/models');
   if (/\/v1$/.test(path)) add(u.origin + path.slice(0, -3) + '/v1/models');
@@ -590,26 +609,49 @@ function modelNames(j) {
   const items = (j && (j.data || j.models || j.publisherModels)) || [];
   return items.map((m) => (m && (m.id || m.name)) || '').filter((x) => typeof x === 'string' && x)
     .map((id) => id.replace(/^models\//, '')) // Gemini 的模型名带有 models/ 前缀，去掉后也能用
-    .sort();
+    .sort((a, b) => a.localeCompare(b));
 }
 
-// Vertex 的模型列表：Google 的模型（google/…）和 Claude 模型，来自 Model Garden 的发布者模型列表。
-// 这个列表接口没有找到正式文档的确认，取不到时可以直接输入模型名（Gemini 写 google/gemini-…，Claude 写 claude-…）
+// Vertex 的模型列表：Model Garden 的发布者模型列表（publishers.models.list，v1beta1），Google 和 Anthropic 各取一次，
+// 按 nextPageToken 翻页（最多 5 页）。只留对话模型：Google 的 gemini-…（前面加 google/），Anthropic 的 claude-…。
+// global 地址取不到时改用 us-central1。都取不到时可以直接输入模型名（Gemini 写 google/gemini-…，Claude 写 claude-…）
 async function fetchVertexModels(cfg) {
   const headers = await authHeaders(cfg);
   const out = [];
   let firstError = null;
-  for (const [publisher, prefix] of [['google', 'google/'], ['anthropic', '']]) {
-    try {
-      const list = await firstModelList([
-        `${VERTEX_HOST}/v1beta1/publishers/${publisher}/models?pageSize=200`,
-        `https://us-central1-aiplatform.googleapis.com/v1beta1/publishers/${publisher}/models?pageSize=200`,
-      ], headers);
-      for (const name of list) out.push(prefix + name.replace(/^publishers\/[^/]+\/models\//, ''));
-    } catch (e) {
-      if (!firstError) firstError = e;
+  for (const [publisher, prefix, keep] of [['google', 'google/', /^gemini-/], ['anthropic', '', /^claude-/]]) {
+    let got = null;
+    for (const host of [VERTEX_HOST, 'https://us-central1-aiplatform.googleapis.com']) {
+      try {
+        got = await listPublisherModels(host, publisher, headers);
+        break;
+      } catch (e) {
+        if (!firstError) firstError = e;
+      }
+    }
+    for (const name of got || []) {
+      const id = name.replace(/^publishers\/[^/]+\/models\//, '');
+      if (keep.test(id)) out.push(prefix + id);
     }
   }
   if (!out.length) throw firstError || new Error(t('api.noModels'));
-  return out.sort();
+  return [...new Set(out)].sort((a, b) => a.localeCompare(b));
+}
+
+async function listPublisherModels(host, publisher, headers) {
+  const names = [];
+  let token = '';
+  for (let page = 0; page < 5; page++) {
+    const url = `${host}/v1beta1/publishers/${publisher}/models?pageSize=200${token ? '&pageToken=' + encodeURIComponent(token) : ''}`;
+    let res;
+    try { res = await fetch(url, { headers }); } catch (e) {
+      throw new Error(t('api.connectFailedShort') + e.message);
+    }
+    if (!res.ok) throw await readError(res);
+    const j = await res.json();
+    for (const m of (j && j.publisherModels) || []) if (m && typeof m.name === 'string') names.push(m.name);
+    token = j && j.nextPageToken;
+    if (!token) break;
+  }
+  return names;
 }

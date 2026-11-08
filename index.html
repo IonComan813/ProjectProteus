@@ -218,6 +218,20 @@
             </select>
           </label>
         </div>
+        <!-- OpenRouter 的特色设置：按什么选上游、不用会保存数据的上游 -->
+        <div id="openrouterOptions" hidden>
+          <label class="field"><span data-i18n="set.orSort">OpenRouter 上游选择</span>
+            <select id="openrouterSort">
+              <option value="" data-i18n="set.orSortDefault">默认（综合价格、速度和稳定性）</option>
+              <option value="price" data-i18n="set.orSortPrice">价格最低优先</option>
+              <option value="throughput" data-i18n="set.orSortThroughput">输出速度最快优先</option>
+              <option value="latency" data-i18n="set.orSortLatency">响应最快（延迟最低）优先</option>
+            </select>
+          </label>
+          <label class="field-inline sync-check">
+            <input type="checkbox" id="openrouterNoData"> <span data-i18n="set.orNoData">不使用会保存请求数据的上游</span>
+          </label>
+        </div>
         <div id="openaiOptions">
           <label class="field-inline">
             <input type="checkbox" id="useTemperature"> <span id="temperatureLabel" data-i18n="set.temperature">自定义 temperature</span>

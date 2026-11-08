@@ -33,6 +33,8 @@ const DEFAULT_SETTINGS = {
   effort: '',
   useTemperature: false,
   temperature: 1,
+  openrouterSort: '',      // OpenRouter：按什么选上游（'' 默认均衡、price、throughput、latency）
+  openrouterNoData: false, // OpenRouter：不用会保存请求数据的上游（provider.data_collection = deny）
   activeConvId: null,
   // GitHub 同步（js/sync.js）：login 是登录的账号名，repo 是同步用的仓库 { owner, name, branch }，
   // marker 是仓库里标记文件的副本（加密设置），artDefault 是全局的「同步艺术图」。登录凭据不在这里（DB 的 githubToken）
@@ -214,6 +216,8 @@ function providerCfg() {
     effort: s.effort,
     useTemperature: s.useTemperature,
     temperature: s.temperature,
+    openrouterSort: s.openrouterSort,
+    openrouterNoData: s.openrouterNoData,
   };
 }
 
@@ -2572,6 +2576,8 @@ function fillSettingsForm() {
   sizeRoundsInput();
   els.provider.value = s.provider;
   els.effort.value = s.effort;
+  els.openrouterSort.value = s.openrouterSort || '';
+  els.openrouterNoData.checked = !!s.openrouterNoData;
   els.useTemperature.checked = s.useTemperature;
   els.temperature.value = s.temperature;
   els.langSelect.value = LANG;
@@ -2629,7 +2635,7 @@ function fillProviderFields() {
 }
 
 // 内置服务商的说明（地址下面一行）
-const PROVIDER_NOTES = { vertex: 'set.note.vertex', opencode: 'set.note.opencode', commandcode: 'set.note.commandcode' };
+const PROVIDER_NOTES = { vertex: 'set.note.vertex', openrouter: 'set.note.openrouter', opencode: 'set.note.opencode', commandcode: 'set.note.commandcode' };
 
 // 跟着模型变化的部分：Command Code、Vertex 按模型名（是不是 Claude）切换格式和地址，
 // 所以显示的地址、最大输出长度的提示、思考深度 / temperature 选项在改模型时也要更新
@@ -2638,8 +2644,10 @@ function updateFormatFields() {
   const format = formatOf(cfg);
   if (isBuiltinProvider(cfg.provider)) els.baseUrl.value = baseOf(cfg);
   els.maxTokens.placeholder = t(format === 'anthropic' ? 'set.maxTokensAnthropic' : 'set.maxTokensOpenai');
-  els.anthropicOptions.hidden = format !== 'anthropic';
+  // 思考深度：Anthropic 格式，以及 OpenRouter（统一的 reasoning.effort）
+  els.anthropicOptions.hidden = format !== 'anthropic' && cfg.provider !== 'openrouter';
   els.openaiOptions.hidden = format !== 'openai';
+  els.openrouterOptions.hidden = cfg.provider !== 'openrouter';
 }
 
 // Vertex：导入的服务账号
@@ -2702,6 +2710,19 @@ function migrateRelays(s) {
     }
   }
   for (const k of Object.keys(PROVIDERS)) delete s.baseUrls[k];
+  // OpenRouter 现在是内置服务商：以前按地址添加的 OpenRouter（https://openrouter.ai/api/v1），内置的还没填 Key 时，
+  // 把 Key、模型等搬过去，删掉那个自己添加的（选着它的改选内置的）。内置的已经有 Key 时两个都留着
+  const orRelay = s.relays.find((r) => trimSlash(s.baseUrls[RELAY_PREFIX + r.id] || '') === PROVIDERS.openrouter.baseUrl);
+  if (orRelay && !(s.apiKeys.openrouter || '').trim()) {
+    const key = RELAY_PREFIX + orRelay.id;
+    for (const f of ['apiKeys', 'models', 'maxTokens', 'modelLists']) {
+      if (s[f][key] !== undefined) s[f].openrouter = s[f][key];
+    }
+    for (const f of ['apiKeys', 'baseUrls', 'models', 'maxTokens', 'modelLists']) delete s[f][key];
+    s.relays = s.relays.filter((r) => r !== orRelay);
+    if (s.provider === key) s.provider = 'openrouter';
+    migrated = true;
+  }
   return migrated;
 }
 
@@ -3226,6 +3247,8 @@ function bindSettings() {
   onSetting(els.maxTokens, (el) => { s().maxTokens[s().provider] = el.value ? Number(el.value) : ''; });
   onSetting(els.temperature, (el) => { s().temperature = Number(el.value); });
   els.effort.addEventListener('change', () => { s().effort = els.effort.value; saveSettingsSoon(); });
+  els.openrouterSort.addEventListener('change', () => { s().openrouterSort = els.openrouterSort.value; saveSettingsSoon(); });
+  els.openrouterNoData.addEventListener('change', () => { s().openrouterNoData = els.openrouterNoData.checked; saveSettingsSoon(); });
   els.useTemperature.addEventListener('change', () => {
     s().useTemperature = els.useTemperature.checked;
     els.temperature.disabled = !s().useTemperature;
@@ -3618,16 +3641,7 @@ async function boot() {
     state.settings[k] = { ...DEFAULT_SETTINGS[k], ...(saved[k] || {}) };
   }
   if (sessionKeys) state.settings.apiKeys = sessionKeys; // 不记住 Key 时，本次打开期间填过的 Key 继续有效
-  // OpenRouter 不再单列，归到“其他 OpenAI 兼容格式”：之前选的是它时，把 Key 和模型搬过去（那边还空着时）
-  if (state.settings.provider === 'openrouter') {
-    const s = state.settings;
-    if (!s.apiKeys.custom_openai && !s.baseUrls.custom_openai) {
-      s.apiKeys.custom_openai = s.apiKeys.openrouter || '';
-      s.baseUrls.custom_openai = 'https://openrouter.ai/api/v1';
-      s.models.custom_openai = s.models.openrouter || '';
-    }
-    s.provider = 'custom_openai';
-  }
+  // （很早的版本单列过 OpenRouter，键名也是 openrouter：现在它又是内置服务商，那时的 Key 和模型直接接着用）
   state.settings.rounds = Math.min(ROUNDS_MAX, Math.max(ROUNDS_MIN, Number(state.settings.rounds) || 12));
   setLang(state.settings.lang || detectLang());
   if (migrateRelays(state.settings)) saveSettingsSoon(); // 迁移时可能要用界面语言的文字当名称，所以在 setLang 之后
