@@ -33,6 +33,8 @@ const DEFAULT_SETTINGS = {
   effort: '',
   useTemperature: false,
   temperature: 1,
+  openrouterSort: '',      // OpenRouter：按什么选上游（'' 默认均衡、price、throughput、latency）
+  openrouterNoData: false, // OpenRouter：不用会保存请求数据的上游（provider.data_collection = deny）
   activeConvId: null,
   // GitHub 同步（js/sync.js）：login 是登录的账号名，repo 是同步用的仓库 { owner, name, branch }，
   // marker 是仓库里标记文件的副本（加密设置），artDefault 是全局的「同步艺术图」。登录凭据不在这里（DB 的 githubToken）
@@ -214,6 +216,8 @@ function providerCfg() {
     effort: s.effort,
     useTemperature: s.useTemperature,
     temperature: s.temperature,
+    openrouterSort: s.openrouterSort,
+    openrouterNoData: s.openrouterNoData,
   };
 }
 
@@ -2572,6 +2576,8 @@ function fillSettingsForm() {
   sizeRoundsInput();
   els.provider.value = s.provider;
   els.effort.value = s.effort;
+  els.openrouterSort.value = s.openrouterSort || '';
+  els.openrouterNoData.checked = !!s.openrouterNoData;
   els.useTemperature.checked = s.useTemperature;
   els.temperature.value = s.temperature;
   els.langSelect.value = LANG;
@@ -2606,17 +2612,62 @@ function fillProviderFields() {
     if (document.activeElement !== els.relayEditName) els.relayEditName.value = relay.name;
     els.relayEditFormat.value = relay.format;
   }
-  els.baseUrl.value = s.baseUrls[s.provider] || '';
-  els.baseUrl.placeholder = p.baseUrl || t('set.baseUrlExample');
-  els.apiKey.value = s.apiKeys[s.provider] || '';
+  // 内置服务商的地址固定：只显示，不能改；用户添加的服务商才能填
+  const builtin = isBuiltinProvider(s.provider);
+  els.baseUrl.readOnly = builtin;
+  els.baseUrl.placeholder = builtin ? '' : t('set.baseUrlExample');
+  if (!builtin) els.baseUrl.value = s.baseUrls[s.provider] || '';
+  const note = PROVIDER_NOTES[s.provider];
+  els.providerNote.hidden = !note;
+  if (note) els.providerNote.textContent = t(note);
+  // Vertex 没有 API Key：换成导入服务账号 JSON 的按钮
+  const google = p.auth === 'google';
+  els.apiKeyField.hidden = google;
+  els.vertexKeyField.hidden = !google;
+  if (google) renderVertexKey();
+  else els.apiKey.value = s.apiKeys[s.provider] || '';
   els.model.value = s.models[s.provider] || '';
   els.maxTokens.value = s.maxTokens[s.provider] || '';
-  els.maxTokens.placeholder = t(p.format === 'anthropic' ? 'set.maxTokensAnthropic' : 'set.maxTokensOpenai');
   closeModelMenu();
   els.btnModelMenu.disabled = !modelOptions().length; // 还没获取列表时 ▾ 不能点
-  els.anthropicOptions.hidden = p.format !== 'anthropic';
-  els.openaiOptions.hidden = p.format !== 'openai';
   els.temperature.disabled = !s.useTemperature;
+  updateFormatFields();
+}
+
+// 内置服务商的说明（地址下面一行）
+const PROVIDER_NOTES = { vertex: 'set.note.vertex', openrouter: 'set.note.openrouter', opencode: 'set.note.opencode', commandcode: 'set.note.commandcode' };
+
+// 跟着模型变化的部分：Command Code、Vertex 按模型名（是不是 Claude）切换格式和地址，
+// 所以显示的地址、最大输出长度的提示、思考深度 / temperature 选项在改模型时也要更新
+function updateFormatFields() {
+  const cfg = providerCfg();
+  const format = formatOf(cfg);
+  if (isBuiltinProvider(cfg.provider)) els.baseUrl.value = baseOf(cfg);
+  els.maxTokens.placeholder = t(format === 'anthropic' ? 'set.maxTokensAnthropic' : 'set.maxTokensOpenai');
+  // 思考深度：Anthropic 格式，以及 OpenRouter（统一的 reasoning.effort）
+  els.anthropicOptions.hidden = format !== 'anthropic' && cfg.provider !== 'openrouter';
+  els.openaiOptions.hidden = format !== 'openai';
+  els.openrouterOptions.hidden = cfg.provider !== 'openrouter';
+}
+
+// Vertex：导入的服务账号
+function renderVertexKey() {
+  const sa = parseServiceAccount(state.settings.apiKeys.vertex || '');
+  els.vertexKeyStatus.textContent = sa ? t('set.vertexStatus', { email: sa.client_email, project: sa.project_id }) : t('set.vertexNone');
+  els.btnImportVertex.textContent = t(sa ? 'set.vertexReimport' : 'set.vertexImport');
+}
+
+async function importVertexKey(file) {
+  let text = '';
+  try { text = await file.text(); } catch (_) { /* 下面报错 */ }
+  const sa = parseServiceAccount(text);
+  if (!sa) return showModal(t('set.vertexKey'), t('set.vertexInvalid'));
+  state.settings.apiKeys.vertex = JSON.stringify(sa);
+  saveSettingsSoon();
+  renderVertexKey();
+  updateFormatFields();
+  updateEstimate();
+  toast(t('set.vertexImported', { email: sa.client_email }));
 }
 
 // ---- 用户添加的服务商 ----
@@ -2641,6 +2692,36 @@ function migrateRelays(s) {
     }
     if (s.provider === old) s.provider = key || 'anthropic';
     if (key) migrated = true;
+  }
+  // 内置服务商的地址现在固定、不能改。以前给三家官方服务商改过地址的（多半是填了中转站），
+  // 那一套设置（地址、Key、模型等）搬成一个用户添加的服务商，免得升级后连不上
+  for (const k of ['anthropic', 'openai', 'gemini']) {
+    const url = trimSlash(s.baseUrls[k] || '');
+    if (url && url !== PROVIDERS[k].baseUrl) {
+      const id = uid();
+      const key = RELAY_PREFIX + id;
+      s.relays.push({ id, name: uniqueRelayName(hostName(url) || t('relay.formatShort.' + PROVIDERS[k].format), s), format: PROVIDERS[k].format });
+      s.baseUrls[key] = url;
+      for (const f of ['apiKeys', 'models', 'maxTokens', 'modelLists']) {
+        if (s[f][k] !== undefined) { s[f][key] = s[f][k]; delete s[f][k]; }
+      }
+      if (s.provider === k) s.provider = key;
+      migrated = true;
+    }
+  }
+  for (const k of Object.keys(PROVIDERS)) delete s.baseUrls[k];
+  // OpenRouter 现在是内置服务商：以前按地址添加的 OpenRouter（https://openrouter.ai/api/v1），内置的还没填 Key 时，
+  // 把 Key、模型等搬过去，删掉那个自己添加的（选着它的改选内置的）。内置的已经有 Key 时两个都留着
+  const orRelay = s.relays.find((r) => trimSlash(s.baseUrls[RELAY_PREFIX + r.id] || '') === PROVIDERS.openrouter.baseUrl);
+  if (orRelay && !(s.apiKeys.openrouter || '').trim()) {
+    const key = RELAY_PREFIX + orRelay.id;
+    for (const f of ['apiKeys', 'models', 'maxTokens', 'modelLists']) {
+      if (s[f][key] !== undefined) s[f].openrouter = s[f][key];
+    }
+    for (const f of ['apiKeys', 'baseUrls', 'models', 'maxTokens', 'modelLists']) delete s[f][key];
+    s.relays = s.relays.filter((r) => r !== orRelay);
+    if (s.provider === key) s.provider = 'openrouter';
+    migrated = true;
   }
   return migrated;
 }
@@ -2845,6 +2926,7 @@ function highlightModel(i, scroll) {
 function pickModel(m) {
   els.model.value = m;
   state.settings.models[state.settings.provider] = m;
+  updateFormatFields();
   saveSettingsSoon();
   updateEstimate();
   closeModelMenu();
@@ -2896,7 +2978,7 @@ function nextRequestBlocks() {
   const system = systemBlocks(conv);
 
   // 消息：和真正发出时一样合并连续同一角色的消息，Anthropic 格式开头补“前情省略”
-  const messages = finalMessages(formatOf({ provider: state.settings.provider }), req.messages);
+  const messages = finalMessages(formatOf(providerCfg()), req.messages); // Command Code、Vertex 的格式随模型变化
   return { system, messages, pending };
 }
 
@@ -3153,12 +3235,20 @@ function bindSettings() {
   els.btnRoundsMinus.addEventListener('click', () => setRounds(s().rounds - 1));
   els.btnRoundsPlus.addEventListener('click', () => setRounds(s().rounds + 1));
 
-  onSetting(els.baseUrl, (el) => { s().baseUrls[s().provider] = el.value.trim(); });
+  onSetting(els.baseUrl, (el) => { if (!isBuiltinProvider(s().provider)) s().baseUrls[s().provider] = el.value.trim(); });
   onSetting(els.apiKey, (el) => { s().apiKeys[s().provider] = el.value.trim(); });
-  onSetting(els.model, (el) => { s().models[s().provider] = el.value.trim(); });
+  onSetting(els.model, (el) => { s().models[s().provider] = el.value.trim(); updateFormatFields(); });
+  els.btnImportVertex.addEventListener('click', () => els.fileVertex.click());
+  els.fileVertex.addEventListener('change', () => {
+    const f = els.fileVertex.files[0];
+    els.fileVertex.value = '';
+    if (f) void importVertexKey(f);
+  });
   onSetting(els.maxTokens, (el) => { s().maxTokens[s().provider] = el.value ? Number(el.value) : ''; });
   onSetting(els.temperature, (el) => { s().temperature = Number(el.value); });
   els.effort.addEventListener('change', () => { s().effort = els.effort.value; saveSettingsSoon(); });
+  els.openrouterSort.addEventListener('change', () => { s().openrouterSort = els.openrouterSort.value; saveSettingsSoon(); });
+  els.openrouterNoData.addEventListener('change', () => { s().openrouterNoData = els.openrouterNoData.checked; saveSettingsSoon(); });
   els.useTemperature.addEventListener('change', () => {
     s().useTemperature = els.useTemperature.checked;
     els.temperature.disabled = !s().useTemperature;
@@ -3551,16 +3641,7 @@ async function boot() {
     state.settings[k] = { ...DEFAULT_SETTINGS[k], ...(saved[k] || {}) };
   }
   if (sessionKeys) state.settings.apiKeys = sessionKeys; // 不记住 Key 时，本次打开期间填过的 Key 继续有效
-  // OpenRouter 不再单列，归到“其他 OpenAI 兼容格式”：之前选的是它时，把 Key 和模型搬过去（那边还空着时）
-  if (state.settings.provider === 'openrouter') {
-    const s = state.settings;
-    if (!s.apiKeys.custom_openai && !s.baseUrls.custom_openai) {
-      s.apiKeys.custom_openai = s.apiKeys.openrouter || '';
-      s.baseUrls.custom_openai = 'https://openrouter.ai/api/v1';
-      s.models.custom_openai = s.models.openrouter || '';
-    }
-    s.provider = 'custom_openai';
-  }
+  // （很早的版本单列过 OpenRouter，键名也是 openrouter：现在它又是内置服务商，那时的 Key 和模型直接接着用）
   state.settings.rounds = Math.min(ROUNDS_MAX, Math.max(ROUNDS_MIN, Number(state.settings.rounds) || 12));
   setLang(state.settings.lang || detectLang());
   if (migrateRelays(state.settings)) saveSettingsSoon(); // 迁移时可能要用界面语言的文字当名称，所以在 setLang 之后

@@ -483,6 +483,9 @@ body.resizing iframe { pointer-events: none; }
 .art-pane.locked { cursor: default; }
 .art-pane.locked img { user-select: none; -webkit-user-drag: none; pointer-events: none; }
 .remember-keys { margin-top: -2px; }
+/* 内置服务商的接口地址：只显示，不能改 */
+.field > input[readonly] { color: var(--muted); cursor: default; }
+#vertexKeyStatus { overflow-wrap: anywhere; }
 /* 添加服务商的窗口 */
 /* GitHub 同步 */
 .sync-account { margin: 0 0 6px; }
