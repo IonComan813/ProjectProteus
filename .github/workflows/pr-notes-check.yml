@@ -19,7 +19,7 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # 要比较这个 PR 改了哪些文件，还要读取版本标签
       # PR 正文从事件文件里读，不放进命令行（正文是任何人都能写的内容）
