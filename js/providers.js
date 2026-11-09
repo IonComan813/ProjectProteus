@@ -603,13 +603,79 @@ async function firstModelList(urls, headers) {
   throw firstError || new Error(t('api.noModels'));
 }
 
+// ---- 模型名排序 ----
+// 目标：同一系列里旧的、小的、差的在前。按字母、数字分段比较（分隔符 - . / : 等忽略），同一位置上：
+//   缩小词（nano < micro < tiny < mini < lite < small）< 名称结束 < 日期、快照号（4 位以上的数字）< 其他单词和数字
+//   - 数字按数值比较：llama-3.1-8b < 70b < 405b，claude-3-5 < claude-3-7
+//   - 版本号后面：单词在数字前（gpt-4o < gpt-4.1，claude-3-opus < claude-3-5-haiku）；
+//     名称里、还没出现版本号时：数字在单词前（claude-3-… < claude-haiku-…）
+//   - 单词：分开写的在紧跟数字的前面（gpt-4-turbo < gpt-4o），一般单词在档次词前面，
+//     档次词按 flash < haiku < turbo < medium < sonnet < plus < pro < large < opus < max < ultra，其余按字母
+// 例：gpt-4 < gpt-4-0613 < gpt-4-turbo < gpt-4o-mini < gpt-4o < gpt-4.1-nano < gpt-4.1-mini < gpt-4.1 < gpt-5；
+//     claude-opus-4-20250514 < claude-opus-4-1-…；gemini-2.0-flash-lite < gemini-2.0-flash < gemini-2.5-flash < gemini-2.5-pro
+const MODEL_SMALL = ['nano', 'micro', 'tiny', 'mini', 'lite', 'small'];
+const MODEL_TIER = ['flash', 'haiku', 'turbo', 'medium', 'sonnet', 'plus', 'pro', 'large', 'opus', 'max', 'ultra'];
+const modelCollator = new Intl.Collator('en', { sensitivity: 'base', numeric: true });
+
+// 拆成数字段 { num, date } 和字母段 { word, attached }（attached：紧跟在数字后面，如 4o 的 o）
+function modelTokens(name) {
+  const out = [];
+  const re = /(\d+)|(\p{L}+)/gu;
+  let m;
+  let prevEnd = -1;
+  let prevDigit = false;
+  while ((m = re.exec(name.toLowerCase()))) {
+    if (m[1] === undefined) out.push({ word: m[2], attached: prevDigit && m.index === prevEnd });
+    else out.push({ num: Number(m[1]), date: m[1].length >= 4 });
+    prevEnd = m.index + m[0].length;
+    prevDigit = m[1] !== undefined;
+  }
+  return out;
+}
+
+// 同一位置上的大类：0 缩小词 < 1 名称结束 < 2 日期、快照号 < 3、4 单词和数字（版本号后面单词在前，否则数字在前）
+function modelTokenClass(tok, afterNumber) {
+  if (!tok) return 1;
+  if (tok.word !== undefined && MODEL_SMALL.includes(tok.word)) return 0;
+  if (tok.date) return 2;
+  const isNum = tok.num !== undefined;
+  return afterNumber === isNum ? 4 : 3;
+}
+
+function compareModelTokens(a, b, afterNumber) {
+  const ca = modelTokenClass(a, afterNumber);
+  const cb = modelTokenClass(b, afterNumber);
+  if (ca !== cb) return ca - cb;
+  if (!a) return 0;
+  if (ca === 0) return MODEL_SMALL.indexOf(a.word) - MODEL_SMALL.indexOf(b.word);
+  if (a.num !== undefined) return a.num - b.num;
+  if (a.attached !== b.attached) return a.attached ? 1 : -1;
+  const ta = MODEL_TIER.indexOf(a.word);
+  const tb = MODEL_TIER.indexOf(b.word);
+  if ((ta < 0) !== (tb < 0)) return ta < 0 ? -1 : 1;
+  if (ta >= 0) return ta - tb;
+  return modelCollator.compare(a.word, b.word);
+}
+
+function compareModels(x, y) {
+  const a = modelTokens(x);
+  const b = modelTokens(y);
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const d = compareModelTokens(a[i], b[i], i > 0 && a[i - 1].num !== undefined);
+    if (d) return d;
+  }
+  return modelCollator.compare(x, y) || (x < y ? -1 : x > y ? 1 : 0);
+}
+
+const sortModels = (list) => [...list].sort(compareModels);
+
 // 各家模型列表的格式：{ data: [{ id }] }（OpenAI、Anthropic）、{ models: [{ name: 'models/…' }] }（Gemini）、
 // { publisherModels: [{ name: 'publishers/google/models/…' }] }（Vertex）
 function modelNames(j) {
   const items = (j && (j.data || j.models || j.publisherModels)) || [];
   return items.map((m) => (m && (m.id || m.name)) || '').filter((x) => typeof x === 'string' && x)
     .map((id) => id.replace(/^models\//, '')) // Gemini 的模型名带有 models/ 前缀，去掉后也能用
-    .sort((a, b) => a.localeCompare(b));
+    .sort(compareModels);
 }
 
 // Vertex 的模型列表：Model Garden 的发布者模型列表（publishers.models.list，v1beta1），Google 和 Anthropic 各取一次，
@@ -635,7 +701,7 @@ async function fetchVertexModels(cfg) {
     }
   }
   if (!out.length) throw firstError || new Error(t('api.noModels'));
-  return [...new Set(out)].sort((a, b) => a.localeCompare(b));
+  return sortModels(new Set(out));
 }
 
 async function listPublisherModels(host, publisher, headers) {

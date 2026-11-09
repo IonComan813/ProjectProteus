@@ -52,6 +52,8 @@
 
       <footer class="composer" id="composer">
         <div class="row-resizer" id="composerResizer" data-i18n-title="input.resizer"></div>
+        <!-- 正在更新剧情备忘时（绿框），显示到收到完整的返回为止 -->
+        <div class="info-bar" id="memoBar" role="status" hidden></div>
         <div class="error-bar" id="errorBar" hidden></div>
         <div class="composer-row">
           <textarea id="input" data-i18n-aria="input.aria" aria-label="你的消息"></textarea>
@@ -128,6 +130,26 @@
         <!-- {{user}} 的值：显示和发送时，内容里的 {{user}} 换成这里填的值 -->
         <input type="text" id="userName" data-i18n-aria="set.userNamePlaceholder" aria-label="{{user}}值" class="user-name" spellcheck="false" autocomplete="off" data-i18n-ph="set.userNamePlaceholder" data-i18n-title="set.userNameTitle">
         <textarea id="persona" aria-labelledby="hPersona" class="scroll-box" rows="5" data-i18n-ph="set.personaPlaceholder"></textarea>
+      </section>
+
+      <!-- 剧情备忘（js/app.js 的「剧情备忘」）：模型根据记忆长度内的剧情更新，也可以手动编辑；属于剧情，新建对话时不复制 -->
+      <section class="card roleplay-only">
+        <h3 id="hMemo" data-i18n="memo.title">剧情备忘</h3>
+        <p class="hint" data-i18n="memo.hint"></p>
+        <textarea id="memo" aria-labelledby="hMemo" class="scroll-box" rows="6" data-i18n-ph="memo.placeholder"></textarea>
+        <div class="row">
+          <button class="btn btn-small" id="btnUpdateMemo" data-i18n="memo.update">更新备忘</button>
+          <button class="btn btn-small" id="btnExpandMemo" data-i18n="expand.button">放大窗口</button>
+          <span class="muted small" id="memoStatus"></span>
+        </div>
+        <label class="field-inline memo-option"><input type="checkbox" id="memoSend"> <span data-i18n="memo.send">发送给模型</span></label>
+        <label class="field-inline memo-option">
+          <span data-i18n="memo.everyBefore">每</span>
+          <input type="number" id="memoEvery" min="0" max="99" step="1">
+          <span data-i18n="memo.everyAfter">轮自动更新（0 = 关闭）</span>
+        </label>
+        <p class="hint memo-note" data-i18n="memo.staleHint"></p>
+        <p class="hint memo-note" data-i18n="memo.costHint"></p>
       </section>
 
       <section class="card roleplay-only">
@@ -251,6 +273,18 @@
           <button class="btn btn-small" id="btnDownloadArt" data-i18n="set.download">下载</button>
           <button class="btn btn-small btn-ghost" id="btnRemoveArt" data-i18n="set.remove">移除</button>
         </div>
+        <!-- 电脑布局：展示方式（竖屏在左栏 / 横屏铺满窗口），横屏时收起、显示设置区的快捷键 -->
+        <label class="field-inline art-mode-row desktop-only" id="artModeRow" hidden>
+          <span data-i18n="art.mode">展示方式</span>
+          <select id="artMode">
+            <option value="portrait" data-i18n="art.modePortrait">竖屏展示（左侧）</option>
+            <option value="landscape" data-i18n="art.modeLandscape">横屏展示（铺满窗口）</option>
+          </select>
+        </label>
+        <div class="row art-key-row desktop-only" id="artKeyRow" hidden>
+          <span class="art-key-text"><span data-i18n="art.panelKey">收起 / 显示设置区</span><kbd id="panelKeyLabel">F2</kbd></span>
+          <button class="btn btn-small" id="btnPanelKey" data-i18n="art.keyChange">更改</button>
+        </div>
         <!-- GitHub 同步：登录并选好仓库后才显示（js/sync.js 的 renderSyncConv） -->
         <label class="field-inline sync-check sync-art-conv" id="syncArtConvRow" hidden>
           <input type="checkbox" id="syncArtConv">
@@ -275,6 +309,7 @@
         </div>
         <div id="syncLoggedIn" hidden>
           <p class="hint sync-account"><span id="syncAccount"></span> <a id="syncRepoLink" target="_blank" rel="noopener"></a></p>
+          <p class="hint error sync-public-warning" id="syncPublicWarning" data-i18n="sync.publicWarning" hidden></p>
           <div class="row" id="syncNoRepo">
             <button class="btn btn-small" id="btnSyncSetup" data-i18n="sync.chooseRepo">选择或创建仓库</button>
           </div>

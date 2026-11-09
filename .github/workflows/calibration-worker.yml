@@ -17,7 +17,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Check settings
         id: check
@@ -35,7 +35,7 @@ jobs:
 
       - name: Deploy
         if: steps.check.outputs.ok == 'true'
-        uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3.15.0
+        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3（固定到提交；v4 默认安装 Wrangler v4）
         env:
           IP_SALT: ${{ secrets.CALIB_IP_SALT }}
         with:

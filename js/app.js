@@ -22,6 +22,7 @@ const DEFAULT_SETTINGS = {
   rememberKeys: true,  // false = API Key 只在本次打开期间有效，不写入本机存储（公用电脑）
   rounds: 12,
   artWidth: null,      // 左栏宽度（像素），null = 自动
+  panelKey: 'F2',      // 横屏艺术图时收起 / 显示右侧设置区的快捷键（Ctrl+Shift+K 这样的写法）
   inputHeight: 88,     // 输入框高度（像素）
   provider: 'anthropic', // 官方服务商的键名（anthropic / openai / gemini），或者用户添加的服务商 relay:<id>
   relays: [],          // 用户添加的服务商（中转站）：[{ id, name, format: 'openai' | 'anthropic' }]，按添加的顺序
@@ -37,8 +38,9 @@ const DEFAULT_SETTINGS = {
   openrouterNoData: false, // OpenRouter：不用会保存请求数据的上游（provider.data_collection = deny）
   activeConvId: null,
   // GitHub 同步（js/sync.js）：login 是登录的账号名，repo 是同步用的仓库 { owner, name, branch }，
-  // marker 是仓库里标记文件的副本（加密设置），artDefault 是全局的「同步艺术图」。登录凭据不在这里（DB 的 githubToken）
-  sync: { login: null, repo: null, marker: null, artDefault: true },
+  // marker 是仓库里标记文件的副本（加密设置），artDefault 是全局的「同步艺术图」，repoPublic 是仓库是否公开（只用来提示）。
+  // 登录凭据不在这里（DB 的 githubToken）
+  sync: { login: null, repo: null, marker: null, artDefault: true, repoPublic: false },
 };
 
 const state = {
@@ -179,6 +181,12 @@ function touchConv(conv) {
 
 // 轮数：用户的一条消息加上它的模型回复算一轮，所以就是用户消息的条数。
 // 开场白不单独计数；回复失败、还没有回复的也算一轮，之后生成出回复不再加；重新生成、编辑用户消息不增加
+// 整数并限制在 min…max 之间；不是数字时为 min
+function clampInt(v, min, max) {
+  const n = Math.floor(Number(v));
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : min;
+}
+
 function roundsOf(conv) {
   return conv.messages.filter((m) => m.role === 'user').length;
 }
@@ -271,12 +279,26 @@ function postHistoryBlock(conv) {
   return text ? `${t('sys.postHistory')}\n${t('sys.postHistoryIntro')}\n${text}` : '';
 }
 
-// 真正发给模型的内容：system 部分和记忆范围内的消息（context 的最后一条是这一次的用户消息）
-function requestOf(conv, context) {
-  const messages = windowOf(context, sentGreeting(conv));
-  const block = postHistoryBlock(conv);
+// 剧情备忘：设为发送、有内容时，放在这一次的用户消息前面（最后一条模型回复之后），带标签和说明
+function memoBlock(conv) {
+  const text = !isAssistant(conv) && conv.memoSend !== false && conv.memo ? conv.memo.trim() : '';
+  return text ? `${t('sys.memo')}\n${t('sys.memoIntro')}\n${text}\n${t('sys.memoEnd')}` : '';
+}
+
+// 真正发给模型的内容：system 部分和记忆范围内的消息（context 的最后一条是这一次的用户消息）。
+// memoUpdate：更新剧情备忘的请求（最后一条是更新的指令，里面已经有现在的备忘）：不加剧情备忘和重点指令
+function requestOf(conv, context, { memoUpdate = false } = {}) {
+  const greeting = sentGreeting(conv);
+  const messages = windowOf(context, greeting);
+  const memo = memoUpdate ? '' : memoBlock(conv);
+  const block = memoUpdate ? '' : postHistoryBlock(conv);
   const last = messages[messages.length - 1];
-  if (block && last && last.role === 'user') last.content += '\n\n' + block;
+  if (last && last.role === 'user') {
+    // 剧情备忘在前，后面的消息加上「【用户】」标签；这一条已经和开场白合在一起时（对话的第一条消息）本来就有这个标签
+    const greeted = context.length === 1 && !!greeting;
+    if (memo) last.content = memo + '\n\n' + (greeted ? '' : t('greet.user') + '\n') + last.content;
+    if (block) last.content += '\n\n' + block;
+  }
   return {
     system: withMacros(buildSystem(conv), conv),
     messages: messages.map((m) => ({ role: m.role, content: withMacros(m.content, conv) })),
@@ -335,7 +357,7 @@ const defaultPromptOf = (conv) => t(isAssistant(conv) ? 'defaultAssistantPrompt'
 function newConversation(from, assistant = isAssistant(from)) {
   const now = Date.now();
   if (assistant) {
-    return {
+    const c = {
       id: uid(),
       title: '',
       mode: 'assistant',
@@ -350,11 +372,17 @@ function newConversation(from, assistant = isAssistant(from)) {
       greetings: [],
       greetingCur: 0,
       greetingSend: true,
+      memo: '',
+      memoSend: true,
+      memoEvery: 0,
+      memoRound: 0,
       createdAt: now,
       updatedAt: now,
       activeAt: now,
       messages: [],
     };
+    if (from && from.artMode) c.artMode = from.artMode; // 艺术图从 from 复制过来时，展示方式也一样
+    return c;
   }
   if (isAssistant(from)) from = null;
   const c = {
@@ -371,6 +399,10 @@ function newConversation(from, assistant = isAssistant(from)) {
     greetings: from ? from.greetings.slice() : [],
     greetingCur: from ? from.greetingCur : 0,
     greetingSend: from ? from.greetingSend !== false : true,
+    memo: '', // 剧情备忘属于剧情，不复制；是否发送、每几轮自动更新是设置，复制
+    memoSend: from ? from.memoSend !== false : true,
+    memoEvery: from ? from.memoEvery || 0 : 0,
+    memoRound: 0,
     createdAt: now,
     updatedAt: now,
     activeAt: now,
@@ -378,12 +410,19 @@ function newConversation(from, assistant = isAssistant(from)) {
   };
   if (from && from.lock) c.lock = from.lock;
   if (isTavern(from)) c.tavern = { ...from.tavern };
+  if (from && from.artMode) c.artMode = from.artMode;
   return c;
 }
 
 // 补齐旧版本数据缺少的字段
 function normalizeConv(c, legacy) {
   if (c.title === '新对话') c.title = '';
+  if (c.artMode !== 'landscape') delete c.artMode; // 艺术图的展示方式：只记横屏，没有就是竖屏
+  // 剧情备忘（助理模式不用）：内容、是否发送、每几轮自动更新（0 = 关闭）、上次更新时是第几轮
+  if (typeof c.memo !== 'string' || isAssistant(c)) c.memo = '';
+  c.memoSend = c.memoSend !== false;
+  c.memoEvery = isAssistant(c) ? 0 : clampInt(c.memoEvery, 0, MEMO_EVERY_MAX);
+  c.memoRound = clampInt(c.memoRound, 0, Infinity);
   if (isAssistant(c)) {
     // 助理模式：只有 System Prompt 和对话记录，其他保持为空；不加密
     delete c.lock;
@@ -1086,7 +1125,10 @@ function updateComposer() {
   const last = msgs[msgs.length - 1];
   els.btnSend.hidden = busy || gm;
   els.btnStop.hidden = !busy;
+  els.btnStop.textContent = t(busy && state.generating.memo ? 'memo.stop' : 'btn.stop');
   els.btnReply.hidden = busy || gm || !(last && last.role === 'user');
+  els.btnUpdateMemo.disabled = busy || gm || !canUpdateMemo(conv);
+  renderMemoStatus();
   // “添加开场白”只在对话完全为空时出现（锁定的对话不能添加）
   els.btnAddGreeting.hidden = busy || gm || conv.greeting != null || msgs.length > 0 || !!conv.lock || isAssistant(conv);
   els.btnGreetingReload.hidden = !gm;
@@ -1620,6 +1662,7 @@ async function runGeneration(m, context, sent = null) {
 
   if (state.conv === conv) renderMessages();
   await saveConv(conv);
+  if (kept) maybeAutoMemo(conv);
 
   // 只要有输出就照常显示和保存；回复没写完就结束的（出错、被拦截、达到最大输出长度），弹窗说明一下
   if (kept) {
@@ -1631,6 +1674,136 @@ async function runGeneration(m, context, sent = null) {
 
 function stop() {
   if (state.generating) state.generating.controller.abort();
+}
+
+// ---------------- 剧情备忘 ----------------
+// 长剧情里模型会忘掉记忆范围以外的前文：让模型把剧情进展写成备忘，之后每次请求放在这一次的消息前面（memoBlock）。
+// 「更新备忘」发出的请求和平时一样（System Prompt、世界观等，记忆长度内的剧情），只是最后一条用户消息换成更新的指令，
+// 里面附上现在的备忘；模型返回更新后的完整备忘，覆盖原来的（也可以手动编辑）。不保留上一版。
+// 每 N 轮自动更新（每个对话自己设置，默认关闭）：第 N 轮的回复写完后自动发出；更新期间发送按钮变为「停止」，输入框照常可以编辑
+const MEMO_EVERY_MAX = 99;
+
+function memoUpdateRequest(conv) {
+  const current = (conv.memo || '').trim();
+  const instruction = `${t('memo.instruction')}\n\n${t('memo.current')}\n${current || t('memo.none')}\n${t('memo.currentEnd')}`;
+  return requestOf(conv, conv.messages.concat([{ role: 'user', versions: [instruction], cur: 0 }]), { memoUpdate: true });
+}
+
+// 模型有时会把标签也抄回来：去掉开头、结尾的标签行
+function cleanMemo(text) {
+  const tags = new Set([t('memo.current'), t('memo.currentEnd'), t('sys.memo'), t('sys.memoEnd')]);
+  const lines = text.trim().split('\n');
+  while (lines.length && tags.has(lines[0].trim())) lines.shift();
+  while (lines.length && tags.has(lines[lines.length - 1].trim())) lines.pop();
+  return lines.join('\n').trim();
+}
+
+const canUpdateMemo = (conv) => !isAssistant(conv) && conv.messages.length > 0;
+
+// 第 N 轮的回复写完后（这个对话还是当前对话时）自动更新。删掉了消息、轮数比上次更新时少的，从现在的轮数重新算
+function maybeAutoMemo(conv) {
+  if (conv !== state.conv || !conv.memoEvery || !canUpdateMemo(conv) || state.generating || state.greetingMode) return;
+  const rounds = roundsOf(conv);
+  if (conv.memoRound > rounds) conv.memoRound = rounds;
+  if (rounds - conv.memoRound >= conv.memoEvery) void updateMemo(true);
+}
+
+async function updateMemo(auto = false) {
+  const conv = state.conv;
+  if (state.generating || state.greetingMode || !canUpdateMemo(conv)) return;
+  if (expandSource === els.memo) closeExpand();
+  await flushConvSave();
+  const controller = new AbortController();
+  state.generating = { controller, msgId: null, memo: conv.id };
+  // 输入框上方的绿框：显示到收到完整的返回为止（换到别的对话也一直显示：发送按钮仍是「停止备忘更新」）
+  els.memoBar.textContent = t(auto ? 'memo.autoBar' : 'memo.bar');
+  els.memoBar.hidden = false;
+  let out = '';
+  let result = null;
+  let error = null;
+  let aborted = false;
+  let usage = null;
+  let calib = null;
+  showError('');
+  renderMessages(); // 发送按钮变为「停止」
+  renderMemo();
+  logConv = conv;
+  const cfg = providerCfg();
+  try {
+    const req = memoUpdateRequest(conv);
+    const k = calibKey(cfg);
+    const sent = finalMessages(formatOf(cfg), req.messages);
+    const est = TokenCalib.estimate(k.relay, k.model, systemBlocks(conv).map((b) => b.text), sent.map((m) => m.content)).total;
+    calib = { ...k, x: TokenCalib.requestFeatures(req.system, sent), est };
+    result = await streamChat(cfg, req.system, req.messages, {
+      signal: controller.signal,
+      onUsage: (u) => { usage = u; },
+      onText: (text) => {
+        out += text;
+        state.generating.thinking = false;
+        if (state.conv === conv) { els.memo.value = out; els.memo.scrollTop = els.memo.scrollHeight; renderMemoStatus(); }
+      },
+      onThinking: () => {
+        if (out) return;
+        state.generating.thinking = true;
+        if (state.conv === conv) renderMemoStatus();
+      },
+    });
+  } catch (e) {
+    if (e.name === 'AbortError') aborted = true;
+    else error = e;
+  }
+  // 用量照样用来校准估算；不算作这个对话的「上一次请求」（那里说的是剧情回复）
+  if (calib && usage && usage.input) TokenCalib.observe(calib.relay, calib.model, calib.x, usage.input, usage.output, null, calib.est);
+  state.generating = null;
+  els.memoBar.hidden = true;
+
+  const reason = result && result.stopReason;
+  const memo = cleanMemo(out);
+  let problem = null; // 没有更新的原因（停止的不提示）
+  if (error) problem = error.message;
+  else if (!aborted && (reason === 'refusal' || reason === 'content_filter')) problem = t('gen.' + (reason === 'refusal' ? 'refused' : 'filtered'));
+  else if (!aborted && (reason === 'max_tokens' || reason === 'length')) problem = t('memo.truncated');
+  else if (!aborted && (reason === 'error' || !memo)) problem = t('memo.empty');
+  const ok = !aborted && !problem;
+  if (ok) {
+    conv.memo = memo;
+    conv.memoRound = roundsOf(conv);
+  }
+  await saveConv(conv);
+  if (state.conv === conv) {
+    renderMessages();
+    renderMemo();
+    updateEstimate();
+  }
+  if (ok) toast(t('memo.updated'));
+  else if (aborted) toast(t('memo.stopped'));
+  else showModal(t('memo.failedTitle'), t('memo.failed') + '\n\n' + problem);
+}
+
+// 右侧剧情备忘：内容、是否发送、每几轮自动更新、状态
+function renderMemo() {
+  const conv = state.conv;
+  const busy = !!state.generating && state.generating.memo === conv.id;
+  if (!busy) els.memo.value = conv.memo || '';
+  els.memo.readOnly = busy;
+  els.memoSend.checked = conv.memoSend !== false;
+  els.memoEvery.value = conv.memoEvery || 0;
+  els.btnUpdateMemo.disabled = !!state.generating || !canUpdateMemo(conv);
+  els.btnExpandMemo.disabled = busy;
+  renderMemoStatus();
+}
+
+// 备忘下方的状态：正在更新（模型还在思考时写「思考中」），或者上次更新以后又过了几轮
+function renderMemoStatus() {
+  const conv = state.conv;
+  const g = state.generating;
+  if (g && g.memo === conv.id) {
+    els.memoStatus.textContent = g.thinking ? t('memo.thinking') : t('memo.updating');
+    return;
+  }
+  const rounds = roundsOf(conv);
+  els.memoStatus.textContent = (conv.memo || '').trim() ? t('memo.since', { n: rounds - Math.min(conv.memoRound, rounds) }) : '';
 }
 
 // ---------------- 艺术图（每个对话一张） ----------------
@@ -1654,14 +1827,289 @@ async function loadArt() {
   if (blob) els.artImage.src = state.artUrl;
   else els.artImage.removeAttribute('src');
   els.btnDownloadArt.disabled = !blob || !!conv.lock;
+  applyArtMode();
 }
 
 async function setArt(file) {
   if (state.conv.lock) return toast(t('lock.artLocked'));
   if (!file || !file.type.startsWith('image/')) return toast(t('art.notImage'));
-  await DB.set(artKey(state.conv.id), file);
+  const conv = state.conv;
+  let pick = { mode: 'portrait', fit: {} };
+  if (artModesAvailable()) {
+    const size = await imageSize(file);
+    if (!size) return toast(t('art.notImage'));
+    pick = await chooseArtMode(size);
+    if (!pick || conv !== state.conv || conv.lock) return;
+  }
+  await DB.set(artKey(conv.id), file);
+  setConvArtMode(conv, pick.mode);
+  await saveConv(conv);
+  await applyArtFit(pick.fit);
   await loadArt();
   toast(t('art.updated'));
+}
+
+async function removeArt() {
+  const conv = state.conv;
+  if (conv.lock) return;
+  await DB.del(artKey(conv.id));
+  if (conv.artMode) {
+    setConvArtMode(conv, 'portrait');
+    await saveConv(conv);
+  }
+  await loadArt();
+}
+
+// ---- 艺术图的展示方式（电脑布局） ----
+// 竖屏（默认）：显示在左栏，图片宽度撑满左栏。
+// 横屏（conv.artMode = 'landscape'）：铺满整个窗口作背景，聊天区居中、半透明；右侧设置区默认收起，
+// 按快捷键（settings.panelKey，默认 F2）显示或收起。手机布局（包括安卓版）里艺术图总是铺满背景，不区分这两种。
+// 原则是不拉伸图片：上传时看比例，和窗口（横屏）或左栏（竖屏）差一点时问要不要自动调整，
+// 横屏差得多时直接说不支持（硬放的话会裁掉很多或者留很宽的黑边）
+const ART_LANDSCAPE_MIN = 1.5;  // 横屏展示要求宽高比至少 3:2：中间被聊天区挡住，太窄的图两侧露不出多少
+const ART_PORTRAIT_WIDE = 1.25; // 竖屏展示比这更宽的图：上下黑边很大，提示效果可能不好
+const ART_FIT_OK = 0.02;        // 比例相差不到 2%：不用调整
+const ART_CROP_MAX = 0.12;      // 横屏：比例相差不超过 12% 时铺满窗口（裁掉一点），更多时完整显示（留黑边）；
+                                // 不能自动调整窗口时，相差超过这个就不支持
+const ART_RESIZE_MAX = 0.25;    // 自动调整窗口：宽、高最多改变 25%，再多就不调整
+
+const artModesAvailable = () => !NATIVE && !isMobileLayout();
+const ratioGap = (a, b) => 1 - Math.min(a, b) / Math.max(a, b);
+const isLandscapeArt = () => document.body.classList.contains('art-landscape');
+
+function setConvArtMode(conv, mode) {
+  if (mode === 'landscape') conv.artMode = 'landscape';
+  else delete conv.artMode;
+}
+
+// 图片的原始尺寸 { w, h }；不是能显示的图片时为 null
+function imageSize(blob) {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    const done = (size) => { URL.revokeObjectURL(url); resolve(size); };
+    img.onload = () => done(img.naturalWidth && img.naturalHeight ? { w: img.naturalWidth, h: img.naturalHeight } : null);
+    img.onerror = () => done(null);
+    img.src = url;
+  });
+}
+
+// 只有一个按钮的提示（等用户关掉再继续）
+const notice = (message) => choose(t('art.modeTitle'), message, [{ label: t('btn.ok'), value: true, primary: true }]);
+async function askAdjust(message) {
+  return (await choose(t('art.modeTitle'), message, [
+    { label: t('art.noAdjust'), value: false, ghost: true },
+    { label: t('art.adjust'), value: true, primary: true },
+  ])) === true;
+}
+
+// 上传后选择展示方式，并检查比例。返回 { mode, fit }，取消时为 null。
+// 选了某种方式但这张图不合适（用户放弃）时回到选择
+async function chooseArtMode(size) {
+  const wide = size.w / size.h >= ART_LANDSCAPE_MIN;
+  for (;;) {
+    const mode = await choose(t('art.modeTitle'), t('art.modeAsk', { w: size.w, h: size.h, key: state.settings.panelKey }), [
+      { label: t('btn.cancel'), value: null, ghost: true },
+      { label: t('art.modePortrait'), value: 'portrait', primary: !wide },
+      { label: t('art.modeLandscape'), value: 'landscape', primary: wide },
+    ]);
+    if (!mode) return null;
+    const fit = await artModeFit(mode, size);
+    if (fit) return { mode, fit };
+  }
+}
+
+// 检查比例：返回要做的调整 { artWidth } / { window: { w, h } } / {}（不用调整），不合适时为 null
+const artModeFit = (mode, size) => (mode === 'landscape' ? landscapeFit(size) : portraitFit(size));
+
+// 竖屏时左栏的宽度（现在是横屏时，算的是换成竖屏后的宽度）：和 CSS 的 --art-w 一样
+function portraitPaneWidth() {
+  const s = state.settings;
+  if (s.artWidth) return clamp(s.artWidth, artBounds());
+  return Math.min(Math.max(220, window.innerHeight * 2 / 3), window.innerWidth * 0.28);
+}
+
+async function portraitFit(size) {
+  const a = size.w / size.h;
+  if (a > ART_PORTRAIT_WIDE) {
+    const go = await choose(t('art.modeTitle'), t('art.portraitWide'), [
+      { label: t('art.chooseAgain'), value: false, ghost: true },
+      { label: t('art.useAnyway'), value: true, primary: true },
+    ]);
+    if (go !== true) return null;
+  }
+  // 左栏宽度改成「窗口高度 × 图片宽高比」，图片正好放满左栏（在左栏能拖到的范围内才调）
+  const h = window.innerHeight;
+  const target = Math.round(h * a);
+  const b = artBounds();
+  if (ratioGap(portraitPaneWidth() / h, a) > ART_FIT_OK && target >= b.min && target <= b.max
+    && (await askAdjust(t('art.fitPaneAsk')))) return { artWidth: target };
+  return {};
+}
+
+async function landscapeFit(size) {
+  const a = size.w / size.h;
+  if (a < ART_LANDSCAPE_MIN) {
+    await notice(t('art.landscapeNarrow'));
+    return null;
+  }
+  const gap = ratioGap(window.innerWidth / window.innerHeight, a);
+  if (gap <= ART_FIT_OK) return {};
+  const win = windowFitFor(a);
+  if (win) return (await askAdjust(t('art.fitWindowAsk', { w: win.w, h: win.h }))) ? { window: win } : {};
+  if (gap <= ART_CROP_MAX) return {}; // 差得不多：铺满窗口，裁掉一点
+  await notice(t(window.proteusDesktop ? 'art.landscapeUnsupported' : 'art.landscapeUnsupportedWeb'));
+  return null;
+}
+
+// 桌面版：让窗口内容区正好是图片比例的尺寸。保持高度改宽度、保持宽度改高度两种里选改动小的；
+// 要放得进屏幕、不小于窗口的最小尺寸，改动不超过 ART_RESIZE_MAX。没有合适的（或不是桌面版）时为 null
+function windowFitFor(a) {
+  const desk = window.proteusDesktop;
+  if (!desk || !desk.fitWindow) return null;
+  const W = window.innerWidth;
+  const H = window.innerHeight;
+  const fw = Math.max(0, window.outerWidth - W);  // 边框、标题栏
+  const fh = Math.max(0, window.outerHeight - H);
+  const maxW = window.screen.availWidth - fw;
+  const maxH = window.screen.availHeight - fh;
+  const minW = 1000 - fw; // 窗口最小 1000 × 600（electron/main.js）
+  const minH = 600 - fh;
+  return [{ w: Math.round(H * a), h: H }, { w: W, h: Math.round(W / a) }]
+    .filter((c) => c.w >= minW && c.w <= maxW && c.h >= minH && c.h <= maxH)
+    .map((c) => ({ ...c, change: Math.max(Math.abs(c.w - W) / W, Math.abs(c.h - H) / H) }))
+    .filter((c) => c.change <= ART_RESIZE_MAX)
+    .sort((x, y) => x.change - y.change)[0] || null;
+}
+
+async function applyArtFit(fit) {
+  if (fit.artWidth) {
+    state.settings.artWidth = fit.artWidth;
+    applyLayout();
+    saveSettingsSoon();
+  }
+  if (fit.window && !(await window.proteusDesktop.fitWindow(fit.window.w, fit.window.h))) toast(t('art.fitWindowFailed'));
+}
+
+// 按当前对话的艺术图切换布局（横屏：body.art-landscape），并更新右侧艺术图里的展示方式、快捷键
+function applyArtMode() {
+  const on = !!state.artUrl && state.conv.artMode === 'landscape';
+  const was = isLandscapeArt();
+  document.body.classList.toggle('art-landscape', on);
+  if (on !== was) setPanelShown(false); // 刚换成横屏：右侧设置区先收起
+  fitArt();
+  renderArtModeFields();
+}
+
+// 横屏：比例和窗口差得不多时铺满窗口（裁掉一点），否则完整显示（留黑边）。窗口大小变化时重新判断
+function fitArt() {
+  const img = els.artImage;
+  const a = img.naturalWidth / img.naturalHeight;
+  img.classList.toggle('cover', isLandscapeArt() && a > 0 && ratioGap(window.innerWidth / window.innerHeight, a) <= ART_CROP_MAX);
+}
+
+function renderArtModeFields() {
+  const conv = state.conv;
+  const has = !!state.artUrl && !NATIVE;
+  els.artModeRow.hidden = !has;
+  els.artMode.value = conv.artMode === 'landscape' ? 'landscape' : 'portrait';
+  els.artMode.disabled = !!conv.lock;
+  els.artKeyRow.hidden = !has || conv.artMode !== 'landscape';
+  if (!panelKeyRecording) {
+    els.panelKeyLabel.textContent = state.settings.panelKey;
+    els.btnPanelKey.textContent = t('art.keyChange');
+  }
+}
+
+// 右侧艺术图里换展示方式：和上传时一样检查比例，不合适或用户放弃时改回去
+async function changeArtMode() {
+  const conv = state.conv;
+  const mode = els.artMode.value;
+  if (conv.lock) return renderArtModeFields();
+  const blob = await artBlobOf(conv);
+  const size = blob && (await imageSize(blob));
+  const fit = size && (await artModeFit(mode, size));
+  if (!fit || conv !== state.conv) return renderArtModeFields();
+  setConvArtMode(conv, mode);
+  await saveConv(conv);
+  await applyArtFit(fit);
+  applyArtMode();
+}
+
+// ---- 横屏时收起 / 显示右侧设置区的快捷键 ----
+
+function setPanelShown(on) {
+  document.body.classList.toggle('panel-shown', on);
+  // 收起时光标还在设置区里：放回输入框，免得按键打到看不见的地方
+  if (!on && els.settingsPane.contains(document.activeElement)) els.input.focus();
+}
+
+// 按键的名称：Ctrl+Shift+K、F2 这样；只按了修饰键时为 null
+function keyName(e) {
+  if (['Control', 'Shift', 'Alt', 'Meta', 'AltGraph', 'Dead', 'Process', 'Unidentified'].includes(e.key)) return null;
+  let k = /^Key[A-Z]$/.test(e.code) ? e.code.slice(3) : /^Digit\d$/.test(e.code) ? e.code.slice(5) : e.key;
+  if (k === ' ') k = 'Space';
+  else if (k.length === 1) k = k.toUpperCase();
+  return [e.ctrlKey && 'Ctrl', e.altKey && 'Alt', e.shiftKey && 'Shift', e.metaKey && 'Meta', k].filter(Boolean).join('+');
+}
+
+// 能用的快捷键：F1–F12（单独或加修饰键），或者 Ctrl / Alt / Meta 加一个键。
+// 不能用：F5、F11、F12（刷新、全屏、开发者工具）、常用的编辑和窗口快捷键、单独的字母等（打字时会误触）
+const RESERVED_KEYS = new Set(['F5', 'F11', 'F12', 'Ctrl+A', 'Ctrl+C', 'Ctrl+V', 'Ctrl+X', 'Ctrl+Z', 'Ctrl+Y', 'Ctrl+Shift+Z',
+  'Ctrl+R', 'Ctrl+Shift+R', 'Ctrl+W', 'Ctrl+Shift+I', 'Ctrl+Q', 'Alt+F4', 'Ctrl+F4',
+  'Meta+A', 'Meta+C', 'Meta+V', 'Meta+X', 'Meta+Z', 'Meta+Shift+Z', 'Meta+R', 'Meta+W', 'Meta+Q', 'Meta+H', 'Meta+M']);
+function validPanelKey(name) {
+  if (!name || RESERVED_KEYS.has(name)) return false;
+  const parts = name.split('+');
+  const key = parts.pop();
+  if (/^F([1-9]|1[0-2])$/.test(key)) return true;
+  if (['Tab', 'Escape', 'Enter', 'Backspace', 'Delete'].includes(key)) return false;
+  return parts.includes('Ctrl') || parts.includes('Alt') || parts.includes('Meta');
+}
+
+// 点「更改」后按下的下一个键就是新的快捷键；Esc 或点别处取消
+let panelKeyRecording = null;
+function recordPanelKey() {
+  if (panelKeyRecording) return panelKeyRecording();
+  const onKey = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.key === 'Escape' && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey) return done();
+    const name = keyName(e);
+    if (!name) return;
+    if (!validPanelKey(name)) return toast(t('art.keyInvalid', { key: name }));
+    state.settings.panelKey = name;
+    saveSettingsSoon();
+    done();
+    toast(t('art.keySet', { key: name }));
+  };
+  const done = () => {
+    document.removeEventListener('keydown', onKey, true);
+    els.btnPanelKey.removeEventListener('blur', done);
+    els.btnPanelKey.classList.remove('recording');
+    panelKeyRecording = null;
+    renderArtModeFields();
+  };
+  panelKeyRecording = done;
+  els.btnPanelKey.textContent = t('art.keyPress');
+  els.btnPanelKey.classList.add('recording');
+  document.addEventListener('keydown', onKey, true);
+  els.btnPanelKey.addEventListener('blur', done);
+}
+
+function bindArtMode() {
+  els.artMode.addEventListener('change', () => void changeArtMode());
+  els.btnPanelKey.addEventListener('click', recordPanelKey);
+  els.artImage.addEventListener('load', fitArt);
+  window.addEventListener('resize', fitArt);
+  // 只在软件（页面）有焦点时收到按键。弹窗打开时不响应
+  document.addEventListener('keydown', (e) => {
+    if (e.repeat || !isLandscapeArt() || isMobileLayout()) return;
+    if (keyName(e) !== state.settings.panelKey) return;
+    if (document.querySelector('.modal:not([hidden])')) return;
+    e.preventDefault();
+    setPanelShown(!document.body.classList.contains('panel-shown'));
+  });
 }
 
 async function downloadArt() {
@@ -1889,6 +2337,7 @@ async function exportWorldCard() {
     Object.assign(data, lockedFields(conv));
     data.art = await artForExport(conv.id, false);
   }
+  if (data.art && conv.artMode) data.artMode = conv.artMode; // 艺术图的展示方式（不是受保护的内容，不加密）
   download(`${safeFilename(data.name)}-${t('export.cardSuffix')}.json`, JSON.stringify(data, null, 2), 'application/json');
 }
 
@@ -2216,7 +2665,10 @@ async function mergeCard(conv, x) {
     conv.greetings = conv.greetings.concat(x.greetings);
     syncGreeting(conv);
   }
-  if (art) await DB.set(artKey(conv.id), x.art);
+  if (art) {
+    await DB.set(artKey(conv.id), x.art);
+    setConvArtMode(conv, 'portrait');
+  }
   await refreshAfterMerge(conv);
   toast(t('restore.stCardMergeDone'));
   showCreatorNotes(x, conv);
@@ -2314,6 +2766,7 @@ async function restore(file) {
     c.greetingSend = fields.greetingSend !== false;
     normalizeGreetings(c);
     if (data.tavern) { c.tavern = data.tavern; normalizeTavern(c); }
+    if (data.artMode === 'landscape' && validArt(data.art)) c.artMode = 'landscape';
     c.title = name;
     state.conversations.push(c);
     await DB.putConversation(storable(c));
@@ -2545,6 +2998,7 @@ function fillConvFields() {
   els.persona.value = c.persona;
   els.userName.value = c.userName;
   els.postHistory.value = locked ? '' : c.postHistory;
+  renderMemo();
   // 助理模式：世界观、用户人设、{{user}} 的值和重点指令空白、不能编辑（不是受保护，是这个模式不用）；艺术图照常可用
   els.worldText.disabled = assistant;
   els.npcText.disabled = assistant;
@@ -2790,7 +3244,7 @@ function fillRelayModels() {
   if (!list) add('', t('relay.modelNotFetched'));
   else {
     add('', t(list.length ? 'relay.modelNone' : 'relay.modelEmpty'));
-    for (const m of list) add(m, m);
+    for (const m of sortModels(list)) add(m, m);
   }
   els.relayModel.disabled = !list || !list.length;
 }
@@ -2885,9 +3339,10 @@ function bindRelayDialog() {
 
 const modelMenu = { items: [], active: -1 };
 
-// 可选的模型：只有点“获取列表”从接口拿到的。没有预设的列表：预设的名字不一定能用，容易误解成都可以用
+// 可选的模型：只有点“获取列表”从接口拿到的。没有预设的列表：预设的名字不一定能用，容易误解成都可以用。
+// 显示时再排一次序：以前获取、按旧规则排的列表也按现在的顺序显示
 function modelOptions() {
-  return state.settings.modelLists[state.settings.provider] || [];
+  return sortModels(state.settings.modelLists[state.settings.provider] || []);
 }
 
 // filter 为空时显示全部；否则只显示包含这段文字的
@@ -3095,7 +3550,8 @@ function placeExpand(el = els.expandBox) {
 }
 
 function openExpand(source, titleKey) {
-  if (source.disabled || state.conv.lock) return;
+  // 锁定的对话里受保护的设定（unlockable）不能放大编辑；剧情备忘、用户人设等不受保护的照常可以
+  if (source.disabled || source.readOnly || (state.conv.lock && source.classList.contains('unlockable'))) return;
   expandSource = source;
   els.expandTitle.textContent = t(titleKey);
   els.expandText.value = source.value;
@@ -3199,6 +3655,15 @@ function bindSettings() {
   onConv(els.npcText, (el) => { if (!c().lock && !isAssistant(c())) { c().npcText = el.value; updateWorldCount(); } });
   onConv(els.persona, (el) => { if (!isAssistant(c())) c().persona = el.value; });
   onConv(els.postHistory, (el) => { if (!c().lock && !isAssistant(c())) c().postHistory = el.value; });
+  // 剧情备忘：不受锁定保护（属于剧情），更新期间（只读）不会触发
+  onConv(els.memo, (el) => { if (!isAssistant(c()) && !el.readOnly) { c().memo = el.value; renderMemoStatus(); } });
+  els.memoSend.addEventListener('change', () => { c().memoSend = els.memoSend.checked; saveConvSoon(); updateEstimate(); });
+  els.memoEvery.addEventListener('change', () => {
+    c().memoEvery = clampInt(els.memoEvery.value, 0, MEMO_EVERY_MAX);
+    els.memoEvery.value = c().memoEvery;
+    saveConvSoon();
+  });
+  els.btnUpdateMemo.addEventListener('click', () => void updateMemo());
   // {{user}} 和 {{char}} 的值改了：聊天区里显示的内容跟着变（稍等一下再重画，开场白的窗口重画时会重新载入）
   let macroTimer = null;
   const redrawSoon = () => {
@@ -3363,8 +3828,8 @@ function bindSettings() {
 
 
   const pickArt = () => { if (!state.conv.lock) els.fileArt.click(); };
-  // 手机布局里艺术图是背景，点它不打开上传
-  els.artPane.addEventListener('click', () => { if (!isMobileLayout()) pickArt(); });
+  // 手机布局里、横屏展示时艺术图是背景，点它不打开上传
+  els.artPane.addEventListener('click', () => { if (!isMobileLayout() && !isLandscapeArt()) pickArt(); });
   els.artPane.addEventListener('contextmenu', (e) => { if (state.conv.lock) e.preventDefault(); });
   els.btnUploadArt.addEventListener('click', pickArt);
   els.btnDownloadArt.addEventListener('click', downloadArt);
@@ -3374,11 +3839,8 @@ function bindSettings() {
     els.fileArt.value = '';
     if (f) await setArt(f);
   });
-  els.btnRemoveArt.addEventListener('click', async () => {
-    if (state.conv.lock) return;
-    await DB.del(artKey(state.conv.id));
-    await loadArt();
-  });
+  els.btnRemoveArt.addEventListener('click', () => void removeArt());
+  bindArtMode();
 
   // 公用设备：不记住 API Key；清除软件数据
   els.rememberKeys.addEventListener('change', async () => {
@@ -3412,6 +3874,7 @@ function bindSettings() {
   els.btnExpandSystem.addEventListener('click', () => openExpand(els.systemPrompt, 'set.systemPrompt'));
   els.btnExpandWorld.addEventListener('click', () => openExpand(els.worldText, 'set.world'));
   els.btnExpandNpc.addEventListener('click', () => openExpand(els.npcText, 'set.npc'));
+  els.btnExpandMemo.addEventListener('click', () => openExpand(els.memo, 'memo.title'));
   window.addEventListener('resize', () => {
     if (expandSource) placeExpand();
     if (!els.previewBox.hidden) placeExpand(els.previewBox);

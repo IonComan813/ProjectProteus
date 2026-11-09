@@ -11,6 +11,7 @@
   --user-bg: #2a2d36;
   --ai-bg: transparent;
   --danger: #d9776c;
+  --ok: #7fbf8a;
   --radius: 8px;
   --font: "Noto Serif SC", "Noto Serif TC", "Noto Serif JP", "Source Han Serif SC", "Songti SC", "Hiragino Mincho ProN", "Yu Mincho", Georgia, serif;
   --ui-font: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", "Hiragino Sans", "Yu Gothic UI", sans-serif;
@@ -481,6 +482,25 @@ body.resizing iframe { pointer-events: none; }
 }
 .lock-tag { font-size: 12px; color: var(--muted); padding: 3px 0; }
 .art-pane.locked { cursor: default; }
+.memo-option { margin-top: 8px; }
+.memo-option input[type=number] { width: 56px; }
+.hint.memo-note { margin: 8px 0 0; }
+#memo[readonly] { opacity: .85; }
+.art-mode-row { margin-top: 8px; gap: 8px; }
+.art-mode-row select { flex: 1; min-width: 0; }
+.art-key-row { margin-top: 8px; align-items: center; }
+.art-key-text { flex: 1; min-width: 0; font-size: 12px; color: var(--muted); }
+.art-key-text kbd {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+}
+#btnPanelKey.recording { border-color: var(--accent); color: var(--accent); }
 .art-pane.locked img { user-select: none; -webkit-user-drag: none; pointer-events: none; }
 .remember-keys { margin-top: -2px; }
 /* 内置服务商的接口地址：只显示，不能改 */
@@ -490,6 +510,7 @@ body.resizing iframe { pointer-events: none; }
 /* GitHub 同步 */
 .sync-account { margin: 0 0 6px; }
 .sync-account a { color: var(--accent); overflow-wrap: anywhere; }
+.sync-public-warning { color: var(--danger); margin: 0 0 8px; }
 .sync-group { font-size: 12px; color: var(--muted); margin-top: 10px; }
 .sync-check { margin-top: 8px; align-items: flex-start; }
 .sync-check input { margin-top: 2px; flex: none; }
@@ -514,8 +535,6 @@ body.resizing iframe { pointer-events: none; }
 .sync-repo-item { display: flex; width: 100%; align-items: center; gap: 8px; padding: 6px 8px; border: 0; border-radius: 4px; background: none; color: var(--text); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
 .sync-repo-item:hover, .sync-repo-item:focus-visible { background: rgba(201, 169, 110, .18); outline: none; }
 .sync-repo-name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.sync-repo-tag { flex: none; font-size: 11px; color: var(--muted); border: 1px solid var(--border); border-radius: 3px; padding: 0 5px; }
-.sync-repo-tag.public { color: var(--danger); border-color: var(--danger); }
 .sync-section > input { width: 100%; }
 .sync-cmd { margin: 4px 0 10px; padding: 8px 10px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 4px; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; word-break: break-all; user-select: all; }
 .pw-fields.relay-fields { padding-top: 12px; }
@@ -591,6 +610,15 @@ body.resizing iframe { pointer-events: none; }
 .hint.post-history-hint { margin: 8px 0 0; }
 .user-name { width: 100%; margin-bottom: 6px; }
 .settings-pane select#langSelect { width: 100%; }
+.info-bar {
+  max-width: 900px;
+  margin: 0 auto 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--ok);
+  color: var(--ok);
+  border-radius: var(--radius);
+  font-size: 13px;
+}
 .error-bar {
   max-width: 900px;
   margin: 0 auto 8px;
@@ -833,6 +861,61 @@ textarea:focus, input:focus, select:focus { outline: 1px solid var(--accent); bo
 
 @media (min-width: 1000px) {
   .mobile-only { display: none !important; }
+
+  /* 横屏艺术图：铺满整个窗口作背景（不拉伸：比例差得不多时铺满、裁掉一点，加 .cover；否则完整显示、留黑边），
+     聊天区居中、半透明；右侧设置区默认收起，按快捷键（默认 F2）浮在右边显示 */
+  body.art-landscape .app { grid-template-columns: minmax(0, 1fr); }
+  body.art-landscape .art-pane {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    border: none;
+    cursor: default;
+  }
+  body.art-landscape .art-pane img {
+    top: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    transform: none;
+  }
+  body.art-landscape .art-pane img.cover { object-fit: cover; }
+  body.art-landscape .col-resizer { display: none; }
+  body.art-landscape .chat-pane {
+    z-index: 1;
+    justify-self: center;
+    width: clamp(560px, 50vw, 960px);
+    height: 100vh;
+    background: rgba(21, 22, 26, .80);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    border-left: 1px solid rgba(255, 255, 255, .06);
+    border-right: 1px solid rgba(255, 255, 255, .06);
+  }
+  body.art-landscape .chat-header { position: relative; z-index: 10; background: rgba(28, 29, 34, .82); }
+  body.art-landscape .composer { background: rgba(28, 29, 34, .86); }
+  body.art-landscape .settings-pane {
+    display: none;
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 340px;
+    z-index: 20;
+    box-shadow: -8px 0 24px rgba(0, 0, 0, .45);
+  }
+  body.art-landscape.panel-shown .settings-pane { display: block; }
+  /* 设置区也半透明（和聊天区一样），卡片和输入框略深一些，文字仍然看得清 */
+  body.art-landscape .settings-pane {
+    background: rgba(28, 29, 34, .78);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    border-left: 1px solid rgba(255, 255, 255, .06);
+  }
+  body.art-landscape .settings-pane .card { background: rgba(36, 38, 44, .72); }
+  body.art-landscape .settings-pane :is(input[type=text], input[type=password], input[type=number], textarea, select) {
+    background: rgba(18, 19, 23, .82);
+  }
 }
 
 @media (max-width: 999px) {

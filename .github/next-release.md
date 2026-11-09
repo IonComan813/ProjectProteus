@@ -4,17 +4,29 @@
 只改了后台逻辑的，建议也写一条简短的说明，例如「优化了一些后台逻辑」（已经有这样一条时不用重复加）。
 发布新版本后的第一个 PR：清空下面的条目，把基准版本改成刚发布的版本。格式见 scripts/release-notes.js 开头的说明。
 -->
-基准版本: v0.5.4
+基准版本: v0.5.5
 
-- zh-CN: 服务商列表新增 Google Vertex AI（导入服务账号 JSON 使用，Gemini 和 Claude 模型都能用）、OpenRouter（可以设思考深度和上游选择）、OpenCode 和 Command Code（Claude 模型自动切换接口）
-  zh-TW: 服務商清單新增 Google Vertex AI（匯入服務帳戶 JSON 使用，Gemini 和 Claude 模型都能用）、OpenRouter（可以設思考深度和上游選擇）、OpenCode 和 Command Code（Claude 模型自動切換介面）
-  en: New built-in providers: Google Vertex AI (import a service account JSON; works with Gemini and Claude models), OpenRouter (with thinking depth and upstream choice), OpenCode, and Command Code (switches API automatically for Claude models)
-  ja: 内蔵サービスに Google Vertex AI（サービスアカウント JSON を読み込んで使用、Gemini と Claude の両モデルに対応）、OpenRouter（思考の深さと上流の選び方を設定可能）、OpenCode、Command Code（Claude モデルでは API を自動切り替え）を追加しました
-- zh-CN: 内置服务商的接口地址改为固定、不能修改，以前给官方服务商改过的地址自动转成一个自己添加的服务商
-  zh-TW: 內建服務商的介面位址改為固定、不能修改，以前給官方服務商改過的位址自動轉成一個自己新增的服務商
-  en: Built-in providers now have fixed API addresses; an address you had changed on an official provider becomes a provider of your own automatically
-  ja: 内蔵サービスの API アドレスは固定になり変更できなくなりました。公式サービスで変更していたアドレスは自動的に自分で追加したサービスになります
-- zh-CN: 获取模型列表时，标准位置取不到会换几个常见的位置再试
-  zh-TW: 取得模型清單時，標準位置取不到會換幾個常見的位置再試
-  en: Getting the model list now tries a few other common locations when the standard one has none
-  ja: モデル一覧の取得で、標準の場所にない場合はよくある別の場所も試すようになりました
+- zh-CN: 电脑上的艺术图可以横屏展示：铺满整个窗口作背景，聊天区居中、半透明，右侧设置区默认收起，按 F2（可以更改）收起或显示；上传时选择竖屏或横屏，比例和窗口相差不多时可以自动调整窗口大小，图片不会被拉伸
+  zh-TW: 電腦上的藝術圖可以橫式展示：鋪滿整個視窗作背景，聊天區置中、半透明，右側設定區預設收起，按 F2（可以更改）收起或顯示；上傳時選擇直式或橫式，比例和視窗相差不多時可以自動調整視窗大小，圖片不會被拉伸
+  en: On computers, artwork can be shown in landscape: it fills the whole window as the background with the chat centered and semi-transparent, and the settings panel starts hidden (press F2, which you can change, to show or hide it). Choose portrait or landscape when uploading; when the proportions are close, the window can be resized to fit, and images are never stretched
+  ja: パソコンではアートを横表示にできるようになりました。ウィンドウ全体に背景として表示し、チャットは中央に半透明で表示、右の設定欄は最初は隠れていて F2（変更可能）で表示・非表示を切り替えます。アップロード時に縦表示か横表示を選び、比率が近い場合はウィンドウのサイズを自動調整できます。画像が引き伸ばされることはありません
+- zh-CN: 获取到的模型列表按名称排序，同一系列里旧的、小的模型在前，数字按大小比较
+  zh-TW: 取得的模型清單按名稱排序，同一系列裡舊的、小的模型在前，數字按大小比較
+  en: Fetched model lists are sorted by name, with older and smaller models first within a series and numbers compared by value
+  ja: 取得したモデル一覧を名前順に並べ、同じシリーズでは古いモデル・小さいモデルが先に来るようにし、数字は大きさで比べるようにしました
+- zh-CN: GitHub 同步只能选择自己账号下的私有仓库；以前选的仓库是公开的时会提示
+  zh-TW: GitHub 同步只能選擇自己帳號下的私人儲存庫；以前選的儲存庫是公開的時會提示
+  en: GitHub sync now only offers private repositories on your own account, and warns if the repository chosen earlier is public
+  ja: GitHub 同期では自分のアカウントの非公開リポジトリだけを選べるようになり、以前選んだリポジトリが公開されている場合は注意が表示されます
+- zh-CN: 「记住 API Key」的说明里提醒：Vertex 的服务账号文件如果不主动删除会继续保存在本机
+  zh-TW: 「記住 API Key」的說明裡提醒：Vertex 的服務帳戶檔案如果不主動刪除會繼續保存在本機
+  en: The "Remember API keys" note now points out that the Vertex service account file stays on the device unless you delete it
+  ja: 「API キーを記憶」の説明に、Vertex のサービスアカウントファイルは自分で削除しない限り端末に残ることを追記しました
+- zh-CN: 新增「剧情备忘」：让模型把剧情进展写成备忘，每次请求都带上，帮模型记住超出记忆长度的前文；可以手动更新、每 N 轮自动更新，也可以手动编辑
+  zh-TW: 新增「劇情備忘」：讓模型把劇情進展寫成備忘，每次請求都帶上，幫模型記住超出記憶長度的前文；可以手動更新、每 N 輪自動更新，也可以手動編輯
+  en: New "Story memo": the model writes the story's progress into a memo that is sent with every request, helping it remember what is beyond the memory length; update it by hand or automatically every N rounds, or edit it yourself
+  ja: 「ストーリーメモ」を追加しました。物語の進行をモデルがメモにまとめ、毎回のリクエストに含めることで、記憶の長さを超えた前の内容を覚えておけるようにします。手動または N ラウンドごとに自動で更新でき、自分で編集することもできます
+- zh-CN: 优化了一些后台逻辑
+  zh-TW: 優化了一些後台邏輯
+  en: Improved some background logic
+  ja: バックグラウンドの処理を改善しました
