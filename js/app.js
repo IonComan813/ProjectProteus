@@ -37,8 +37,9 @@ const DEFAULT_SETTINGS = {
   openrouterNoData: false, // OpenRouter：不用会保存请求数据的上游（provider.data_collection = deny）
   activeConvId: null,
   // GitHub 同步（js/sync.js）：login 是登录的账号名，repo 是同步用的仓库 { owner, name, branch }，
-  // marker 是仓库里标记文件的副本（加密设置），artDefault 是全局的「同步艺术图」。登录凭据不在这里（DB 的 githubToken）
-  sync: { login: null, repo: null, marker: null, artDefault: true },
+  // marker 是仓库里标记文件的副本（加密设置），artDefault 是全局的「同步艺术图」，repoPublic 是仓库是否公开（只用来提示）。
+  // 登录凭据不在这里（DB 的 githubToken）
+  sync: { login: null, repo: null, marker: null, artDefault: true, repoPublic: false },
 };
 
 const state = {

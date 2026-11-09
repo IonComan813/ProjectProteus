@@ -570,6 +570,7 @@ async function syncSignedOut() {
   s.login = null;
   s.repo = null;
   s.marker = null;
+  s.repoPublic = false;
   saveSettingsSoon();
   renderSyncCard();
 }
@@ -590,6 +591,8 @@ async function syncRepoStep(flow, fresh) {
     syncSetButtons([]);
     try {
       const info = await gh('GET', `/repos/${encodeURIComponent(login)}/${SYNC_DEFAULT_REPO}`);
+      // 公开的同名仓库不用：任何人都能看到里面的设定和聊天记录，请用户先在 GitHub 上改为私有
+      if (!info.private) return syncChooseRepo(flow, t('sync.defaultRepoPublic', { name: info.full_name }));
       return syncUseRepo(flow, info);
     } catch (e) {
       if (e.status !== 404) return syncShowDone(flow, e.message, true);
@@ -604,7 +607,7 @@ function syncChooseRepo(flow, intro) {
   const field = (label, input) => { const l = el('label', 'field'); l.append(el('span', '', label), input); return l; };
   const input = (value, ph) => { const i = el('input'); i.type = 'text'; i.spellcheck = false; i.autocomplete = 'off'; i.value = value; if (ph) i.placeholder = ph; return i; };
 
-  // 已有的仓库：列出账号能写入的仓库（最近更新的在前），点一个就用它；仓库多时可以输入文字筛选
+  // 已有的仓库：列出账号自己的私有仓库（最近更新的在前），点一个就用它；仓库多时可以输入文字筛选
   const filter = input('', t('sync.repoFilter'));
   const list = el('div', 'sync-repo-list');
   list.append(el('div', 'sync-list-item', t('sync.loadingRepos')));
@@ -620,8 +623,7 @@ function syncChooseRepo(flow, intro) {
     for (const info of items) {
       const b = el('button', 'sync-repo-item');
       b.type = 'button';
-      b.append(el('span', 'sync-repo-name', info.full_name),
-        el('span', 'sync-repo-tag' + (info.private ? '' : ' public'), t(info.private ? 'sync.private' : 'sync.public')));
+      b.append(el('span', 'sync-repo-name', info.full_name));
       if (info.updated_at) b.title = new Date(info.updated_at).toLocaleString();
       b.addEventListener('click', () => {
         err.textContent = t('sync.checking');
@@ -647,13 +649,14 @@ function syncChooseRepo(flow, intro) {
   syncSetButtons([{ label: t('sync.later'), ghost: true, onClick: syncDialogClose }]);
 }
 
-// 账号自己的仓库（不列作为协作者、所在组织的：一般不会拿别人的仓库存自己的设定和聊天记录），最近更新的在前。最多读 10 页（1000 个）
+// 账号自己的私有仓库，最近更新的在前。不列公开仓库（任何人都能看到里面的内容），也不列作为协作者、所在组织的
+// （一般不会拿别人的仓库存自己的设定和聊天记录）和已归档的（不能写入）。最多读 10 页（1000 个）
 async function syncListRepos() {
   const out = [];
   for (let page = 1; page <= 10; page++) {
-    const batch = await gh('GET', `/user/repos?per_page=100&page=${page}&sort=updated&affiliation=owner`);
+    const batch = await gh('GET', `/user/repos?per_page=100&page=${page}&sort=updated&affiliation=owner&visibility=private`);
     if (!Array.isArray(batch)) break;
-    out.push(...batch.filter((r) => r && r.permissions && r.permissions.push));
+    out.push(...batch.filter((r) => r && r.private && !r.archived && r.permissions && r.permissions.push));
     if (batch.length < 100) break;
   }
   return out;
@@ -683,9 +686,10 @@ async function syncUseRepo(flow, info, err, created = false) {
   const s = state.settings.sync;
   s.repo = r;
   s.marker = insp.marker;
+  s.repoPublic = !info.private;
   saveSettingsSoon();
   renderSyncCard();
-  const head = [syncMessage(t(created ? 'sync.repoCreated' : 'sync.repoSelected', { name: repoLabel(r) }) + (info.private ? '' : '\n' + t('sync.publicWarning')), !info.private)];
+  const head = [syncMessage(t(created ? 'sync.repoCreated' : 'sync.repoSelected', { name: repoLabel(r) }))];
   if (!insp.ids.length) {
     const go = await syncAsk(flow, [...head, syncMessage(t('sync.askFullBackup'))], [
       { label: t('sync.later'), value: false, ghost: true },
@@ -781,6 +785,7 @@ async function syncPrepare(flow, needMarker, confirm) {
   if (!r) throw new SyncError(t('sync.noRepo'));
   const insp = await inspectRepo(r);
   if (insp.foreign) throw new SyncError(t('sync.foreignRepo', { name: repoLabel(r) }));
+  await checkRepoPublic(r);
   if (confirm && !(await confirm(insp))) return null;
   let marker = insp.marker;
   let newMarker = false;
@@ -799,6 +804,18 @@ async function syncPrepare(flow, needMarker, confirm) {
     newMarker = false;
   }
   return { r, insp, marker, newMarker };
+}
+
+// 以前选的仓库可能是公开的（那时还能选公开仓库），或者后来在 GitHub 上改成了公开：照常同步，只在同步卡片上提示。
+// 查不到时不影响同步
+async function checkRepoPublic(r) {
+  let info;
+  try { info = await gh('GET', repoApi(r)); } catch (_) { return; }
+  const pub = !!info && info.private === false;
+  if (state.settings.sync.repoPublic === pub) return;
+  state.settings.sync.repoPublic = pub;
+  saveSettingsSoon();
+  renderSyncCard();
 }
 
 // 确认这次操作：显示说明和「取消」「操作名」。确认后窗口回到「正在处理…」
@@ -1054,6 +1071,7 @@ function renderSyncCard() {
     els.syncAccount.textContent = t('sync.account', { login: s.login });
     els.syncRepoLink.hidden = !s.repo;
     if (s.repo) { els.syncRepoLink.textContent = repoLabel(s.repo); els.syncRepoLink.href = repoUrl(s.repo); }
+    els.syncPublicWarning.hidden = !s.repo || !s.repoPublic;
     els.syncNoRepo.hidden = !!s.repo;
     els.btnSyncChangeRepo.hidden = !s.repo;
     els.syncOps.hidden = !s.repo;
