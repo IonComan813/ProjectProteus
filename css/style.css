@@ -891,6 +891,17 @@ textarea:focus, input:focus, select:focus { outline: 1px solid var(--accent); bo
     box-shadow: -8px 0 24px rgba(0, 0, 0, .45);
   }
   body.art-landscape.panel-shown .settings-pane { display: block; }
+  /* 设置区也半透明（和聊天区一样），卡片和输入框略深一些，文字仍然看得清 */
+  body.art-landscape .settings-pane {
+    background: rgba(28, 29, 34, .78);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    border-left: 1px solid rgba(255, 255, 255, .06);
+  }
+  body.art-landscape .settings-pane .card { background: rgba(36, 38, 44, .72); }
+  body.art-landscape .settings-pane :is(input[type=text], input[type=password], input[type=number], textarea, select) {
+    background: rgba(18, 19, 23, .82);
+  }
 }
 
 @media (max-width: 999px) {
