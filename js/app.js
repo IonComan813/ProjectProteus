@@ -2791,7 +2791,7 @@ function fillRelayModels() {
   if (!list) add('', t('relay.modelNotFetched'));
   else {
     add('', t(list.length ? 'relay.modelNone' : 'relay.modelEmpty'));
-    for (const m of list) add(m, m);
+    for (const m of sortModels(list)) add(m, m);
   }
   els.relayModel.disabled = !list || !list.length;
 }
@@ -2886,9 +2886,10 @@ function bindRelayDialog() {
 
 const modelMenu = { items: [], active: -1 };
 
-// 可选的模型：只有点“获取列表”从接口拿到的。没有预设的列表：预设的名字不一定能用，容易误解成都可以用
+// 可选的模型：只有点“获取列表”从接口拿到的。没有预设的列表：预设的名字不一定能用，容易误解成都可以用。
+// 显示时再排一次序：以前获取、按旧规则排的列表也按现在的顺序显示
 function modelOptions() {
-  return state.settings.modelLists[state.settings.provider] || [];
+  return sortModels(state.settings.modelLists[state.settings.provider] || []);
 }
 
 // filter 为空时显示全部；否则只显示包含这段文字的
