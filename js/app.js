@@ -3244,7 +3244,7 @@ function fillRelayModels() {
   if (!list) add('', t('relay.modelNotFetched'));
   else {
     add('', t(list.length ? 'relay.modelNone' : 'relay.modelEmpty'));
-    for (const m of sortModels(list)) add(m, m);
+    for (const m of chatModelList(list)) add(m, m);
   }
   els.relayModel.disabled = !list || !list.length;
 }
@@ -3340,9 +3340,9 @@ function bindRelayDialog() {
 const modelMenu = { items: [], active: -1 };
 
 // 可选的模型：只有点“获取列表”从接口拿到的。没有预设的列表：预设的名字不一定能用，容易误解成都可以用。
-// 显示时再排一次序：以前获取、按旧规则排的列表也按现在的顺序显示
+// 显示时再过滤、排序一次：以前获取的列表也只显示对话模型，并按现在的顺序显示
 function modelOptions() {
-  return sortModels(state.settings.modelLists[state.settings.provider] || []);
+  return chatModelList(state.settings.modelLists[state.settings.provider] || []);
 }
 
 // filter 为空时显示全部；否则只显示包含这段文字的
@@ -3394,6 +3394,13 @@ function bindModelMenu() {
   });
   els.model.addEventListener('input', () => openModelMenu(els.model.value));
   els.model.addEventListener('blur', closeModelMenu);
+  // 列表不是从输入框打开的（例如点「获取列表」后自动展开）时输入框没有焦点，不会触发 blur：
+  // 点在列表、输入框和 ▾ 以外的任何地方都收起
+  document.addEventListener('pointerdown', (e) => {
+    if (els.modelMenu.hidden) return;
+    if ([els.modelMenu, els.model, els.btnModelMenu].some((el) => el.contains(e.target))) return;
+    closeModelMenu();
+  }, true);
   els.model.addEventListener('keydown', (e) => {
     const n = modelMenu.items.length;
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
@@ -3819,6 +3826,8 @@ function bindSettings() {
       saveSettingsSoon();
       toast(t('set.fetchedModels', { n: list.length }));
       openModelMenu('');
+      // 电脑上把光标放进模型输入框，可以直接用方向键和回车选；触屏上不放（会弹出键盘盖住列表）
+      if (!els.modelMenu.hidden && !window.matchMedia('(hover: none)').matches) els.model.focus();
     } catch (e) {
       showModal(t('set.fetchModelsFailed'), e.message);
     } finally {

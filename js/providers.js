@@ -634,17 +634,20 @@ function modelTokens(name) {
 }
 
 // 同一位置上的大类：0 缩小词 < 1 名称结束 < 2 日期、快照号 < 3、4 单词和数字（版本号后面单词在前，否则数字在前）
-function modelTokenClass(tok, afterNumber) {
+function modelTokenClass(tok, afterNumber, first = false) {
   if (!tok) return 1;
-  if (tok.word !== undefined && MODEL_SMALL.includes(tok.word)) return 0;
+  if (tok.word !== undefined && !first && MODEL_SMALL.includes(tok.word)) return 0;
   if (tok.date) return 2;
   const isNum = tok.num !== undefined;
   return afterNumber === isNum ? 4 : 3;
 }
 
-function compareModelTokens(a, b, afterNumber) {
-  const ca = modelTokenClass(a, afterNumber);
-  const cb = modelTokenClass(b, afterNumber);
+// first：名称的第一段（厂商、系列名）。这一段只按字母比较：nano-banana、pro-… 这样以缩小词、档次词开头的名字
+// 不能因此排到别的系列前面或后面
+function compareModelTokens(a, b, afterNumber, first) {
+  if (first && a && b && a.word !== undefined && b.word !== undefined) return modelCollator.compare(a.word, b.word);
+  const ca = modelTokenClass(a, afterNumber, first);
+  const cb = modelTokenClass(b, afterNumber, first);
   if (ca !== cb) return ca - cb;
   if (!a) return 0;
   if (ca === 0) return MODEL_SMALL.indexOf(a.word) - MODEL_SMALL.indexOf(b.word);
@@ -661,7 +664,7 @@ function compareModels(x, y) {
   const a = modelTokens(x);
   const b = modelTokens(y);
   for (let i = 0; i < Math.max(a.length, b.length); i++) {
-    const d = compareModelTokens(a[i], b[i], i > 0 && a[i - 1].num !== undefined);
+    const d = compareModelTokens(a[i], b[i], i > 0 && a[i - 1].num !== undefined, i === 0);
     if (d) return d;
   }
   return modelCollator.compare(x, y) || (x < y ? -1 : x > y ? 1 : 0);
@@ -669,12 +672,37 @@ function compareModels(x, y) {
 
 const sortModels = (list) => [...list].sort(compareModels);
 
+// ---- 只列对话模型 ----
+// 本软件只发送和解析文字对话：图片、视频、语音、音乐、3D 生成的模型，以及嵌入、审核、重排序、实时语音这些
+// 不是用对话接口生成文字的模型，请求体和返回内容都不一样，列出来也用不了（仍然可以在模型输入框里手动输入）。
+// 按名称里的单词判断（分隔符和数字拆开，不区分大小写）：
+const NON_CHAT_WORDS = new Set([
+  // 图片
+  'image', 'images', 'imagine', 'imagen', 'dall', 'banana', 'seedream', 'flux', 'ideogram', 'midjourney', 'recraft',
+  'diffusion', 'sdxl', 'cogview', 'jimeng',
+  // 视频
+  'video', 'veo', 'sora', 'kling', 'seedance', 'wan', 'wanx', 'hailuo', 'vidu', 'pixverse', 'runway', 'cogvideox',
+  // 语音、音乐、全模态
+  'speech', 'tts', 'whisper', 'transcribe', 'audio', 'music', 'lyria', 'suno', 'realtime', 'live', 'omni',
+  // 不是生成文字的
+  'embedding', 'embed', 'moderation', 'rerank',
+]);
+function isChatModel(name) {
+  const lower = String(name).toLowerCase();
+  if (/(?<![0-9])3d(?![a-z0-9])/.test(lower)) return false; // 3D 生成（hunyuan3d、…-3d）
+  return !(lower.match(/\p{L}+/gu) || []).some((w) => NON_CHAT_WORDS.has(w));
+}
+
+// 下拉列表里显示的模型：只留对话模型，按上面的规则排序
+const chatModelList = (list) => sortModels(list.filter(isChatModel));
+
 // 各家模型列表的格式：{ data: [{ id }] }（OpenAI、Anthropic）、{ models: [{ name: 'models/…' }] }（Gemini）、
 // { publisherModels: [{ name: 'publishers/google/models/…' }] }（Vertex）
 function modelNames(j) {
   const items = (j && (j.data || j.models || j.publisherModels)) || [];
   return items.map((m) => (m && (m.id || m.name)) || '').filter((x) => typeof x === 'string' && x)
     .map((id) => id.replace(/^models\//, '')) // Gemini 的模型名带有 models/ 前缀，去掉后也能用
+    .filter(isChatModel)
     .sort(compareModels);
 }
 
@@ -697,7 +725,7 @@ async function fetchVertexModels(cfg) {
     }
     for (const name of got || []) {
       const id = name.replace(/^publishers\/[^/]+\/models\//, '');
-      if (keep.test(id)) out.push(prefix + id);
+      if (keep.test(id) && isChatModel(id)) out.push(prefix + id);
     }
   }
   if (!out.length) throw firstError || new Error(t('api.noModels'));
