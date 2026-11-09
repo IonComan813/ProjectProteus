@@ -1125,6 +1125,7 @@ function updateComposer() {
   const last = msgs[msgs.length - 1];
   els.btnSend.hidden = busy || gm;
   els.btnStop.hidden = !busy;
+  els.btnStop.textContent = t(busy && state.generating.memo ? 'memo.stop' : 'btn.stop');
   els.btnReply.hidden = busy || gm || !(last && last.role === 'user');
   els.btnUpdateMemo.disabled = busy || gm || !canUpdateMemo(conv);
   renderMemoStatus();
@@ -1714,6 +1715,9 @@ async function updateMemo(auto = false) {
   await flushConvSave();
   const controller = new AbortController();
   state.generating = { controller, msgId: null, memo: conv.id };
+  // 输入框上方的绿框：显示到收到完整的返回为止（换到别的对话也一直显示：发送按钮仍是「停止备忘更新」）
+  els.memoBar.textContent = t(auto ? 'memo.autoBar' : 'memo.bar');
+  els.memoBar.hidden = false;
   let out = '';
   let result = null;
   let error = null;
@@ -1723,7 +1727,6 @@ async function updateMemo(auto = false) {
   showError('');
   renderMessages(); // 发送按钮变为「停止」
   renderMemo();
-  if (auto) toast(t('memo.autoStarted'));
   logConv = conv;
   const cfg = providerCfg();
   try {
@@ -1753,6 +1756,7 @@ async function updateMemo(auto = false) {
   // 用量照样用来校准估算；不算作这个对话的「上一次请求」（那里说的是剧情回复）
   if (calib && usage && usage.input) TokenCalib.observe(calib.relay, calib.model, calib.x, usage.input, usage.output, null, calib.est);
   state.generating = null;
+  els.memoBar.hidden = true;
 
   const reason = result && result.stopReason;
   const memo = cleanMemo(out);

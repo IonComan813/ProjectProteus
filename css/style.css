@@ -11,6 +11,7 @@
   --user-bg: #2a2d36;
   --ai-bg: transparent;
   --danger: #d9776c;
+  --ok: #7fbf8a;
   --radius: 8px;
   --font: "Noto Serif SC", "Noto Serif TC", "Noto Serif JP", "Source Han Serif SC", "Songti SC", "Hiragino Mincho ProN", "Yu Mincho", Georgia, serif;
   --ui-font: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", "Hiragino Sans", "Yu Gothic UI", sans-serif;
@@ -609,6 +610,15 @@ body.resizing iframe { pointer-events: none; }
 .hint.post-history-hint { margin: 8px 0 0; }
 .user-name { width: 100%; margin-bottom: 6px; }
 .settings-pane select#langSelect { width: 100%; }
+.info-bar {
+  max-width: 900px;
+  margin: 0 auto 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--ok);
+  color: var(--ok);
+  border-radius: var(--radius);
+  font-size: 13px;
+}
 .error-bar {
   max-width: 900px;
   margin: 0 auto 8px;
