@@ -22,3 +22,11 @@
   zh-TW: 「記住 API Key」的說明裡提醒：Vertex 的服務帳戶檔案如果不主動刪除會繼續保存在本機
   en: The "Remember API keys" note now points out that the Vertex service account file stays on the device unless you delete it
   ja: 「API キーを記憶」の説明に、Vertex のサービスアカウントファイルは自分で削除しない限り端末に残ることを追記しました
+- zh-CN: 新增「剧情备忘」：让模型把剧情进展写成备忘，每次请求都带上，帮模型记住超出记忆长度的前文；可以手动更新、每 N 轮自动更新，也可以手动编辑
+  zh-TW: 新增「劇情備忘」：讓模型把劇情進展寫成備忘，每次請求都帶上，幫模型記住超出記憶長度的前文；可以手動更新、每 N 輪自動更新，也可以手動編輯
+  en: New "Story memo": the model writes the story's progress into a memo that is sent with every request, helping it remember what is beyond the memory length; update it by hand or automatically every N rounds, or edit it yourself
+  ja: 「ストーリーメモ」を追加しました。物語の進行をモデルがメモにまとめ、毎回のリクエストに含めることで、記憶の長さを超えた前の内容を覚えておけるようにします。手動または N ラウンドごとに自動で更新でき、自分で編集することもできます
+- zh-CN: 优化了一些后台逻辑
+  zh-TW: 優化了一些後台邏輯
+  en: Improved some background logic
+  ja: バックグラウンドの処理を改善しました

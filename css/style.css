@@ -481,6 +481,10 @@ body.resizing iframe { pointer-events: none; }
 }
 .lock-tag { font-size: 12px; color: var(--muted); padding: 3px 0; }
 .art-pane.locked { cursor: default; }
+.memo-option { margin-top: 8px; }
+.memo-option input[type=number] { width: 56px; }
+.hint.memo-note { margin: 8px 0 0; }
+#memo[readonly] { opacity: .85; }
 .art-mode-row { margin-top: 8px; gap: 8px; }
 .art-mode-row select { flex: 1; min-width: 0; }
 .art-key-row { margin-top: 8px; align-items: center; }

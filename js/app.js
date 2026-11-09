@@ -181,6 +181,12 @@ function touchConv(conv) {
 
 // 轮数：用户的一条消息加上它的模型回复算一轮，所以就是用户消息的条数。
 // 开场白不单独计数；回复失败、还没有回复的也算一轮，之后生成出回复不再加；重新生成、编辑用户消息不增加
+// 整数并限制在 min…max 之间；不是数字时为 min
+function clampInt(v, min, max) {
+  const n = Math.floor(Number(v));
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : min;
+}
+
 function roundsOf(conv) {
   return conv.messages.filter((m) => m.role === 'user').length;
 }
@@ -273,12 +279,26 @@ function postHistoryBlock(conv) {
   return text ? `${t('sys.postHistory')}\n${t('sys.postHistoryIntro')}\n${text}` : '';
 }
 
-// 真正发给模型的内容：system 部分和记忆范围内的消息（context 的最后一条是这一次的用户消息）
-function requestOf(conv, context) {
-  const messages = windowOf(context, sentGreeting(conv));
-  const block = postHistoryBlock(conv);
+// 剧情备忘：设为发送、有内容时，放在这一次的用户消息前面（最后一条模型回复之后），带标签和说明
+function memoBlock(conv) {
+  const text = !isAssistant(conv) && conv.memoSend !== false && conv.memo ? conv.memo.trim() : '';
+  return text ? `${t('sys.memo')}\n${t('sys.memoIntro')}\n${text}\n${t('sys.memoEnd')}` : '';
+}
+
+// 真正发给模型的内容：system 部分和记忆范围内的消息（context 的最后一条是这一次的用户消息）。
+// memoUpdate：更新剧情备忘的请求（最后一条是更新的指令，里面已经有现在的备忘）：不加剧情备忘和重点指令
+function requestOf(conv, context, { memoUpdate = false } = {}) {
+  const greeting = sentGreeting(conv);
+  const messages = windowOf(context, greeting);
+  const memo = memoUpdate ? '' : memoBlock(conv);
+  const block = memoUpdate ? '' : postHistoryBlock(conv);
   const last = messages[messages.length - 1];
-  if (block && last && last.role === 'user') last.content += '\n\n' + block;
+  if (last && last.role === 'user') {
+    // 剧情备忘在前，后面的消息加上「【用户】」标签；这一条已经和开场白合在一起时（对话的第一条消息）本来就有这个标签
+    const greeted = context.length === 1 && !!greeting;
+    if (memo) last.content = memo + '\n\n' + (greeted ? '' : t('greet.user') + '\n') + last.content;
+    if (block) last.content += '\n\n' + block;
+  }
   return {
     system: withMacros(buildSystem(conv), conv),
     messages: messages.map((m) => ({ role: m.role, content: withMacros(m.content, conv) })),
@@ -352,6 +372,10 @@ function newConversation(from, assistant = isAssistant(from)) {
       greetings: [],
       greetingCur: 0,
       greetingSend: true,
+      memo: '',
+      memoSend: true,
+      memoEvery: 0,
+      memoRound: 0,
       createdAt: now,
       updatedAt: now,
       activeAt: now,
@@ -375,6 +399,10 @@ function newConversation(from, assistant = isAssistant(from)) {
     greetings: from ? from.greetings.slice() : [],
     greetingCur: from ? from.greetingCur : 0,
     greetingSend: from ? from.greetingSend !== false : true,
+    memo: '', // 剧情备忘属于剧情，不复制；是否发送、每几轮自动更新是设置，复制
+    memoSend: from ? from.memoSend !== false : true,
+    memoEvery: from ? from.memoEvery || 0 : 0,
+    memoRound: 0,
     createdAt: now,
     updatedAt: now,
     activeAt: now,
@@ -390,6 +418,11 @@ function newConversation(from, assistant = isAssistant(from)) {
 function normalizeConv(c, legacy) {
   if (c.title === '新对话') c.title = '';
   if (c.artMode !== 'landscape') delete c.artMode; // 艺术图的展示方式：只记横屏，没有就是竖屏
+  // 剧情备忘（助理模式不用）：内容、是否发送、每几轮自动更新（0 = 关闭）、上次更新时是第几轮
+  if (typeof c.memo !== 'string' || isAssistant(c)) c.memo = '';
+  c.memoSend = c.memoSend !== false;
+  c.memoEvery = isAssistant(c) ? 0 : clampInt(c.memoEvery, 0, MEMO_EVERY_MAX);
+  c.memoRound = clampInt(c.memoRound, 0, Infinity);
   if (isAssistant(c)) {
     // 助理模式：只有 System Prompt 和对话记录，其他保持为空；不加密
     delete c.lock;
@@ -1093,6 +1126,8 @@ function updateComposer() {
   els.btnSend.hidden = busy || gm;
   els.btnStop.hidden = !busy;
   els.btnReply.hidden = busy || gm || !(last && last.role === 'user');
+  els.btnUpdateMemo.disabled = busy || gm || !canUpdateMemo(conv);
+  renderMemoStatus();
   // “添加开场白”只在对话完全为空时出现（锁定的对话不能添加）
   els.btnAddGreeting.hidden = busy || gm || conv.greeting != null || msgs.length > 0 || !!conv.lock || isAssistant(conv);
   els.btnGreetingReload.hidden = !gm;
@@ -1626,6 +1661,7 @@ async function runGeneration(m, context, sent = null) {
 
   if (state.conv === conv) renderMessages();
   await saveConv(conv);
+  if (kept) maybeAutoMemo(conv);
 
   // 只要有输出就照常显示和保存；回复没写完就结束的（出错、被拦截、达到最大输出长度），弹窗说明一下
   if (kept) {
@@ -1637,6 +1673,133 @@ async function runGeneration(m, context, sent = null) {
 
 function stop() {
   if (state.generating) state.generating.controller.abort();
+}
+
+// ---------------- 剧情备忘 ----------------
+// 长剧情里模型会忘掉记忆范围以外的前文：让模型把剧情进展写成备忘，之后每次请求放在这一次的消息前面（memoBlock）。
+// 「更新备忘」发出的请求和平时一样（System Prompt、世界观等，记忆长度内的剧情），只是最后一条用户消息换成更新的指令，
+// 里面附上现在的备忘；模型返回更新后的完整备忘，覆盖原来的（也可以手动编辑）。不保留上一版。
+// 每 N 轮自动更新（每个对话自己设置，默认关闭）：第 N 轮的回复写完后自动发出；更新期间发送按钮变为「停止」，输入框照常可以编辑
+const MEMO_EVERY_MAX = 99;
+
+function memoUpdateRequest(conv) {
+  const current = (conv.memo || '').trim();
+  const instruction = `${t('memo.instruction')}\n\n${t('memo.current')}\n${current || t('memo.none')}\n${t('memo.currentEnd')}`;
+  return requestOf(conv, conv.messages.concat([{ role: 'user', versions: [instruction], cur: 0 }]), { memoUpdate: true });
+}
+
+// 模型有时会把标签也抄回来：去掉开头、结尾的标签行
+function cleanMemo(text) {
+  const tags = new Set([t('memo.current'), t('memo.currentEnd'), t('sys.memo'), t('sys.memoEnd')]);
+  const lines = text.trim().split('\n');
+  while (lines.length && tags.has(lines[0].trim())) lines.shift();
+  while (lines.length && tags.has(lines[lines.length - 1].trim())) lines.pop();
+  return lines.join('\n').trim();
+}
+
+const canUpdateMemo = (conv) => !isAssistant(conv) && conv.messages.length > 0;
+
+// 第 N 轮的回复写完后（这个对话还是当前对话时）自动更新。删掉了消息、轮数比上次更新时少的，从现在的轮数重新算
+function maybeAutoMemo(conv) {
+  if (conv !== state.conv || !conv.memoEvery || !canUpdateMemo(conv) || state.generating || state.greetingMode) return;
+  const rounds = roundsOf(conv);
+  if (conv.memoRound > rounds) conv.memoRound = rounds;
+  if (rounds - conv.memoRound >= conv.memoEvery) void updateMemo(true);
+}
+
+async function updateMemo(auto = false) {
+  const conv = state.conv;
+  if (state.generating || state.greetingMode || !canUpdateMemo(conv)) return;
+  if (expandSource === els.memo) closeExpand();
+  await flushConvSave();
+  const controller = new AbortController();
+  state.generating = { controller, msgId: null, memo: conv.id };
+  let out = '';
+  let result = null;
+  let error = null;
+  let aborted = false;
+  let usage = null;
+  let calib = null;
+  showError('');
+  renderMessages(); // 发送按钮变为「停止」
+  renderMemo();
+  if (auto) toast(t('memo.autoStarted'));
+  logConv = conv;
+  const cfg = providerCfg();
+  try {
+    const req = memoUpdateRequest(conv);
+    const k = calibKey(cfg);
+    const sent = finalMessages(formatOf(cfg), req.messages);
+    const est = TokenCalib.estimate(k.relay, k.model, systemBlocks(conv).map((b) => b.text), sent.map((m) => m.content)).total;
+    calib = { ...k, x: TokenCalib.requestFeatures(req.system, sent), est };
+    result = await streamChat(cfg, req.system, req.messages, {
+      signal: controller.signal,
+      onUsage: (u) => { usage = u; },
+      onText: (text) => {
+        out += text;
+        state.generating.thinking = false;
+        if (state.conv === conv) { els.memo.value = out; els.memo.scrollTop = els.memo.scrollHeight; renderMemoStatus(); }
+      },
+      onThinking: () => {
+        if (out) return;
+        state.generating.thinking = true;
+        if (state.conv === conv) renderMemoStatus();
+      },
+    });
+  } catch (e) {
+    if (e.name === 'AbortError') aborted = true;
+    else error = e;
+  }
+  // 用量照样用来校准估算；不算作这个对话的「上一次请求」（那里说的是剧情回复）
+  if (calib && usage && usage.input) TokenCalib.observe(calib.relay, calib.model, calib.x, usage.input, usage.output, null, calib.est);
+  state.generating = null;
+
+  const reason = result && result.stopReason;
+  const memo = cleanMemo(out);
+  let problem = null; // 没有更新的原因（停止的不提示）
+  if (error) problem = error.message;
+  else if (!aborted && (reason === 'refusal' || reason === 'content_filter')) problem = t('gen.' + (reason === 'refusal' ? 'refused' : 'filtered'));
+  else if (!aborted && (reason === 'max_tokens' || reason === 'length')) problem = t('memo.truncated');
+  else if (!aborted && (reason === 'error' || !memo)) problem = t('memo.empty');
+  const ok = !aborted && !problem;
+  if (ok) {
+    conv.memo = memo;
+    conv.memoRound = roundsOf(conv);
+  }
+  await saveConv(conv);
+  if (state.conv === conv) {
+    renderMessages();
+    renderMemo();
+    updateEstimate();
+  }
+  if (ok) toast(t('memo.updated'));
+  else if (aborted) toast(t('memo.stopped'));
+  else showModal(t('memo.failedTitle'), t('memo.failed') + '\n\n' + problem);
+}
+
+// 右侧剧情备忘：内容、是否发送、每几轮自动更新、状态
+function renderMemo() {
+  const conv = state.conv;
+  const busy = !!state.generating && state.generating.memo === conv.id;
+  if (!busy) els.memo.value = conv.memo || '';
+  els.memo.readOnly = busy;
+  els.memoSend.checked = conv.memoSend !== false;
+  els.memoEvery.value = conv.memoEvery || 0;
+  els.btnUpdateMemo.disabled = !!state.generating || !canUpdateMemo(conv);
+  els.btnExpandMemo.disabled = busy;
+  renderMemoStatus();
+}
+
+// 备忘下方的状态：正在更新（模型还在思考时写「思考中」），或者上次更新以后又过了几轮
+function renderMemoStatus() {
+  const conv = state.conv;
+  const g = state.generating;
+  if (g && g.memo === conv.id) {
+    els.memoStatus.textContent = g.thinking ? t('memo.thinking') : t('memo.updating');
+    return;
+  }
+  const rounds = roundsOf(conv);
+  els.memoStatus.textContent = (conv.memo || '').trim() ? t('memo.since', { n: rounds - Math.min(conv.memoRound, rounds) }) : '';
 }
 
 // ---------------- 艺术图（每个对话一张） ----------------
@@ -2831,6 +2994,7 @@ function fillConvFields() {
   els.persona.value = c.persona;
   els.userName.value = c.userName;
   els.postHistory.value = locked ? '' : c.postHistory;
+  renderMemo();
   // 助理模式：世界观、用户人设、{{user}} 的值和重点指令空白、不能编辑（不是受保护，是这个模式不用）；艺术图照常可用
   els.worldText.disabled = assistant;
   els.npcText.disabled = assistant;
@@ -3382,7 +3546,8 @@ function placeExpand(el = els.expandBox) {
 }
 
 function openExpand(source, titleKey) {
-  if (source.disabled || state.conv.lock) return;
+  // 锁定的对话里受保护的设定（unlockable）不能放大编辑；剧情备忘、用户人设等不受保护的照常可以
+  if (source.disabled || source.readOnly || (state.conv.lock && source.classList.contains('unlockable'))) return;
   expandSource = source;
   els.expandTitle.textContent = t(titleKey);
   els.expandText.value = source.value;
@@ -3486,6 +3651,15 @@ function bindSettings() {
   onConv(els.npcText, (el) => { if (!c().lock && !isAssistant(c())) { c().npcText = el.value; updateWorldCount(); } });
   onConv(els.persona, (el) => { if (!isAssistant(c())) c().persona = el.value; });
   onConv(els.postHistory, (el) => { if (!c().lock && !isAssistant(c())) c().postHistory = el.value; });
+  // 剧情备忘：不受锁定保护（属于剧情），更新期间（只读）不会触发
+  onConv(els.memo, (el) => { if (!isAssistant(c()) && !el.readOnly) { c().memo = el.value; renderMemoStatus(); } });
+  els.memoSend.addEventListener('change', () => { c().memoSend = els.memoSend.checked; saveConvSoon(); updateEstimate(); });
+  els.memoEvery.addEventListener('change', () => {
+    c().memoEvery = clampInt(els.memoEvery.value, 0, MEMO_EVERY_MAX);
+    els.memoEvery.value = c().memoEvery;
+    saveConvSoon();
+  });
+  els.btnUpdateMemo.addEventListener('click', () => void updateMemo());
   // {{user}} 和 {{char}} 的值改了：聊天区里显示的内容跟着变（稍等一下再重画，开场白的窗口重画时会重新载入）
   let macroTimer = null;
   const redrawSoon = () => {
@@ -3696,6 +3870,7 @@ function bindSettings() {
   els.btnExpandSystem.addEventListener('click', () => openExpand(els.systemPrompt, 'set.systemPrompt'));
   els.btnExpandWorld.addEventListener('click', () => openExpand(els.worldText, 'set.world'));
   els.btnExpandNpc.addEventListener('click', () => openExpand(els.npcText, 'set.npc'));
+  els.btnExpandMemo.addEventListener('click', () => openExpand(els.memo, 'memo.title'));
   window.addEventListener('resize', () => {
     if (expandSource) placeExpand();
     if (!els.previewBox.hidden) placeExpand(els.previewBox);

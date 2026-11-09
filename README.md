@@ -97,7 +97,7 @@ The native apps (desktop and Android) check the update server for a new version 
 |---|---|
 | Left | Artwork. Click to upload, then choose portrait or landscape display (see [Landscape display](#landscape-display) below). In portrait the image is shown at the width of the left column without stretching: if it is taller than the column, the top and bottom are cropped; if it is shorter, black bars are added above and below. When the column's width doesn't quite match the image, you're asked whether to adjust it; fairly wide images (wider than 5:4) get a note that they may not look good. Drag the right edge of the column to resize it (up to about 45% of the window, always leaving enough room for the chat); double-click the edge to reset |
 | Middle | The story. At the top you can switch, create, rename and delete conversations ("＋ New chat" opens a menu where you choose a "🎭 roleplay", "🤖 assistant" (see [Assistant mode](#assistant-mode)) or "🍺 SillyTavern" chat (see [Loading SillyTavern character cards](#loading-sillytavern-character-cards)); in the list, the emoji before each conversation's name shows its type, followed by its number of rounds and the time of its latest activity — creating it, saving the opening, or sending a request to the model — and the list is sorted by that time; in the open list, left-click switches to a conversation and right-click (long-press on a touch screen) lets you rename or delete it; the list shows the 9 most recently active conversations, and the last item "…" opens the "All conversations" window with the rest. On a computer, clicking a conversation in that window only selects it; click it again or double-click to switch to it (Enter on the keyboard switches directly); on a touch screen a tap switches directly. In that window you can delete several conversations at once: on a computer, Ctrl-click (⌘-click on a Mac) to select or deselect one at a time and Shift-click to select a range, then right-click any selected one; on a touch screen, tick the boxes at the right of each row, then long-press any ticked one. With several selected, the menu only offers Delete; right-clicking (long-pressing) a conversation that isn't selected clears the selection and offers rename and delete for that one); at the bottom is the input box, press **Ctrl + Enter** to send. Drag the edge above the input box to change its height |
-| Right | Settings, from top to bottom: System Prompt → World → NPC characters (with the `{{char}}` value) → User's character (with the `{{user}}` value) → Key Instructions → Memory length → Model & API → Artwork → Export & backup → App data → Language |
+| Right | Settings, from top to bottom: System Prompt → World → NPC characters (with the `{{char}}` value) → User's character (with the `{{user}}` value) → Story memo → Key Instructions → Memory length → Model & API → Artwork → Export & backup → App data → Language |
 
 ### Landscape display
 
@@ -129,9 +129,21 @@ The one-line box above the user's character (its placeholder reads "{{user}} val
 
 It belongs to the conversation: a new chat gets a copy, and it is included in full backups, but not in world cards, and it is never encrypted. Assistant mode doesn't use it.
 
+### Story memo
+
+The box below the user's character. In a long story, what is beyond the [memory length](#memory-range) is no longer sent, so the model forgets it. The story memo keeps the key points of the story so far (characters and relationships, places, items, unresolved events, foreshadowing and so on) and is sent with every request to help the model remember.
+
+- **Update memo**: click "Update memo". The request is the same as usual (system settings, the story within the memory length), except that the last message is replaced by an instruction to update the memo, with the current memo attached ("none yet" when there isn't one); the model returns the complete updated memo, which replaces the old one. The story beyond the memory length was already written into the memo back then, so only what happened since needs to be added. While it updates, the send button becomes "Stop", which cancels the update and leaves the memo as it was; the memo is also left as it was if the update didn't finish (max output length reached, an error). The previous version isn't kept; fix small mistakes by hand
+- **Edit by hand**: you can change it at any time, or click "Enlarge"
+- **Update automatically every N rounds**: set per conversation, 0 (off) by default. When on, once N rounds have passed since the last update, the memo updates automatically as soon as that round's reply is finished; you can keep typing in the input box meanwhile
+- **Send to the model**: when checked (the default) and not empty, it goes before the message you are sending (after the last reply); see [The story so far](#the-story-so-far) for the format. Unchecked, it is only kept here and not sent; updating still works
+- After regenerating a reply or editing or deleting messages, the memo may still contain events that no longer happened; fix them by hand
+- Each update is an extra request and uses extra tokens
+- The story memo is part of the story: it is included in full backups and GitHub sync but not in world cards, and isn't copied to new conversations (the "Send to the model" and automatic update settings are); in locked conversations it can still be viewed and edited. Assistant mode doesn't use it
+
 ### Key Instructions (Post-History Instructions)
 
-The box below the user's character. What you write here is added to **the end of the message you are sending**, so it is the last thing the model reads and the easiest for it to notice: models tend to remember the beginning and the end best and overlook the middle. Use it for reminders about style, length or format, for example "Keep replies under 300 words and write in the third person".
+The box below the story memo. What you write here is added to **the end of the message you are sending**, so it is the last thing the model reads and the easiest for it to notice: models tend to remember the beginning and the end best and overlook the middle. Use it for reminders about style, length or format, for example "Keep replies under 300 words and write in the third person".
 
 - When it is empty nothing is sent, not even the label
 - It is only added to the latest user message (when regenerating, the user message before that reply); it is not saved into the message, and earlier messages don't carry it
@@ -238,6 +250,7 @@ User messages and model replies, alternating:
   …your first message…
   ```
   When the opening is not sent, the first message is sent as is, without labels
+- **Story memo**: when it is set to be sent and isn't empty, it goes before the last user message (your current message): the label `[Story Memo]` on its own line, then a fixed sentence telling the model that this is a summary of the story so far rather than your message, and that it may contain entries beyond the context window that it can't find in the story, then the full memo, then `[End of Story Memo]`; after a blank line come the label `[User]` and your message (the first message, combined with the opening, already has that label)
 - **Key instructions**: if there are any, they are added to the end of the last user message (your current message): a blank line, then the label `[Key Instructions]` on its own line, then a fixed sentence telling the model that these are instructions sent to it directly, outside the story, rather than your actions in the story (not shown anywhere in the interface except the request preview), then the full key instructions. If the box is empty nothing is added
 - **Earlier story omitted**: the Anthropic format requires the first message to be from the user. If the range happens to start with a model reply, a user message reading `(Earlier story omitted)` is added in front. This doesn't happen in a normally alternating story
 - If two messages in a row ever come from the same side, they are merged into one (separated by a blank line) so the API doesn't reject the request
@@ -281,7 +294,9 @@ Labels follow the interface language **at the time the request is sent**:
 | User's character | `【用户角色人设】` | `【使用者角色設定】` | `[User's Character]` | `【ユーザーキャラクター設定】` |
 | Start of opening | `【开场白】` | `【開場白】` | `[Opening]` | `【オープニング】` |
 | End of opening | `【开场白结束】` | `【開場白結束】` | `[End of Opening]` | `【オープニングここまで】` |
-| First message | `【用户】` | `【使用者】` | `[User]` | `【ユーザー】` |
+| First message, message after the story memo | `【用户】` | `【使用者】` | `[User]` | `【ユーザー】` |
+| Start of story memo | `【剧情备忘】` | `【劇情備忘】` | `[Story Memo]` | `【ストーリーメモ】` |
+| End of story memo | `【剧情备忘结束】` | `【劇情備忘結束】` | `[End of Story Memo]` | `【ストーリーメモここまで】` |
 | Key instructions | `【重点指令】` | `【重點指令】` | `[Key Instructions]` | `【重点指令】` |
 | Earlier story omitted | `（前情省略）` | `（前情省略）` | `(Earlier story omitted)` | `（前略）` |
 

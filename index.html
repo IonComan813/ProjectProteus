@@ -130,6 +130,26 @@
         <textarea id="persona" aria-labelledby="hPersona" class="scroll-box" rows="5" data-i18n-ph="set.personaPlaceholder"></textarea>
       </section>
 
+      <!-- 剧情备忘（js/app.js 的「剧情备忘」）：模型根据记忆长度内的剧情更新，也可以手动编辑；属于剧情，新建对话时不复制 -->
+      <section class="card roleplay-only">
+        <h3 id="hMemo" data-i18n="memo.title">剧情备忘</h3>
+        <p class="hint" data-i18n="memo.hint"></p>
+        <textarea id="memo" aria-labelledby="hMemo" class="scroll-box" rows="6" data-i18n-ph="memo.placeholder"></textarea>
+        <div class="row">
+          <button class="btn btn-small" id="btnUpdateMemo" data-i18n="memo.update">更新备忘</button>
+          <button class="btn btn-small" id="btnExpandMemo" data-i18n="expand.button">放大窗口</button>
+          <span class="muted small" id="memoStatus"></span>
+        </div>
+        <label class="field-inline memo-option"><input type="checkbox" id="memoSend"> <span data-i18n="memo.send">发送给模型</span></label>
+        <label class="field-inline memo-option">
+          <span data-i18n="memo.everyBefore">每</span>
+          <input type="number" id="memoEvery" min="0" max="99" step="1">
+          <span data-i18n="memo.everyAfter">轮自动更新（0 = 关闭）</span>
+        </label>
+        <p class="hint memo-note" data-i18n="memo.staleHint"></p>
+        <p class="hint memo-note" data-i18n="memo.costHint"></p>
+      </section>
+
       <section class="card roleplay-only">
         <h3 id="hPostHistory" data-i18n="set.postHistory">重点指令（Post-History Instructions）</h3>
         <textarea id="postHistory" aria-labelledby="hPostHistory" class="scroll-box unlockable" rows="4" data-i18n-ph="set.postHistoryPlaceholder"></textarea>
