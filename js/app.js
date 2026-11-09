@@ -22,6 +22,7 @@ const DEFAULT_SETTINGS = {
   rememberKeys: true,  // false = API Key 只在本次打开期间有效，不写入本机存储（公用电脑）
   rounds: 12,
   artWidth: null,      // 左栏宽度（像素），null = 自动
+  panelKey: 'F2',      // 横屏艺术图时收起 / 显示右侧设置区的快捷键（Ctrl+Shift+K 这样的写法）
   inputHeight: 88,     // 输入框高度（像素）
   provider: 'anthropic', // 官方服务商的键名（anthropic / openai / gemini），或者用户添加的服务商 relay:<id>
   relays: [],          // 用户添加的服务商（中转站）：[{ id, name, format: 'openai' | 'anthropic' }]，按添加的顺序
@@ -336,7 +337,7 @@ const defaultPromptOf = (conv) => t(isAssistant(conv) ? 'defaultAssistantPrompt'
 function newConversation(from, assistant = isAssistant(from)) {
   const now = Date.now();
   if (assistant) {
-    return {
+    const c = {
       id: uid(),
       title: '',
       mode: 'assistant',
@@ -356,6 +357,8 @@ function newConversation(from, assistant = isAssistant(from)) {
       activeAt: now,
       messages: [],
     };
+    if (from && from.artMode) c.artMode = from.artMode; // 艺术图从 from 复制过来时，展示方式也一样
+    return c;
   }
   if (isAssistant(from)) from = null;
   const c = {
@@ -379,12 +382,14 @@ function newConversation(from, assistant = isAssistant(from)) {
   };
   if (from && from.lock) c.lock = from.lock;
   if (isTavern(from)) c.tavern = { ...from.tavern };
+  if (from && from.artMode) c.artMode = from.artMode;
   return c;
 }
 
 // 补齐旧版本数据缺少的字段
 function normalizeConv(c, legacy) {
   if (c.title === '新对话') c.title = '';
+  if (c.artMode !== 'landscape') delete c.artMode; // 艺术图的展示方式：只记横屏，没有就是竖屏
   if (isAssistant(c)) {
     // 助理模式：只有 System Prompt 和对话记录，其他保持为空；不加密
     delete c.lock;
@@ -1655,14 +1660,289 @@ async function loadArt() {
   if (blob) els.artImage.src = state.artUrl;
   else els.artImage.removeAttribute('src');
   els.btnDownloadArt.disabled = !blob || !!conv.lock;
+  applyArtMode();
 }
 
 async function setArt(file) {
   if (state.conv.lock) return toast(t('lock.artLocked'));
   if (!file || !file.type.startsWith('image/')) return toast(t('art.notImage'));
-  await DB.set(artKey(state.conv.id), file);
+  const conv = state.conv;
+  let pick = { mode: 'portrait', fit: {} };
+  if (artModesAvailable()) {
+    const size = await imageSize(file);
+    if (!size) return toast(t('art.notImage'));
+    pick = await chooseArtMode(size);
+    if (!pick || conv !== state.conv || conv.lock) return;
+  }
+  await DB.set(artKey(conv.id), file);
+  setConvArtMode(conv, pick.mode);
+  await saveConv(conv);
+  await applyArtFit(pick.fit);
   await loadArt();
   toast(t('art.updated'));
+}
+
+async function removeArt() {
+  const conv = state.conv;
+  if (conv.lock) return;
+  await DB.del(artKey(conv.id));
+  if (conv.artMode) {
+    setConvArtMode(conv, 'portrait');
+    await saveConv(conv);
+  }
+  await loadArt();
+}
+
+// ---- 艺术图的展示方式（电脑布局） ----
+// 竖屏（默认）：显示在左栏，图片宽度撑满左栏。
+// 横屏（conv.artMode = 'landscape'）：铺满整个窗口作背景，聊天区居中、半透明；右侧设置区默认收起，
+// 按快捷键（settings.panelKey，默认 F2）显示或收起。手机布局（包括安卓版）里艺术图总是铺满背景，不区分这两种。
+// 原则是不拉伸图片：上传时看比例，和窗口（横屏）或左栏（竖屏）差一点时问要不要自动调整，
+// 横屏差得多时直接说不支持（硬放的话会裁掉很多或者留很宽的黑边）
+const ART_LANDSCAPE_MIN = 1.5;  // 横屏展示要求宽高比至少 3:2：中间被聊天区挡住，太窄的图两侧露不出多少
+const ART_PORTRAIT_WIDE = 1.25; // 竖屏展示比这更宽的图：上下黑边很大，提示效果可能不好
+const ART_FIT_OK = 0.02;        // 比例相差不到 2%：不用调整
+const ART_CROP_MAX = 0.12;      // 横屏：比例相差不超过 12% 时铺满窗口（裁掉一点），更多时完整显示（留黑边）；
+                                // 不能自动调整窗口时，相差超过这个就不支持
+const ART_RESIZE_MAX = 0.25;    // 自动调整窗口：宽、高最多改变 25%，再多就不调整
+
+const artModesAvailable = () => !NATIVE && !isMobileLayout();
+const ratioGap = (a, b) => 1 - Math.min(a, b) / Math.max(a, b);
+const isLandscapeArt = () => document.body.classList.contains('art-landscape');
+
+function setConvArtMode(conv, mode) {
+  if (mode === 'landscape') conv.artMode = 'landscape';
+  else delete conv.artMode;
+}
+
+// 图片的原始尺寸 { w, h }；不是能显示的图片时为 null
+function imageSize(blob) {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    const done = (size) => { URL.revokeObjectURL(url); resolve(size); };
+    img.onload = () => done(img.naturalWidth && img.naturalHeight ? { w: img.naturalWidth, h: img.naturalHeight } : null);
+    img.onerror = () => done(null);
+    img.src = url;
+  });
+}
+
+// 只有一个按钮的提示（等用户关掉再继续）
+const notice = (message) => choose(t('art.modeTitle'), message, [{ label: t('btn.ok'), value: true, primary: true }]);
+async function askAdjust(message) {
+  return (await choose(t('art.modeTitle'), message, [
+    { label: t('art.noAdjust'), value: false, ghost: true },
+    { label: t('art.adjust'), value: true, primary: true },
+  ])) === true;
+}
+
+// 上传后选择展示方式，并检查比例。返回 { mode, fit }，取消时为 null。
+// 选了某种方式但这张图不合适（用户放弃）时回到选择
+async function chooseArtMode(size) {
+  const wide = size.w / size.h >= ART_LANDSCAPE_MIN;
+  for (;;) {
+    const mode = await choose(t('art.modeTitle'), t('art.modeAsk', { w: size.w, h: size.h, key: state.settings.panelKey }), [
+      { label: t('btn.cancel'), value: null, ghost: true },
+      { label: t('art.modePortrait'), value: 'portrait', primary: !wide },
+      { label: t('art.modeLandscape'), value: 'landscape', primary: wide },
+    ]);
+    if (!mode) return null;
+    const fit = await artModeFit(mode, size);
+    if (fit) return { mode, fit };
+  }
+}
+
+// 检查比例：返回要做的调整 { artWidth } / { window: { w, h } } / {}（不用调整），不合适时为 null
+const artModeFit = (mode, size) => (mode === 'landscape' ? landscapeFit(size) : portraitFit(size));
+
+// 竖屏时左栏的宽度（现在是横屏时，算的是换成竖屏后的宽度）：和 CSS 的 --art-w 一样
+function portraitPaneWidth() {
+  const s = state.settings;
+  if (s.artWidth) return clamp(s.artWidth, artBounds());
+  return Math.min(Math.max(220, window.innerHeight * 2 / 3), window.innerWidth * 0.28);
+}
+
+async function portraitFit(size) {
+  const a = size.w / size.h;
+  if (a > ART_PORTRAIT_WIDE) {
+    const go = await choose(t('art.modeTitle'), t('art.portraitWide'), [
+      { label: t('art.chooseAgain'), value: false, ghost: true },
+      { label: t('art.useAnyway'), value: true, primary: true },
+    ]);
+    if (go !== true) return null;
+  }
+  // 左栏宽度改成「窗口高度 × 图片宽高比」，图片正好放满左栏（在左栏能拖到的范围内才调）
+  const h = window.innerHeight;
+  const target = Math.round(h * a);
+  const b = artBounds();
+  if (ratioGap(portraitPaneWidth() / h, a) > ART_FIT_OK && target >= b.min && target <= b.max
+    && (await askAdjust(t('art.fitPaneAsk')))) return { artWidth: target };
+  return {};
+}
+
+async function landscapeFit(size) {
+  const a = size.w / size.h;
+  if (a < ART_LANDSCAPE_MIN) {
+    await notice(t('art.landscapeNarrow'));
+    return null;
+  }
+  const gap = ratioGap(window.innerWidth / window.innerHeight, a);
+  if (gap <= ART_FIT_OK) return {};
+  const win = windowFitFor(a);
+  if (win) return (await askAdjust(t('art.fitWindowAsk', { w: win.w, h: win.h }))) ? { window: win } : {};
+  if (gap <= ART_CROP_MAX) return {}; // 差得不多：铺满窗口，裁掉一点
+  await notice(t(window.proteusDesktop ? 'art.landscapeUnsupported' : 'art.landscapeUnsupportedWeb'));
+  return null;
+}
+
+// 桌面版：让窗口内容区正好是图片比例的尺寸。保持高度改宽度、保持宽度改高度两种里选改动小的；
+// 要放得进屏幕、不小于窗口的最小尺寸，改动不超过 ART_RESIZE_MAX。没有合适的（或不是桌面版）时为 null
+function windowFitFor(a) {
+  const desk = window.proteusDesktop;
+  if (!desk || !desk.fitWindow) return null;
+  const W = window.innerWidth;
+  const H = window.innerHeight;
+  const fw = Math.max(0, window.outerWidth - W);  // 边框、标题栏
+  const fh = Math.max(0, window.outerHeight - H);
+  const maxW = window.screen.availWidth - fw;
+  const maxH = window.screen.availHeight - fh;
+  const minW = 1000 - fw; // 窗口最小 1000 × 600（electron/main.js）
+  const minH = 600 - fh;
+  return [{ w: Math.round(H * a), h: H }, { w: W, h: Math.round(W / a) }]
+    .filter((c) => c.w >= minW && c.w <= maxW && c.h >= minH && c.h <= maxH)
+    .map((c) => ({ ...c, change: Math.max(Math.abs(c.w - W) / W, Math.abs(c.h - H) / H) }))
+    .filter((c) => c.change <= ART_RESIZE_MAX)
+    .sort((x, y) => x.change - y.change)[0] || null;
+}
+
+async function applyArtFit(fit) {
+  if (fit.artWidth) {
+    state.settings.artWidth = fit.artWidth;
+    applyLayout();
+    saveSettingsSoon();
+  }
+  if (fit.window && !(await window.proteusDesktop.fitWindow(fit.window.w, fit.window.h))) toast(t('art.fitWindowFailed'));
+}
+
+// 按当前对话的艺术图切换布局（横屏：body.art-landscape），并更新右侧艺术图里的展示方式、快捷键
+function applyArtMode() {
+  const on = !!state.artUrl && state.conv.artMode === 'landscape';
+  const was = isLandscapeArt();
+  document.body.classList.toggle('art-landscape', on);
+  if (on !== was) setPanelShown(false); // 刚换成横屏：右侧设置区先收起
+  fitArt();
+  renderArtModeFields();
+}
+
+// 横屏：比例和窗口差得不多时铺满窗口（裁掉一点），否则完整显示（留黑边）。窗口大小变化时重新判断
+function fitArt() {
+  const img = els.artImage;
+  const a = img.naturalWidth / img.naturalHeight;
+  img.classList.toggle('cover', isLandscapeArt() && a > 0 && ratioGap(window.innerWidth / window.innerHeight, a) <= ART_CROP_MAX);
+}
+
+function renderArtModeFields() {
+  const conv = state.conv;
+  const has = !!state.artUrl && !NATIVE;
+  els.artModeRow.hidden = !has;
+  els.artMode.value = conv.artMode === 'landscape' ? 'landscape' : 'portrait';
+  els.artMode.disabled = !!conv.lock;
+  els.artKeyRow.hidden = !has || conv.artMode !== 'landscape';
+  if (!panelKeyRecording) {
+    els.panelKeyLabel.textContent = state.settings.panelKey;
+    els.btnPanelKey.textContent = t('art.keyChange');
+  }
+}
+
+// 右侧艺术图里换展示方式：和上传时一样检查比例，不合适或用户放弃时改回去
+async function changeArtMode() {
+  const conv = state.conv;
+  const mode = els.artMode.value;
+  if (conv.lock) return renderArtModeFields();
+  const blob = await artBlobOf(conv);
+  const size = blob && (await imageSize(blob));
+  const fit = size && (await artModeFit(mode, size));
+  if (!fit || conv !== state.conv) return renderArtModeFields();
+  setConvArtMode(conv, mode);
+  await saveConv(conv);
+  await applyArtFit(fit);
+  applyArtMode();
+}
+
+// ---- 横屏时收起 / 显示右侧设置区的快捷键 ----
+
+function setPanelShown(on) {
+  document.body.classList.toggle('panel-shown', on);
+  // 收起时光标还在设置区里：放回输入框，免得按键打到看不见的地方
+  if (!on && els.settingsPane.contains(document.activeElement)) els.input.focus();
+}
+
+// 按键的名称：Ctrl+Shift+K、F2 这样；只按了修饰键时为 null
+function keyName(e) {
+  if (['Control', 'Shift', 'Alt', 'Meta', 'AltGraph', 'Dead', 'Process', 'Unidentified'].includes(e.key)) return null;
+  let k = /^Key[A-Z]$/.test(e.code) ? e.code.slice(3) : /^Digit\d$/.test(e.code) ? e.code.slice(5) : e.key;
+  if (k === ' ') k = 'Space';
+  else if (k.length === 1) k = k.toUpperCase();
+  return [e.ctrlKey && 'Ctrl', e.altKey && 'Alt', e.shiftKey && 'Shift', e.metaKey && 'Meta', k].filter(Boolean).join('+');
+}
+
+// 能用的快捷键：F1–F12（单独或加修饰键），或者 Ctrl / Alt / Meta 加一个键。
+// 不能用：F5、F11、F12（刷新、全屏、开发者工具）、常用的编辑和窗口快捷键、单独的字母等（打字时会误触）
+const RESERVED_KEYS = new Set(['F5', 'F11', 'F12', 'Ctrl+A', 'Ctrl+C', 'Ctrl+V', 'Ctrl+X', 'Ctrl+Z', 'Ctrl+Y', 'Ctrl+Shift+Z',
+  'Ctrl+R', 'Ctrl+Shift+R', 'Ctrl+W', 'Ctrl+Shift+I', 'Ctrl+Q', 'Alt+F4', 'Ctrl+F4',
+  'Meta+A', 'Meta+C', 'Meta+V', 'Meta+X', 'Meta+Z', 'Meta+Shift+Z', 'Meta+R', 'Meta+W', 'Meta+Q', 'Meta+H', 'Meta+M']);
+function validPanelKey(name) {
+  if (!name || RESERVED_KEYS.has(name)) return false;
+  const parts = name.split('+');
+  const key = parts.pop();
+  if (/^F([1-9]|1[0-2])$/.test(key)) return true;
+  if (['Tab', 'Escape', 'Enter', 'Backspace', 'Delete'].includes(key)) return false;
+  return parts.includes('Ctrl') || parts.includes('Alt') || parts.includes('Meta');
+}
+
+// 点「更改」后按下的下一个键就是新的快捷键；Esc 或点别处取消
+let panelKeyRecording = null;
+function recordPanelKey() {
+  if (panelKeyRecording) return panelKeyRecording();
+  const onKey = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.key === 'Escape' && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey) return done();
+    const name = keyName(e);
+    if (!name) return;
+    if (!validPanelKey(name)) return toast(t('art.keyInvalid', { key: name }));
+    state.settings.panelKey = name;
+    saveSettingsSoon();
+    done();
+    toast(t('art.keySet', { key: name }));
+  };
+  const done = () => {
+    document.removeEventListener('keydown', onKey, true);
+    els.btnPanelKey.removeEventListener('blur', done);
+    els.btnPanelKey.classList.remove('recording');
+    panelKeyRecording = null;
+    renderArtModeFields();
+  };
+  panelKeyRecording = done;
+  els.btnPanelKey.textContent = t('art.keyPress');
+  els.btnPanelKey.classList.add('recording');
+  document.addEventListener('keydown', onKey, true);
+  els.btnPanelKey.addEventListener('blur', done);
+}
+
+function bindArtMode() {
+  els.artMode.addEventListener('change', () => void changeArtMode());
+  els.btnPanelKey.addEventListener('click', recordPanelKey);
+  els.artImage.addEventListener('load', fitArt);
+  window.addEventListener('resize', fitArt);
+  // 只在软件（页面）有焦点时收到按键。弹窗打开时不响应
+  document.addEventListener('keydown', (e) => {
+    if (e.repeat || !isLandscapeArt() || isMobileLayout()) return;
+    if (keyName(e) !== state.settings.panelKey) return;
+    if (document.querySelector('.modal:not([hidden])')) return;
+    e.preventDefault();
+    setPanelShown(!document.body.classList.contains('panel-shown'));
+  });
 }
 
 async function downloadArt() {
@@ -1890,6 +2170,7 @@ async function exportWorldCard() {
     Object.assign(data, lockedFields(conv));
     data.art = await artForExport(conv.id, false);
   }
+  if (data.art && conv.artMode) data.artMode = conv.artMode; // 艺术图的展示方式（不是受保护的内容，不加密）
   download(`${safeFilename(data.name)}-${t('export.cardSuffix')}.json`, JSON.stringify(data, null, 2), 'application/json');
 }
 
@@ -2217,7 +2498,10 @@ async function mergeCard(conv, x) {
     conv.greetings = conv.greetings.concat(x.greetings);
     syncGreeting(conv);
   }
-  if (art) await DB.set(artKey(conv.id), x.art);
+  if (art) {
+    await DB.set(artKey(conv.id), x.art);
+    setConvArtMode(conv, 'portrait');
+  }
   await refreshAfterMerge(conv);
   toast(t('restore.stCardMergeDone'));
   showCreatorNotes(x, conv);
@@ -2315,6 +2599,7 @@ async function restore(file) {
     c.greetingSend = fields.greetingSend !== false;
     normalizeGreetings(c);
     if (data.tavern) { c.tavern = data.tavern; normalizeTavern(c); }
+    if (data.artMode === 'landscape' && validArt(data.art)) c.artMode = 'landscape';
     c.title = name;
     state.conversations.push(c);
     await DB.putConversation(storable(c));
@@ -3365,8 +3650,8 @@ function bindSettings() {
 
 
   const pickArt = () => { if (!state.conv.lock) els.fileArt.click(); };
-  // 手机布局里艺术图是背景，点它不打开上传
-  els.artPane.addEventListener('click', () => { if (!isMobileLayout()) pickArt(); });
+  // 手机布局里、横屏展示时艺术图是背景，点它不打开上传
+  els.artPane.addEventListener('click', () => { if (!isMobileLayout() && !isLandscapeArt()) pickArt(); });
   els.artPane.addEventListener('contextmenu', (e) => { if (state.conv.lock) e.preventDefault(); });
   els.btnUploadArt.addEventListener('click', pickArt);
   els.btnDownloadArt.addEventListener('click', downloadArt);
@@ -3376,11 +3661,8 @@ function bindSettings() {
     els.fileArt.value = '';
     if (f) await setArt(f);
   });
-  els.btnRemoveArt.addEventListener('click', async () => {
-    if (state.conv.lock) return;
-    await DB.del(artKey(state.conv.id));
-    await loadArt();
-  });
+  els.btnRemoveArt.addEventListener('click', () => void removeArt());
+  bindArtMode();
 
   // 公用设备：不记住 API Key；清除软件数据
   els.rememberKeys.addEventListener('change', async () => {

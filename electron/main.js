@@ -1,7 +1,7 @@
 // Windows / macOS / Linux 原生应用（Electron）的入口：用自带的 Chromium 内核打开 index.html。
 // 页面本身和浏览器版完全相同；这里只负责窗口、安全设置，以及去掉跨域限制。
 
-const { app, BrowserWindow, Menu, dialog, shell, session, ipcMain, safeStorage } = require('electron');
+const { app, BrowserWindow, Menu, dialog, shell, session, ipcMain, safeStorage, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -303,6 +303,24 @@ function setupUpdateDownloads() {
   ipcMain.handle('secure-decrypt', (e, b64) => {
     if (!win || e.sender.id !== win.webContents.id || typeof b64 !== 'string') return null;
     try { return safeStorage.decryptString(Buffer.from(b64, 'base64')); } catch (_) { return null; }
+  });
+
+  // 横屏艺术图：按图片比例调整窗口内容区的大小（页面先问过用户）。全屏时不调整；最大化时先还原。
+  // 调整后窗口超出屏幕的工作区时移回来。返回 true 表示已经调整
+  ipcMain.handle('fit-window', (e, width, height) => {
+    if (!win || e.sender.id !== win.webContents.id) return false;
+    const w = Math.round(Number(width));
+    const h = Math.round(Number(height));
+    if (!(w >= 200 && w <= 20000 && h >= 200 && h <= 20000)) return false;
+    if (win.isFullScreen()) return false;
+    if (win.isMaximized()) win.unmaximize();
+    win.setContentSize(w, h);
+    const area = screen.getDisplayMatching(win.getBounds()).workArea;
+    const b = win.getBounds();
+    const x = Math.max(area.x, Math.min(b.x, area.x + area.width - b.width));
+    const y = Math.max(area.y, Math.min(b.y, area.y + area.height - b.height));
+    if (x !== b.x || y !== b.y) win.setPosition(x, y);
+    return true;
   });
 
   // 安装下载好的更新：页面显示「下载完成，正在启动安装程序…」，等没有正在生成的回复、保存好对话后调用

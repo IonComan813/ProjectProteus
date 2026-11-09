@@ -11,6 +11,8 @@ contextBridge.exposeInMainWorld('proteusDesktop', {
   // GitHub 同步的登录凭据用系统钥匙串加密 / 解密（不可用时返回 null）
   secureEncrypt: (text) => ipcRenderer.invoke('secure-encrypt', text),
   secureDecrypt: (b64) => ipcRenderer.invoke('secure-decrypt', b64),
+  // 横屏艺术图：把窗口内容区调整为 width × height（全屏时不调整）。返回 true 表示已经调整
+  fitWindow: (width, height) => ipcRenderer.invoke('fit-window', width, height),
   // 开源协议的原文（首次打开时的协议说明用）
   licenseText: () => ipcRenderer.invoke('license-text'),
   // 下载进度和结果：callback({ state: 'progress', received, total }) / ({ state: 'done', kind }) / ({ state: 'failed' | 'aborted' })

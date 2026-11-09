@@ -481,6 +481,21 @@ body.resizing iframe { pointer-events: none; }
 }
 .lock-tag { font-size: 12px; color: var(--muted); padding: 3px 0; }
 .art-pane.locked { cursor: default; }
+.art-mode-row { margin-top: 8px; gap: 8px; }
+.art-mode-row select { flex: 1; min-width: 0; }
+.art-key-row { margin-top: 8px; align-items: center; }
+.art-key-text { flex: 1; min-width: 0; font-size: 12px; color: var(--muted); }
+.art-key-text kbd {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+}
+#btnPanelKey.recording { border-color: var(--accent); color: var(--accent); }
 .art-pane.locked img { user-select: none; -webkit-user-drag: none; pointer-events: none; }
 .remember-keys { margin-top: -2px; }
 /* 内置服务商的接口地址：只显示，不能改 */
@@ -832,6 +847,50 @@ textarea:focus, input:focus, select:focus { outline: 1px solid var(--accent); bo
 
 @media (min-width: 1000px) {
   .mobile-only { display: none !important; }
+
+  /* 横屏艺术图：铺满整个窗口作背景（不拉伸：比例差得不多时铺满、裁掉一点，加 .cover；否则完整显示、留黑边），
+     聊天区居中、半透明；右侧设置区默认收起，按快捷键（默认 F2）浮在右边显示 */
+  body.art-landscape .app { grid-template-columns: minmax(0, 1fr); }
+  body.art-landscape .art-pane {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    border: none;
+    cursor: default;
+  }
+  body.art-landscape .art-pane img {
+    top: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    transform: none;
+  }
+  body.art-landscape .art-pane img.cover { object-fit: cover; }
+  body.art-landscape .col-resizer { display: none; }
+  body.art-landscape .chat-pane {
+    z-index: 1;
+    justify-self: center;
+    width: clamp(560px, 50vw, 960px);
+    height: 100vh;
+    background: rgba(21, 22, 26, .80);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    border-left: 1px solid rgba(255, 255, 255, .06);
+    border-right: 1px solid rgba(255, 255, 255, .06);
+  }
+  body.art-landscape .chat-header { position: relative; z-index: 10; background: rgba(28, 29, 34, .82); }
+  body.art-landscape .composer { background: rgba(28, 29, 34, .86); }
+  body.art-landscape .settings-pane {
+    display: none;
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 340px;
+    z-index: 20;
+    box-shadow: -8px 0 24px rgba(0, 0, 0, .45);
+  }
+  body.art-landscape.panel-shown .settings-pane { display: block; }
 }
 
 @media (max-width: 999px) {

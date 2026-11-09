@@ -251,6 +251,18 @@
           <button class="btn btn-small" id="btnDownloadArt" data-i18n="set.download">下载</button>
           <button class="btn btn-small btn-ghost" id="btnRemoveArt" data-i18n="set.remove">移除</button>
         </div>
+        <!-- 电脑布局：展示方式（竖屏在左栏 / 横屏铺满窗口），横屏时收起、显示设置区的快捷键 -->
+        <label class="field-inline art-mode-row desktop-only" id="artModeRow" hidden>
+          <span data-i18n="art.mode">展示方式</span>
+          <select id="artMode">
+            <option value="portrait" data-i18n="art.modePortrait">竖屏展示（左侧）</option>
+            <option value="landscape" data-i18n="art.modeLandscape">横屏展示（铺满窗口）</option>
+          </select>
+        </label>
+        <div class="row art-key-row desktop-only" id="artKeyRow" hidden>
+          <span class="art-key-text"><span data-i18n="art.panelKey">收起 / 显示设置区</span><kbd id="panelKeyLabel">F2</kbd></span>
+          <button class="btn btn-small" id="btnPanelKey" data-i18n="art.keyChange">更改</button>
+        </div>
         <!-- GitHub 同步：登录并选好仓库后才显示（js/sync.js 的 renderSyncConv） -->
         <label class="field-inline sync-check sync-art-conv" id="syncArtConvRow" hidden>
           <input type="checkbox" id="syncArtConv">

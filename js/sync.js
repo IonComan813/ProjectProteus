@@ -357,8 +357,13 @@ async function storeDownloaded(file, unlockCheck, local) {
     delete c.lock;
     if (art && typeof art === 'object') art = await Locker.decryptBlob(art);
   }
+  const keepLocalArt = !has || (local && syncArtOf(local) === false); // 艺术图不跟着下载：本机的图和它的展示方式都不动
+  if (keepLocalArt) {
+    if (local && local.artMode) c.artMode = local.artMode;
+    else delete c.artMode;
+  }
   await DB.putConversation(storable(c));
-  if (!has || (local && syncArtOf(local) === false)) return c;
+  if (keepLocalArt) return c;
   if (art instanceof Blob) await DB.set(artKey(c.id), art);
   else if (art && validArt(art)) await importArt(c.id, art);
   else await DB.del(artKey(c.id));
