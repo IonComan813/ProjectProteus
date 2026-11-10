@@ -783,7 +783,7 @@ textarea:focus, input:focus, select:focus { outline: 1px solid var(--accent); bo
 .update-progress-row { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; }
 .update-progress-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
 /* 下载完成后只显示一句话：可以换行 */
-.update-progress.message .update-progress-text { white-space: normal; line-height: 1.5; }
+.update-progress.message .update-progress-text { white-space: pre-line; line-height: 1.5; } /* 保留文字里的换行（安卓下载完成的提示分两行） */
 .update-progress-stop {
   flex: none;
   width: 26px;
