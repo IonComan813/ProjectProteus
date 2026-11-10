@@ -895,10 +895,13 @@ function renderMessages() {
       sub.append(t('msg.emptyAssistantSub1'), document.createElement('br'), t(isMobileLayout() ? 'msg.emptyAssistantSub2Mobile' : 'msg.emptyAssistantSub2'));
       hint.appendChild(sub);
     } else {
-      hint.append(t('msg.empty'), document.createElement('br'));
+      // 手机上屏幕窄，前两句在逗号处换行（文字里的 \n），写法也和电脑上不同
+      const m = isMobileLayout() ? 'Mobile' : '';
+      const lines = (key) => t(key).split('\n').flatMap((line, i) => (i ? [document.createElement('br'), line] : [line]));
+      hint.append(...lines('msg.empty' + m), document.createElement('br'));
       const sub = document.createElement('span');
       sub.className = 'small';
-      sub.append(t('msg.emptySub1'), document.createElement('br'), t(isMobileLayout() ? 'msg.emptySub2Mobile' : 'msg.emptySub2'));
+      sub.append(...lines('msg.emptySub1' + m), document.createElement('br'), t('msg.emptySub2' + m));
       hint.appendChild(sub);
     }
     box.appendChild(hint);
