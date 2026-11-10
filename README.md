@@ -1,7 +1,8 @@
 # Proteus
 
 [![Awesome](https://awesome.re/badge.svg)](https://awesome.re) ![Made with love](https://img.shields.io/badge/made%20with-%E2%9D%A4-red) [![OctoCounts](https://api.octocounts.com/badge/IonComan813/ProjectProteus/commit/978d50015a08f43e306a0b796c2cd96f7b7b0e44)](https://octocounts.pages.dev/github/IonComan813/ProjectProteus/commit/978d50015a08f43e306a0b796c2cd96f7b7b0e44?analysis=%7B%22ignoredDirs%22%3A%5B%5D%2C%22ignoredLanguages%22%3A%5B%5D%2C%22profile%22%3A%22default%22%2C%22includeDocs%22%3Afalse%2C%22includeTests%22%3Afalse%2C%22includeGenerated%22%3Afalse%7D)
-![Cat Fact](https://readme-cat-facts.vercel.app/api)
+![Random Cat](https://cataas.com/cat)
+
 [简体中文](README.zh-CN.md) | English
 
 A roleplay chat app for large language models (LLMs), similar in spirit to SillyTavern; it can also switch to an [assistant mode](#assistant-mode) for ordinary LLM chats. Available as native apps (Windows / macOS / Linux and Android) and as a web version.
