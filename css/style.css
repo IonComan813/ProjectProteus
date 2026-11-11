@@ -746,6 +746,48 @@ textarea:focus, input:focus, select:focus { outline: 1px solid var(--accent); bo
   line-height: 1.6;
 }
 
+/* 「完整模型列表」窗口：筛选框和重新获取，下面是表格（名称和标签 | 输入 | 输出 | 状态） */
+.model-list-box { width: min(760px, 92vw); height: min(85vh, 760px); }
+.model-list-tools { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--border); }
+.model-list-tools input { flex: 1 1 160px; min-width: 0; }
+.model-list-tools .btn { flex: none; }
+.model-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 84px 84px 76px;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 14px;
+}
+.model-head { padding-top: 7px; padding-bottom: 7px; border-bottom: 1px solid var(--border); color: var(--muted); font-size: 12px; }
+.model-head button {
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+.model-head button:hover, .model-head button[aria-sort="ascending"], .model-head button[aria-sort="descending"] { color: var(--text); }
+.model-head .sort-mark { color: var(--accent); font-size: 10px; }
+.model-table { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 0; }
+.model-table .model-row { cursor: pointer; border-radius: 4px; margin: 0 6px; padding: 6px 8px; }
+.model-table .model-row:hover, .model-table .model-row:focus-visible { background: rgba(201, 169, 110, .18); outline: none; }
+.model-table .model-row.current .model-id { font-weight: 600; color: var(--accent); }
+.model-id { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.model-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
+.model-tag { padding: 0 6px; border: 1px solid var(--border); border-radius: 9px; font-size: 11px; line-height: 16px; color: var(--muted); }
+.model-price { text-align: right; font-variant-numeric: tabular-nums; }
+.model-head .model-price { text-align: right; }
+.model-price.per-call { font-size: 12px; }
+.model-status { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; padding-left: 12px; }
+.model-table .model-status { color: var(--muted); } /* 没有状态（—）或认不出的 */
+.model-table .model-status.ok { color: var(--ok); }
+.model-table .model-status.bad { color: var(--danger); }
+.model-table .model-status.warn { color: var(--accent); }
+.model-empty { padding: 24px 14px; text-align: center; }
+.model-list-foot { padding: 6px 14px 8px; border-top: 1px solid var(--border); }
+
 .dialog-box { width: min(520px, 90vw); }
 .dialog-message {
   padding: 16px;
@@ -1041,6 +1083,13 @@ textarea:focus, input:focus, select:focus { outline: 1px solid var(--accent); bo
   input[type=text], input[type=password], input[type=number], select, textarea, .conv-current { font-size: 16px; }
   .conv-menu .combo-item { line-height: 36px; font-size: 15px; }
   .all-conv-item { padding: 11px 12px; font-size: 15px; }
+  /* 完整模型列表：手机上窄一些的价格、状态列，行高一点方便手指点 */
+  .model-list-box { height: 85vh; }
+  .model-row { grid-template-columns: minmax(0, 1fr) 58px 58px 56px; gap: 6px; }
+  .model-status { padding-left: 8px; }
+  .model-list-tools input { flex-basis: 90px; } /* 两个筛选框和「重新获取」排在一行 */
+  .model-table .model-row { padding: 9px 8px; }
+  .model-id { font-size: 14px; }
   /* 对话列表铺满屏幕宽度（盖住右边的按钮），条目尽量完整显示 */
   .combo-menu.conv-menu { right: auto; width: calc(100vw - 20px); }
   .unit-input .unit { font-size: 16px; } /* 和记忆长度的数字一样大（手机上输入框是 16px） */

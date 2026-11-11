@@ -31,6 +31,7 @@ const DEFAULT_SETTINGS = {
   models: {},          // 各服务商的模型名。没有预填：模型名要用户自己获取列表后选，或直接输入
   maxTokens: { anthropic: 16000 }, // 新添加的 Anthropic 兼容服务商也从 16000 开始（saveRelayDialog）
   modelLists: {},      // 各服务商“获取列表”得到的模型名，记下来供下拉选择
+  modelInfo: {},       // 同时得到的模型附加信息 { 服务商: { 模型名: { in, out, call, status, tags } } }（providers.js 的 modelInfoOf），「完整列表」窗口里显示
   effort: '',
   useTemperature: false,
   temperature: 1,
@@ -2941,6 +2942,7 @@ function bindBackButton() {
     if (!els.allConvBox.hidden) return closeAllConvs();
     // 信息弹窗直接关掉：它没有自己的 Escape 处理，派发 Escape 会连设置面板一起关掉
     if (!els.modal.hidden) { els.modal.hidden = true; return; }
+    if (!els.modelListBox.hidden) return closeModelList();
     if (expandSource) return closeExpand();
     if (!els.previewBox.hidden) return closePreview();
     if (document.body.classList.contains('settings-open')) return closeSettings();
@@ -3087,6 +3089,7 @@ function fillProviderFields() {
   els.maxTokens.value = s.maxTokens[s.provider] || '';
   closeModelMenu();
   els.btnModelMenu.disabled = !modelOptions().length; // 还没获取列表时 ▾ 不能点
+  updateFetchButton();
   els.temperature.disabled = !s.useTemperature;
   updateFormatFields();
 }
@@ -3143,7 +3146,7 @@ function migrateRelays(s) {
       const id = key.slice(RELAY_PREFIX.length);
       s.relays.push({ id, name: uniqueRelayName(hostName(s.baseUrls[old]) || t('relay.formatShort.' + format), s), format });
     }
-    for (const k of ['apiKeys', 'baseUrls', 'models', 'maxTokens', 'modelLists']) {
+    for (const k of ['apiKeys', 'baseUrls', 'models', 'maxTokens', 'modelLists', 'modelInfo']) {
       if (key && s[k][old] !== undefined) s[k][key] = s[k][old];
       delete s[k][old];
     }
@@ -3159,7 +3162,7 @@ function migrateRelays(s) {
       const key = RELAY_PREFIX + id;
       s.relays.push({ id, name: uniqueRelayName(hostName(url) || t('relay.formatShort.' + PROVIDERS[k].format), s), format: PROVIDERS[k].format });
       s.baseUrls[key] = url;
-      for (const f of ['apiKeys', 'models', 'maxTokens', 'modelLists']) {
+      for (const f of ['apiKeys', 'models', 'maxTokens', 'modelLists', 'modelInfo']) {
         if (s[f][k] !== undefined) { s[f][key] = s[f][k]; delete s[f][k]; }
       }
       if (s.provider === k) s.provider = key;
@@ -3172,10 +3175,10 @@ function migrateRelays(s) {
   const orRelay = s.relays.find((r) => trimSlash(s.baseUrls[RELAY_PREFIX + r.id] || '') === PROVIDERS.openrouter.baseUrl);
   if (orRelay && !(s.apiKeys.openrouter || '').trim()) {
     const key = RELAY_PREFIX + orRelay.id;
-    for (const f of ['apiKeys', 'models', 'maxTokens', 'modelLists']) {
+    for (const f of ['apiKeys', 'models', 'maxTokens', 'modelLists', 'modelInfo']) {
       if (s[f][key] !== undefined) s[f].openrouter = s[f][key];
     }
-    for (const f of ['apiKeys', 'baseUrls', 'models', 'maxTokens', 'modelLists']) delete s[f][key];
+    for (const f of ['apiKeys', 'baseUrls', 'models', 'maxTokens', 'modelLists', 'modelInfo']) delete s[f][key];
     s.relays = s.relays.filter((r) => r !== orRelay);
     if (s.provider === key) s.provider = 'openrouter';
     migrated = true;
@@ -3201,7 +3204,7 @@ function removeRelay(relay) {
   const s = state.settings;
   const key = RELAY_PREFIX + relay.id;
   s.relays = s.relays.filter((r) => r !== relay);
-  for (const k of ['apiKeys', 'baseUrls', 'models', 'maxTokens', 'modelLists']) delete s[k][key];
+  for (const k of ['apiKeys', 'baseUrls', 'models', 'maxTokens', 'modelLists', 'modelInfo']) delete s[k][key];
   if (s.provider === key) s.provider = 'anthropic';
   setCustomProviders(s.relays);
   fillProviderSelect();
@@ -3211,11 +3214,12 @@ function removeRelay(relay) {
   toast(t('relay.deleted', { name: relay.name }));
 }
 
-// 「添加服务商」窗口。relayDraft 是窗口打开期间的状态：models 是获取到的模型列表，fetching 是正在获取的那一次（关掉窗口后作废）
+// 「添加服务商」窗口。relayDraft 是窗口打开期间的状态：models 是获取到的模型列表，info 是同时得到的附加信息（保存后在「完整列表」里看，
+// 这个窗口里只有简单的下拉框），fetching 是正在获取的那一次（关掉窗口后作废）
 let relayDraft = null;
 
 function openRelayDialog() {
-  relayDraft = { models: null, fetching: null };
+  relayDraft = { models: null, info: null, fetching: null };
   els.relayName.value = '';
   els.relayFormat.value = '';
   els.relayUrl.value = '';
@@ -3272,9 +3276,10 @@ async function fetchRelayModels() {
   updateRelaySave();
   setRelayStatus(t('relay.fetching'));
   try {
-    const list = await fetchModels(cfg);
+    const { models: list, info } = await fetchModels(cfg);
     if (relayDraft !== draft || draft.fetching !== run) return;
     draft.models = list;
+    draft.info = info;
     fillRelayModels();
     setRelayStatus(t(list.length ? 'relay.fetched' : 'relay.fetchedNone', { n: list.length }));
   } catch (e) {
@@ -3303,7 +3308,7 @@ async function saveRelayDialog() {
   s.baseUrls[key] = url;
   s.apiKeys[key] = els.relayKey.value.trim();
   if (els.relayModel.value) s.models[key] = els.relayModel.value;
-  if (relayDraft && relayDraft.models) s.modelLists[key] = relayDraft.models;
+  if (relayDraft && relayDraft.models) storeModelList(key, relayDraft.models, relayDraft.info); // 设置区的按钮直接是「完整列表」
   if (format === 'anthropic') s.maxTokens[key] = 16000;
   s.provider = key;
   s.rememberKeys = els.relayRemember.checked;
@@ -3420,6 +3425,211 @@ function bindModelMenu() {
       closeModelMenu();
     }
   });
+}
+
+// ---- 完整模型列表 ----
+// 获取过模型列表后（在设置区，或者添加服务商的时候），设置区的「获取列表」变成「完整列表」，打开这个窗口：
+// 列出所有对话模型和服务商给的费用、状态、标签（大多数服务商只给名称，没有的显示 —）。
+// 点表头按名称、输入费用、输出费用排序（再点一次反过来；名称和下拉列表的顺序一样，没有价格的总在最后）；
+// 名称、标签各有一个筛选框：写一段文字 = 包含它，!文字 = 不包含它，空格隔开的几个条件要同时满足。点一行选用这个模型。
+// 重新获取列表也在这里。「添加服务商」窗口里的模型下拉框不进这个窗口
+
+const modelList = { sort: 'name', desc: false, fetching: null };
+
+const hasModelList = () => Array.isArray(state.settings.modelLists[state.settings.provider]);
+
+// 记下获取到的列表和附加信息（没有附加信息时把旧的删掉）
+function storeModelList(provider, models, info) {
+  const s = state.settings;
+  s.modelLists[provider] = models;
+  if (info && Object.keys(info).length) s.modelInfo[provider] = info;
+  else delete s.modelInfo[provider];
+}
+
+// 改的是 data-i18n：切换界面语言时按现在的状态重新翻译
+function updateFetchButton() {
+  const b = els.btnFetchModels;
+  const full = hasModelList();
+  b.dataset.i18n = full ? 'set.fullList' : 'set.fetchModels';
+  b.dataset.i18nTitle = full ? 'set.fullListTitle' : 'set.fetchModelsTitle';
+  b.textContent = t(b.dataset.i18n);
+  b.title = t(b.dataset.i18nTitle);
+}
+
+function openModelList() {
+  closeModelMenu();
+  renderModelList();
+  els.modelListBox.hidden = false;
+  const cur = els.modelTable.querySelector('.current');
+  if (cur) cur.scrollIntoView({ block: 'center' });
+  // 触屏上不放焦点（会弹出键盘盖住列表）
+  if (!window.matchMedia('(hover: none)').matches) els.modelFilterName.focus({ preventScroll: true });
+}
+
+function closeModelList() {
+  els.modelListBox.hidden = true;
+}
+
+// 筛选条件：[{ not, v }]，都是小写
+function parseModelFilter(text) {
+  return text.trim().toLowerCase().split(/\s+/)
+    .map((w) => (w[0] === '!' ? { not: true, v: w.slice(1) } : { not: false, v: w }))
+    .filter((c) => c.v);
+}
+// hay 里有一项包含 v 就算包含
+const modelFilterHit = (conds, hay) => conds.every((c) => hay.some((h) => h.includes(c.v)) !== c.not);
+
+// 每百万 token 的价格：最多 4 位有效数字
+function fmtModelPrice(n) {
+  return typeof n === 'number' ? String(Number(n.toPrecision(4))) : '';
+}
+
+function modelStatusClass(st) {
+  if (/^(ok|active|available|online|up|normal|healthy|enabled|operational|live)$/i.test(st)) return 'ok';
+  if (/down|offline|unavailable|disabled|error|fail|outage|deprecated|retired|maintenance|inactive/i.test(st)) return 'bad';
+  return 'warn';
+}
+
+function sortModelRows(rows) {
+  const { sort, desc } = modelList;
+  const byName = (a, b) => compareModels(a.name, b.name);
+  if (sort === 'name') {
+    rows.sort(byName);
+    if (desc) rows.reverse();
+    return rows;
+  }
+  return rows.sort((a, b) => {
+    const x = a.info[sort];
+    const y = b.info[sort];
+    const nx = typeof x !== 'number';
+    const ny = typeof y !== 'number';
+    if (nx || ny) return nx === ny ? byName(a, b) : nx ? 1 : -1;
+    return (desc ? y - x : x - y) || byName(a, b);
+  });
+}
+
+function renderModelList() {
+  const s = state.settings;
+  const relay = currentRelay();
+  els.modelListTitle.textContent = t('models.title', { name: relay ? relay.name : t('provider.' + s.provider) });
+  const infoMap = s.modelInfo[s.provider] || {};
+  const all = modelOptions().map((name) => ({ name, info: infoMap[name] || {} }));
+  const nameConds = parseModelFilter(els.modelFilterName.value);
+  const tagConds = parseModelFilter(els.modelFilterTag.value);
+  const rows = sortModelRows(all.filter((r) => modelFilterHit(nameConds, [r.name.toLowerCase()])
+    && modelFilterHit(tagConds, (r.info.tags || []).map((x) => x.toLowerCase()))));
+
+  for (const b of els.modelListHead.querySelectorAll('[data-sort]')) {
+    const on = b.dataset.sort === modelList.sort;
+    b.querySelector('.sort-mark').textContent = on ? (modelList.desc ? '▼' : '▲') : '';
+    b.setAttribute('aria-sort', on ? (modelList.desc ? 'descending' : 'ascending') : 'none');
+  }
+
+  const current = els.model.value.trim();
+  const top = els.modelTable.scrollTop;
+  els.modelTable.innerHTML = '';
+  for (const r of rows) {
+    const row = document.createElement('div');
+    row.className = 'model-row' + (r.name === current ? ' current' : '');
+    row.tabIndex = 0;
+    row.setAttribute('role', 'button');
+    const cell = (cls, text, title) => {
+      const el = document.createElement('div');
+      el.className = cls;
+      el.textContent = text;
+      if (title) el.title = title;
+      row.appendChild(el);
+      return el;
+    };
+    const name = cell('model-name', '');
+    const id = document.createElement('div');
+    id.className = 'model-id';
+    id.textContent = r.name;
+    id.title = r.name;
+    name.appendChild(id);
+    if (r.info.tags) {
+      const tags = document.createElement('div');
+      tags.className = 'model-tags';
+      for (const tg of r.info.tags) {
+        const chip = document.createElement('span');
+        chip.className = 'model-tag';
+        chip.textContent = tg;
+        tags.appendChild(chip);
+      }
+      name.appendChild(tags);
+    }
+    const perCall = typeof r.info.in !== 'number' && typeof r.info.call === 'number';
+    cell('model-price' + (perCall ? ' per-call' : ''), perCall ? t('models.perCall', { p: fmtModelPrice(r.info.call) }) : fmtModelPrice(r.info.in) || '—');
+    cell('model-price', fmtModelPrice(r.info.out) || '—');
+    const st = r.info.status || '';
+    cell('model-status' + (st ? ' ' + modelStatusClass(st) : ''), st || '—', st);
+    row.addEventListener('click', () => { pickModel(r.name); closeModelList(); });
+    row.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault();
+      pickModel(r.name);
+      closeModelList();
+    });
+    els.modelTable.appendChild(row);
+  }
+  if (!rows.length) {
+    const empty = document.createElement('div');
+    empty.className = 'model-empty muted';
+    empty.textContent = t(all.length ? 'models.noMatch' : 'models.empty');
+    els.modelTable.appendChild(empty);
+  }
+  els.modelTable.scrollTop = top;
+
+  const anyInfo = all.some((r) => Object.keys(r.info).length);
+  els.modelListFoot.textContent = t('models.count', { shown: rows.length, total: all.length }) + ' · '
+    + t(anyInfo ? 'models.priceNote' : 'models.noInfo');
+}
+
+async function refetchModelList() {
+  if (modelList.fetching) return;
+  const provider = state.settings.provider;
+  const run = {};
+  modelList.fetching = run;
+  els.btnRefetchModels.disabled = true;
+  els.btnRefetchModels.textContent = t('models.refetching');
+  try {
+    const { models, info } = await fetchModels(providerCfg());
+    storeModelList(provider, models, info);
+    saveSettingsSoon();
+    if (state.settings.provider === provider) els.btnModelMenu.disabled = !modelOptions().length;
+    if (!els.modelListBox.hidden) renderModelList();
+    toast(t('models.refetched', { n: models.length }));
+  } catch (e) {
+    showModal(t('set.fetchModelsFailed'), e.message);
+  } finally {
+    modelList.fetching = null;
+    els.btnRefetchModels.disabled = false;
+    els.btnRefetchModels.textContent = t('models.refetch');
+  }
+}
+
+function bindModelList() {
+  for (const el of [els.modelFilterName, els.modelFilterTag]) el.addEventListener('input', () => {
+    els.modelTable.scrollTop = 0;
+    renderModelList();
+  });
+  for (const b of els.modelListHead.querySelectorAll('[data-sort]')) {
+    b.addEventListener('click', () => {
+      if (modelList.sort === b.dataset.sort) modelList.desc = !modelList.desc;
+      else { modelList.sort = b.dataset.sort; modelList.desc = false; }
+      renderModelList();
+    });
+  }
+  els.btnRefetchModels.addEventListener('click', () => void refetchModelList());
+  // 点窗口以外的地方关闭
+  els.modelListBox.addEventListener('click', (e) => { if (e.target === els.modelListBox) closeModelList(); });
+  // Esc 只关这个窗口，不顺带关闭设置面板。上面盖着出错提示时先关提示（它自己处理）
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || els.modelListBox.hidden || !els.modal.hidden) return;
+    e.stopPropagation();
+    e.preventDefault();
+    closeModelList();
+  }, true);
 }
 
 // ---- 查看下一轮将发送的内容 ----
@@ -3820,12 +4030,15 @@ function bindSettings() {
     els.btnToggleKey.textContent = t(show ? 'set.hide' : 'set.show');
   });
 
+  // 还没获取过列表时是「获取列表」；获取过（包括添加服务商时就获取了）是「完整列表」，打开大窗口，在那里重新获取
   els.btnFetchModels.addEventListener('click', async () => {
+    if (hasModelList()) return openModelList();
     els.btnFetchModels.disabled = true;
     try {
-      const list = await fetchModels(providerCfg());
-      s().modelLists[s().provider] = list;
+      const { models: list, info } = await fetchModels(providerCfg());
+      storeModelList(s().provider, list, info);
       els.btnModelMenu.disabled = !list.length;
+      updateFetchButton();
       saveSettingsSoon();
       toast(t('set.fetchedModels', { n: list.length }));
       openModelMenu('');
@@ -4040,7 +4253,7 @@ function bindChat() {
     else if (c) void deleteConv(c);
   });
   // 有输入框或确认框打开时（例如正在重命名），对话列表不受点击、Esc 和窗口大小变化影响
-  const dialogOpen = () => !els.dialog.hidden || !els.textDialog.hidden || !els.pwDialog.hidden || !els.modal.hidden || !els.updateDialog.hidden || !els.relayDialog.hidden || !els.syncDialog.hidden;
+  const dialogOpen = () => !els.dialog.hidden || !els.textDialog.hidden || !els.pwDialog.hidden || !els.modal.hidden || !els.updateDialog.hidden || !els.relayDialog.hidden || !els.syncDialog.hidden || !els.modelListBox.hidden;
   // 点在列表和右键菜单以外：都收起；点在列表里（右键菜单以外）：只收起右键菜单。
   // 用 pointerdown：点在不可用的输入框上时浏览器不发 mousedown
   document.addEventListener('pointerdown', (e) => {
@@ -4112,7 +4325,7 @@ async function boot() {
   const saved = (await DB.get('settings')) || {};
   const sessionKeys = state.settings && state.settings.rememberKeys === false ? state.settings.apiKeys : null;
   state.settings = { ...DEFAULT_SETTINGS, ...saved };
-  for (const k of ['apiKeys', 'baseUrls', 'models', 'maxTokens', 'modelLists', 'sync']) {
+  for (const k of ['apiKeys', 'baseUrls', 'models', 'maxTokens', 'modelLists', 'modelInfo', 'sync']) {
     state.settings[k] = { ...DEFAULT_SETTINGS[k], ...(saved[k] || {}) };
   }
   if (sessionKeys) state.settings.apiKeys = sessionKeys; // 不记住 Key 时，本次打开期间填过的 Key 继续有效
@@ -4197,6 +4410,7 @@ function init() {
   bindChat();
   bindLayout();
   bindModelMenu();
+  bindModelList();
   bindBackButton();
   // 消息高度变化时（内容载入、图片加载、展开 <details> 等），如果停留在底部就继续贴底
   Render.onResize(() => { if (state.follow) els.messages.scrollTop = els.messages.scrollHeight; });

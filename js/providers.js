@@ -549,10 +549,12 @@ async function streamChat(cfg, system, messages, { signal, onText, onThinking, o
 //   OpenAI 格式：<地址>/models → 服务商指定的地址 → 去掉 /v1 前一段路径（…/inference/openai/v1 → …/inference/v1/models）
 //                → 去掉结尾的 /v1 再加 /v1/models → <域名>/v1/models
 //   Anthropic 格式：<地址>/v1/models → <地址>/models
-// 都取不到时报第一个错误
+// 都取不到时报第一个错误。
+// 返回 { models, info }：models 是排好序的对话模型名；info 是 { 模型名: 附加信息 }，只有列表里带了费用、状态或标签的模型才有
+// （见下面的 modelInfoOf）。用户添加的 OpenAI 格式服务商再顺带试一下 new-api 的价格接口（newApiPricing）
 async function fetchModels(cfg) {
   const p = providerOf(cfg.provider) || {};
-  if (p.auth === 'google' && !cfg.format) return fetchVertexModels(cfg);
+  if (p.auth === 'google' && !cfg.format) return { models: await fetchVertexModels(cfg), info: {} };
   const lc = p.listFormat && !cfg.format ? { ...cfg, format: p.listFormat } : cfg;
   const base = baseOf(p.listFormat && !cfg.format ? { ...cfg, model: '' } : cfg);
   if (!base) throw new Error(t('api.needBaseUrl'));
@@ -560,7 +562,17 @@ async function fetchModels(cfg) {
   const headers = anthropic
     ? { 'x-api-key': cfg.apiKey, 'anthropic-version': ANTHROPIC_VERSION, 'anthropic-dangerous-direct-browser-access': 'true' }
     : (cfg.apiKey ? { authorization: 'Bearer ' + cfg.apiKey } : {});
-  return firstModelList(modelListUrls(base, anthropic, p.modelsUrls || []), headers);
+  const entries = await firstModelList(modelListUrls(base, anthropic, p.modelsUrls || []), headers);
+  const info = {};
+  for (const e of entries) if (e.info) info[e.id] = e.info;
+  if (!anthropic && !isBuiltinProvider(cfg.provider)) {
+    const extra = await newApiPricing(base);
+    for (const e of entries) {
+      const x = extra && extra[e.id];
+      if (x) info[e.id] = { ...x, ...info[e.id] }; // 列表里自己带的优先
+    }
+  }
+  return { models: entries.map((e) => e.id), info };
 }
 
 function modelListUrls(base, anthropic, extra) {
@@ -593,7 +605,7 @@ async function firstModelList(urls, headers) {
         throw new Error(t('api.connectFailedShort') + e.message);
       }
       if (!res.ok) throw await readError(res);
-      const list = modelNames(await res.json());
+      const list = modelEntries(await res.json());
       if (list.length) return list;
       throw new Error(t('api.noModels'));
     } catch (e) {
@@ -697,13 +709,133 @@ function isChatModel(name) {
 const chatModelList = (list) => sortModels(list.filter(isChatModel));
 
 // 各家模型列表的格式：{ data: [{ id }] }（OpenAI、Anthropic）、{ models: [{ name: 'models/…' }] }（Gemini）、
-// { publisherModels: [{ name: 'publishers/google/models/…' }] }（Vertex）
-function modelNames(j) {
+// { publisherModels: [{ name: 'publishers/google/models/…' }] }（Vertex）。
+// 返回 [{ id, info }]，只留对话模型，按名称排序；同名的只留第一个
+function modelEntries(j) {
   const items = (j && (j.data || j.models || j.publisherModels)) || [];
-  return items.map((m) => (m && (m.id || m.name)) || '').filter((x) => typeof x === 'string' && x)
-    .map((id) => id.replace(/^models\//, '')) // Gemini 的模型名带有 models/ 前缀，去掉后也能用
-    .filter(isChatModel)
-    .sort(compareModels);
+  const seen = new Set();
+  const out = [];
+  for (const m of items) {
+    const raw = m && (m.id || m.name);
+    if (typeof raw !== 'string' || !raw) continue;
+    const id = raw.replace(/^models\//, ''); // Gemini 的模型名带有 models/ 前缀，去掉后也能用
+    if (seen.has(id) || !isChatModel(id)) continue;
+    seen.add(id);
+    out.push({ id, info: modelInfoOf(m) });
+  }
+  return out.sort((a, b) => compareModels(a.id, b.id));
+}
+
+// ---- 模型的附加信息：费用、状态、标签 ----
+// 各家的模型列表大多只有名称（OpenAI、Anthropic、Google 官方都没有这些），少数聚合平台和中转站会带上，字段名各不相同。
+// 认得出的写法：
+//   费用  pricing: { prompt, completion }（OpenRouter，每 token 美元，字符串）、pricing: { input, output }（Together 等，每百万 token）、
+//         cost: { input, output }（每百万 token）、input_cost_per_token / output_cost_per_token（LiteLLM）、input_price / output_price
+//   状态  status（字符串，原样显示），或者 active / available / enabled（true → ok，false → down）
+//   标签  tags（字符串数组，或者用逗号分隔的字符串）
+// 统一成 { in, out, call, status, tags }（没有的不写）：in、out 是每百万 token 的价格，call 是按次计费的每次价格。
+// 价格不换算货币，单位以服务商为准（多为美元）
+const priceNum = (v) => {
+  if (v === null || v === undefined || v === '' || typeof v === 'boolean') return null;
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0 ? n : null; // OpenRouter 用 -1 表示价格不固定（自动路由）
+};
+
+// 换算成每百万 token。写了单位的按单位；没写的按大小判断：每 token 的价格都在 0.001 以下（相当于每百万 1000），
+// 每百万 token 的价格不会这么低（免费的是 0）
+function perMillion(v, unit) {
+  const n = priceNum(v);
+  if (n === null) return null;
+  const u = typeof unit === 'string' ? unit.toLowerCase().replace(/[_\-/\s]+/g, ' ') : ''; // per_1k_tokens → per 1k tokens
+  if (/million|1m\b|mtok|\bm\b/.test(u)) return n;
+  if (/1k\b|thousand|ktok|\bk\b/.test(u)) return n * 1e3;
+  if (/token/.test(u)) return n * 1e6;
+  return n > 0 && n < 0.001 ? n * 1e6 : n;
+}
+
+function tagList(v) {
+  const list = Array.isArray(v) ? v : typeof v === 'string' ? v.split(/[,，;；]/) : [];
+  const out = [];
+  for (const x of list) {
+    const tag = typeof x === 'string' ? x.trim() : '';
+    if (tag && !out.includes(tag)) out.push(tag);
+  }
+  return out;
+}
+
+// 没有任何可显示的信息时为 null
+function modelInfoOf(m) {
+  if (!m || typeof m !== 'object') return null;
+  const info = {};
+  const pr = m.pricing && typeof m.pricing === 'object' ? m.pricing : null;
+  const cost = m.cost && typeof m.cost === 'object' ? m.cost : null;
+  let pin = null;
+  let pout = null;
+  if (pr) {
+    pin = perMillion(pr.prompt ?? pr.input ?? pr.input_price, pr.unit);
+    pout = perMillion(pr.completion ?? pr.output ?? pr.output_price, pr.unit);
+  }
+  if (pin === null && pout === null && cost) {
+    pin = perMillion(cost.input, cost.unit || 'million');
+    pout = perMillion(cost.output, cost.unit || 'million');
+  }
+  if (pin === null && pout === null) {
+    pin = perMillion(m.input_cost_per_token, 'token');
+    pout = perMillion(m.output_cost_per_token, 'token');
+  }
+  if (pin === null && pout === null) {
+    pin = perMillion(m.input_price);
+    pout = perMillion(m.output_price);
+  }
+  if (pin !== null) info.in = pin;
+  if (pout !== null) info.out = pout;
+  if (typeof m.status === 'string' && m.status.trim()) info.status = m.status.trim();
+  else {
+    const flag = ['active', 'available', 'enabled'].find((k) => typeof m[k] === 'boolean');
+    if (flag) info.status = m[flag] ? 'ok' : 'down';
+  }
+  const tags = tagList(m.tags);
+  if (tags.length) info.tags = tags;
+  return Object.keys(info).length ? info : null;
+}
+
+// new-api（以及 one-api 的一些分支）搭的中转站：/v1/models 只有名称，价格和标签在 <域名>/api/pricing（不用登录）。
+// 价格是倍率：模型倍率 1 = 每百万 token 2 美元（按额度计算），输出再乘补全倍率，再乘默认分组的倍率；
+// 按次计费的模型（quota_type 1）是每次的价格（model_price）。
+// 取不到、格式不对（不是 new-api）时为 null，不报错。不带 API Key：这个接口不认 Key，也没必要发给它
+async function newApiPricing(base) {
+  let url;
+  try { url = new URL(base).origin + '/api/pricing'; } catch (_) { return null; }
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const j = await res.json();
+    if (!j || !Array.isArray(j.data)) return null;
+    const groups = j.group_ratio && typeof j.group_ratio === 'object' ? j.group_ratio : {};
+    const group = priceNum(groups.default) ?? 1;
+    const out = {};
+    for (const m of j.data) {
+      if (!m || typeof m.model_name !== 'string' || !m.model_name) continue;
+      const info = {};
+      if (Number(m.quota_type) === 1) {
+        const p = priceNum(m.model_price);
+        if (p !== null) info.call = p * group;
+      } else {
+        const r = priceNum(m.model_ratio);
+        if (r !== null) {
+          info.in = r * 2 * group;
+          const c = priceNum(m.completion_ratio);
+          info.out = info.in * (c === null ? 1 : c);
+        }
+      }
+      const tags = tagList(m.tags);
+      if (tags.length) info.tags = tags;
+      if (Object.keys(info).length) out[m.model_name] = info;
+    }
+    return out;
+  } catch (_) {
+    return null;
+  }
 }
 
 // Vertex 的模型列表：Model Garden 的发布者模型列表（publishers.models.list，v1beta1），Google 和 Anthropic 各取一次，
