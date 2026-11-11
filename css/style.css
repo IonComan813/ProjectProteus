@@ -783,7 +783,7 @@ textarea:focus, input:focus, select:focus { outline: 1px solid var(--accent); bo
 .model-tag { padding: 0 6px; border: 1px solid var(--border); border-radius: 9px; font-size: 11px; line-height: 16px; color: var(--muted); }
 .model-price { text-align: center; font-variant-numeric: tabular-nums; }
 .model-price.per-call { font-size: 12px; }
-.model-status { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; text-align: center; }
+.model-status { font-size: 12px; line-height: 1.3; text-align: center; overflow-wrap: anywhere; } /* 长的状态（to be retired 等）折行 */
 .model-table .model-status { color: var(--muted); } /* 没有状态（—）或认不出的 */
 .model-until { font-size: 10px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
 .model-table .model-status.ok { color: var(--ok); }

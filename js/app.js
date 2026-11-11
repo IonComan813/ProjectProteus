@@ -3620,13 +3620,16 @@ function renderModelList() {
     const st = r.info.status || '';
     cell('model-price' + (perCall ? ' per-call' : '') + (pin ? '' : ' no-value'), pin || '—');
     cell('model-price' + (pout ? '' : ' no-value'), pout || '—');
-    const stCell = cell('model-status ' + (st ? modelStatusClass(st) : 'no-value'), st || '—', st);
-    // 下线（退役）日期：状态下面小字一行
+    // 计划退役的（deprecated：还能用，但会退役）不直接写 deprecated（看不出能不能用）：有日期时写「退役日期」，
+    // 下一行是日期；没有日期时写「即将退役」。其他状态原样显示，有日期（例如已经退役的）时日期写在下一行
+    const deprecated = /^deprecated$/i.test(st);
+    const label = deprecated ? t(r.info.until ? 'models.retiresOn' : 'models.toBeRetired') : st;
+    const stCell = cell('model-status ' + (st ? modelStatusClass(st) : 'no-value'), label || '—');
+    if (st) stCell.title = label + (r.info.until ? ' ' + r.info.until : '') + (deprecated ? ` (${st})` : '');
     if (r.info.until) {
       const until = document.createElement('div');
       until.className = 'model-until';
       until.textContent = r.info.until;
-      stCell.title = st + ' · ' + t('models.until', { date: r.info.until });
       stCell.appendChild(until);
     }
     row.addEventListener('click', () => { pickModel(r.name); closeModelList(); });
