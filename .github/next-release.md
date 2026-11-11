@@ -26,3 +26,7 @@
   zh-TW: 修復了在視窗裡按住滑鼠選取文字、到視窗外才放開時視窗被關閉的問題
   en: Fixed windows closing when you select text inside them and release the mouse outside
   ja: ウィンドウ内で文字を選択し、ウィンドウの外でマウスを離すとウィンドウが閉じてしまう問題を修正しました
+- zh-CN: 「添加服务商」窗口里的模型改为可以输入的下拉框，可以输入一段文字筛选获取到的模型
+  zh-TW: 「新增服務商」視窗裡的模型改為可以輸入的下拉框，可以輸入一段文字篩選取得的模型
+  en: The model box in the "Add a provider" window now lets you type part of a name to filter the fetched models
+  ja: 「サービスを追加」ウィンドウのモデル欄で、文字を入力して取得したモデルを絞り込めるようにしました

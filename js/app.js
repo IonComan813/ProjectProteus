@@ -3251,21 +3251,11 @@ function closeRelayDialog() {
   relayDraft = null;
 }
 
+// 模型：和设置区一样的输入框 + 下拉列表（空着 = 暂不选择）。只有简单的列表，不能打开「完整列表」
+let relayModelCombo = null;
 function fillRelayModels() {
-  const list = relayDraft && relayDraft.models;
-  els.relayModel.innerHTML = '';
-  const add = (value, label) => {
-    const o = document.createElement('option');
-    o.value = value;
-    o.textContent = label;
-    els.relayModel.appendChild(o);
-  };
-  if (!list) add('', t('relay.modelNotFetched'));
-  else {
-    add('', t(list.length ? 'relay.modelNone' : 'relay.modelEmpty'));
-    for (const m of chatModelList(list)) add(m, m);
-  }
-  els.relayModel.disabled = !list || !list.length;
+  els.relayModel.value = '';
+  relayModelCombo.close();
 }
 
 function setRelayStatus(text, error = false) {
@@ -3292,7 +3282,6 @@ async function fetchRelayModels() {
     if (relayDraft !== draft || draft.fetching !== run) return;
     draft.models = list;
     draft.info = info;
-    fillRelayModels();
     setRelayStatus(t(list.length ? 'relay.fetched' : 'relay.fetchedNone', { n: list.length }));
   } catch (e) {
     if (relayDraft !== draft || draft.fetching !== run) return;
@@ -3319,7 +3308,7 @@ async function saveRelayDialog() {
   s.relays.push({ id, name, format: format === 'anthropic' ? 'anthropic' : 'openai' });
   s.baseUrls[key] = url;
   s.apiKeys[key] = els.relayKey.value.trim();
-  if (els.relayModel.value) s.models[key] = els.relayModel.value;
+  if (els.relayModel.value.trim()) s.models[key] = els.relayModel.value.trim();
   if (relayDraft && relayDraft.models) storeModelList(key, relayDraft.models, relayDraft.info); // 设置区的按钮直接是「完整列表」
   if (format === 'anthropic') s.maxTokens[key] = 16000;
   s.provider = key;
@@ -3344,6 +3333,14 @@ function bindRelayDialog() {
     els.btnRelayToggleKey.textContent = t(show ? 'set.hide' : 'set.show');
   });
   els.btnRelayFetch.addEventListener('click', () => void fetchRelayModels());
+  relayModelCombo = modelCombo({
+    input: els.relayModel,
+    toggle: els.btnRelayModelMenu,
+    menu: els.relayModelMenu,
+    options: () => (relayDraft && relayDraft.models ? chatModelList(relayDraft.models) : null),
+    hint: () => t('set.needModelList'),
+    onPick: () => {},
+  });
   els.relayCancel.addEventListener('click', closeRelayDialog);
   els.relaySave.addEventListener('click', () => void saveRelayDialog());
   // 不能用 Esc 关闭：拦下来，免得关掉窗口后面的设置面板、列表等。Enter 也不当作保存（容易误按）
@@ -3351,67 +3348,130 @@ function bindRelayDialog() {
     if (els.relayDialog.hidden || e.key !== 'Escape') return;
     e.stopPropagation();
     e.preventDefault();
+    relayModelCombo.close(); // 模型列表开着时只收起它
   }, true);
 }
 
 // ---- 模型下拉列表 ----
 // 浏览器自带的输入建议（datalist）会按输入框里已有的文字过滤，样式也改不了，所以自己画一个。
+// 设置区和「添加服务商」窗口各有一个，都是输入框 + ▾ + 列表（modelCombo）：可以直接输入模型名，输入时列表按文字筛选
+// （包含这段文字，不分大小写），也可以点 ▾ 看全部。还没获取列表时点 ▾（或按 ↓）只显示一条提示，不能选；边输入边筛选时不显示。
+// opts：input、toggle、menu 三个元素；options() 可选的模型（null = 还没获取列表）；onPick(m) 选中后；
+// hint() 没有列表时的提示文字
 
-const modelMenu = { items: [], active: -1 };
+function modelCombo({ input, toggle, menu, options, onPick, hint }) {
+  const st = { items: [], active: -1 };
 
-// 可选的模型：只有本次打开期间点“获取列表”从接口拿到的。没有预设的列表：预设的名字不一定能用，容易误解成都可以用
+  function close() {
+    menu.hidden = true;
+  }
+
+  function highlight(i, scroll) {
+    st.active = i;
+    const els = menu.querySelectorAll('.combo-item');
+    els.forEach((el, j) => el.classList.toggle('active', j === i));
+    if (els[i] && scroll) els[i].scrollIntoView({ block: 'nearest' });
+  }
+
+  function pick(m) {
+    input.value = m;
+    close();
+    onPick(m);
+  }
+
+  // filter 为空时显示全部；否则只显示包含这段文字的
+  function open(filter) {
+    const f = (filter || '').trim().toLowerCase();
+    const current = input.value.trim();
+    const all = options();
+    menu.innerHTML = '';
+    if (!all) {
+      st.items = [];
+      st.active = -1;
+      if (f) return close();
+      const item = document.createElement('div');
+      item.className = 'combo-item combo-hint';
+      item.textContent = hint();
+      item.addEventListener('mousedown', (e) => e.preventDefault());
+      menu.appendChild(item);
+      menu.hidden = false;
+      return;
+    }
+    st.items = all.filter((m) => !f || m.toLowerCase().includes(f));
+    // 没有匹配的：不打开（输入的名字照样可以用）
+    if (!st.items.length) return close();
+    st.items.forEach((m, i) => {
+      const item = document.createElement('div');
+      item.className = 'combo-item' + (m === current ? ' current' : '');
+      item.textContent = m;
+      item.title = m;
+      item.addEventListener('mousedown', (e) => { e.preventDefault(); pick(m); });
+      item.addEventListener('mousemove', () => highlight(i, false));
+      menu.appendChild(item);
+    });
+    menu.hidden = false;
+    highlight(st.items.indexOf(current), true);
+  }
+
+  toggle.addEventListener('mousedown', (e) => e.preventDefault()); // 不让输入框失去焦点
+  toggle.addEventListener('click', () => {
+    if (menu.hidden) { open(''); input.focus(); } else close();
+  });
+  input.addEventListener('input', () => open(input.value));
+  input.addEventListener('blur', close);
+  // 列表不是从输入框打开的（例如点「获取列表」后自动展开）时输入框没有焦点，不会触发 blur：
+  // 点在列表、输入框和 ▾ 以外的任何地方都收起
+  document.addEventListener('pointerdown', (e) => {
+    if (menu.hidden) return;
+    if ([menu, input, toggle].some((el) => el.contains(e.target))) return;
+    close();
+  }, true);
+  input.addEventListener('keydown', (e) => {
+    const n = st.items.length;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (menu.hidden) return open('');
+      if (!n) return;
+      const d = e.key === 'ArrowDown' ? 1 : -1;
+      highlight((st.active + d + n) % n, true);
+    } else if (e.key === 'Enter' && !menu.hidden && st.active >= 0) {
+      e.preventDefault();
+      pick(st.items[st.active]);
+    } else if (e.key === 'Escape' && !menu.hidden) {
+      e.stopPropagation(); // 只收起列表，不顺带关闭设置面板
+      close();
+    }
+  });
+  return { open, close };
+}
+
+// 设置区的模型：可选的只有本次打开期间点「获取列表」从接口拿到的。没有预设的列表：预设的名字不一定能用，容易误解成都可以用
 function modelOptions() {
   const l = state.modelLists[state.settings.provider];
   return l ? chatModelList(l.models) : [];
 }
 
-// filter 为空时显示全部；否则只显示包含这段文字的
-function openModelMenu(filter) {
-  const f = (filter || '').trim().toLowerCase();
-  const current = els.model.value.trim();
-  // 本次打开期间还没获取列表：点 ▾（或按 ↓）时只显示一条提示，不能选；边输入边筛选时不显示
-  if (!hasModelList()) {
-    modelMenu.items = [];
-    modelMenu.active = -1;
-    if (f) return closeModelMenu();
-    els.modelMenu.innerHTML = '';
-    const hint = document.createElement('div');
-    hint.className = 'combo-item combo-hint';
-    hint.textContent = t('set.needModelList');
-    hint.addEventListener('mousedown', (e) => e.preventDefault());
-    els.modelMenu.appendChild(hint);
-    els.modelMenu.hidden = false;
-    return;
-  }
-  modelMenu.items = modelOptions().filter((m) => !f || m.toLowerCase().includes(f));
-  // 没有匹配的：不打开（输入的名字照样可以用）
-  if (!modelMenu.items.length) return closeModelMenu();
-  modelMenu.active = modelMenu.items.indexOf(current);
-  els.modelMenu.innerHTML = '';
-  modelMenu.items.forEach((m, i) => {
-    const item = document.createElement('div');
-    item.className = 'combo-item' + (m === current ? ' current' : '');
-    item.textContent = m;
-    item.title = m;
-    item.addEventListener('mousedown', (e) => { e.preventDefault(); pickModel(m); });
-    item.addEventListener('mousemove', () => highlightModel(i, false));
-    els.modelMenu.appendChild(item);
+let settingsModelCombo = null;
+const openModelMenu = (filter) => settingsModelCombo.open(filter);
+const closeModelMenu = () => { if (settingsModelCombo) settingsModelCombo.close(); };
+
+function bindModelMenu() {
+  settingsModelCombo = modelCombo({
+    input: els.model,
+    toggle: els.btnModelMenu,
+    menu: els.modelMenu,
+    options: () => (hasModelList() ? modelOptions() : null),
+    hint: () => t('set.needModelList'),
+    onPick: (m) => {
+      state.settings.models[state.settings.provider] = m;
+      updateFormatFields();
+      saveSettingsSoon();
+      updateEstimate();
+    },
   });
-  els.modelMenu.hidden = false;
-  highlightModel(modelMenu.active, true);
 }
 
-function closeModelMenu() {
-  els.modelMenu.hidden = true;
-}
-
-function highlightModel(i, scroll) {
-  modelMenu.active = i;
-  els.modelMenu.querySelectorAll('.combo-item').forEach((el, j) => el.classList.toggle('active', j === i));
-  const el = els.modelMenu.querySelectorAll('.combo-item')[i];
-  if (el && scroll) el.scrollIntoView({ block: 'nearest' });
-}
-
+// 「完整列表」里点一行：和在下拉列表里选一样
 function pickModel(m) {
   els.model.value = m;
   state.settings.models[state.settings.provider] = m;
@@ -3419,38 +3479,6 @@ function pickModel(m) {
   saveSettingsSoon();
   updateEstimate();
   closeModelMenu();
-}
-
-function bindModelMenu() {
-  els.btnModelMenu.addEventListener('mousedown', (e) => e.preventDefault()); // 不让输入框失去焦点
-  els.btnModelMenu.addEventListener('click', () => {
-    if (els.modelMenu.hidden) { openModelMenu(''); els.model.focus(); } else closeModelMenu();
-  });
-  els.model.addEventListener('input', () => openModelMenu(els.model.value));
-  els.model.addEventListener('blur', closeModelMenu);
-  // 列表不是从输入框打开的（例如点「获取列表」后自动展开）时输入框没有焦点，不会触发 blur：
-  // 点在列表、输入框和 ▾ 以外的任何地方都收起
-  document.addEventListener('pointerdown', (e) => {
-    if (els.modelMenu.hidden) return;
-    if ([els.modelMenu, els.model, els.btnModelMenu].some((el) => el.contains(e.target))) return;
-    closeModelMenu();
-  }, true);
-  els.model.addEventListener('keydown', (e) => {
-    const n = modelMenu.items.length;
-    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-      e.preventDefault();
-      if (els.modelMenu.hidden) return openModelMenu('');
-      if (!n) return;
-      const d = e.key === 'ArrowDown' ? 1 : -1;
-      highlightModel((modelMenu.active + d + n) % n, true);
-    } else if (e.key === 'Enter' && !els.modelMenu.hidden && modelMenu.active >= 0) {
-      e.preventDefault();
-      pickModel(modelMenu.items[modelMenu.active]);
-    } else if (e.key === 'Escape' && !els.modelMenu.hidden) {
-      e.stopPropagation(); // 只收起列表，不顺带关闭设置面板
-      closeModelMenu();
-    }
-  });
 }
 
 // ---- 完整模型列表 ----
@@ -3586,10 +3614,12 @@ function renderModelList() {
       name.appendChild(tags);
     }
     const perCall = typeof r.info.in !== 'number' && typeof r.info.call === 'number';
-    cell('model-price' + (perCall ? ' per-call' : ''), perCall ? t('models.perCall', { p: fmtModelPrice(r.info.call) }) : fmtModelPrice(r.info.in) || '—');
-    cell('model-price', fmtModelPrice(r.info.out) || '—');
+    const pin = perCall ? t('models.perCall', { p: fmtModelPrice(r.info.call) }) : fmtModelPrice(r.info.in);
+    const pout = fmtModelPrice(r.info.out);
     const st = r.info.status || '';
-    cell('model-status' + (st ? ' ' + modelStatusClass(st) : ''), st || '—', st);
+    cell('model-price' + (perCall ? ' per-call' : '') + (pin ? '' : ' no-value'), pin || '—');
+    cell('model-price' + (pout ? '' : ' no-value'), pout || '—');
+    cell('model-status ' + (st ? modelStatusClass(st) : 'no-value'), st || '—', st);
     row.addEventListener('click', () => { pickModel(r.name); closeModelList(); });
     row.addEventListener('keydown', (e) => {
       if (e.key !== 'Enter' && e.key !== ' ') return;

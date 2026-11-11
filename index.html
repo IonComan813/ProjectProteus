@@ -506,7 +506,12 @@
         </label>
         <div class="field relay-model"><span id="relayModelLabel" data-i18n="set.modelName">模型</span>
           <div class="row nowrap">
-            <select id="relayModel" aria-labelledby="relayModelLabel" disabled></select>
+            <!-- 和设置区的模型一样：可以输入，▾ 打开获取到的列表；空着 = 暂不选择 -->
+            <div class="combo" id="relayModelCombo">
+              <input type="text" id="relayModel" aria-labelledby="relayModelLabel" spellcheck="false" autocomplete="off" data-i18n-ph="relay.modelNone">
+              <button type="button" class="combo-toggle" id="btnRelayModelMenu" data-i18n-title="set.showModels">▾</button>
+              <div class="combo-menu" id="relayModelMenu" hidden></div>
+            </div>
             <button type="button" class="btn btn-small" id="btnRelayFetch" data-i18n="relay.fetch">获取模型列表</button>
           </div>
           <div class="relay-status" id="relayStatus" role="status"></div>

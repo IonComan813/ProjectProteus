@@ -550,8 +550,10 @@ async function streamChat(cfg, system, messages, { signal, onText, onThinking, o
 //                → 去掉结尾的 /v1 再加 /v1/models → <域名>/v1/models
 //   Anthropic 格式：<地址>/v1/models → <地址>/models
 // 都取不到时报第一个错误。
-// 返回 { models, info }：models 是排好序的对话模型名；info 是 { 模型名: 附加信息 }，只有列表里带了费用、状态或标签的模型才有
-// （见下面的 modelInfoOf）。用户添加的 OpenAI 格式服务商再顺带试一下 new-api 的价格接口（newApiPricing）
+// 返回 { models, info }：models 是排好序的对话模型名；info 是 { 模型名: 附加信息 }，只有带了费用、状态或标签的模型才有
+// （见下面的 modelInfoOf）。用户添加的 OpenAI 格式服务商同时再试两个价目表，和模型列表一起请求：
+//   <地址>/catalog（一些中转站的公开价目表，见 modelCatalog）、<域名>/api/pricing（new-api，见 newApiPricing）。
+// 附加信息按 模型列表自己带的 > catalog > new-api 合并。模型列表取不到时，用 catalog 里的模型
 async function fetchModels(cfg) {
   const p = providerOf(cfg.provider) || {};
   if (p.auth === 'google' && !cfg.format) return { models: await fetchVertexModels(cfg), info: {} };
@@ -562,17 +564,51 @@ async function fetchModels(cfg) {
   const headers = anthropic
     ? { 'x-api-key': cfg.apiKey, 'anthropic-version': ANTHROPIC_VERSION, 'anthropic-dangerous-direct-browser-access': 'true' }
     : (cfg.apiKey ? { authorization: 'Bearer ' + cfg.apiKey } : {});
-  const entries = await firstModelList(modelListUrls(base, anthropic, p.modelsUrls || []), headers);
+  const extra = !anthropic && !isBuiltinProvider(cfg.provider)
+    ? Promise.all([modelCatalog(base, headers), newApiPricing(base)])
+    : Promise.resolve([null, null]);
+  let entries = null;
+  let listError = null;
+  try {
+    entries = await firstModelList(modelListUrls(base, anthropic, p.modelsUrls || []), headers);
+  } catch (e) {
+    listError = e;
+  }
+  const [cat, pricing] = await extra;
+  const catalog = cat && cat.info;
+  if (!entries) {
+    entries = catalog ? Object.keys(catalog).map((id) => ({ id, info: null })).sort((a, b) => compareModels(a.id, b.id)) : [];
+    if (!entries.length) throw listError;
+  }
+  if (cat) entries = entries.filter((e) => !cat.nonChat.has(e.id)); // 价目表里标明不是对话用的（type）
   const info = {};
-  for (const e of entries) if (e.info) info[e.id] = e.info;
-  if (!anthropic && !isBuiltinProvider(cfg.provider)) {
-    const extra = await newApiPricing(base);
-    for (const e of entries) {
-      const x = extra && extra[e.id];
-      if (x) info[e.id] = { ...x, ...info[e.id] }; // 列表里自己带的优先
-    }
+  for (const e of entries) {
+    const merged = { ...(pricing && pricing[e.id]), ...(catalog && catalog[e.id]), ...e.info };
+    if (Object.keys(merged).length) info[e.id] = merged;
   }
   return { models: entries.map((e) => e.id), info };
+}
+
+// 一些中转站在 <地址>/catalog 给出公开的价目表：{ data: [{ id, pricing: { input, output }, availability, type, tags }] }，
+// 价格是每百万 token。和模型列表用同一个地址、同样带 Key。返回 { info, nonChat }：info 是 { 模型名: 附加信息 }
+// （只有对话模型；没有附加信息的值为 {}），nonChat 是按 type 不是对话用的模型名。取不到、格式不对时为 null，不报错
+async function modelCatalog(base, headers) {
+  try {
+    const res = await fetch(base + '/catalog', { headers });
+    if (!res.ok) return null;
+    const j = await res.json();
+    if (!j || !Array.isArray(j.data)) return null;
+    const info = {};
+    const nonChat = new Set();
+    for (const m of j.data) {
+      if (!m || typeof m.id !== 'string' || !m.id) continue;
+      if (isChatEntry(m)) info[m.id] = modelInfoOf(m) || {};
+      else nonChat.add(m.id);
+    }
+    return Object.keys(info).length || nonChat.size ? { info: Object.keys(info).length ? info : null, nonChat } : null;
+  } catch (_) {
+    return null;
+  }
 }
 
 function modelListUrls(base, anthropic, extra) {
@@ -705,6 +741,9 @@ function isChatModel(name) {
   return !(lower.match(/\p{L}+/gu) || []).some((w) => NON_CHAT_WORDS.has(w));
 }
 
+// 列表里的一项是不是对话模型：名称，以及写了类型（type，如 Together、一些中转站的 chat / image / embedding）时也看类型
+const isChatEntry = (m, id = m.id) => isChatModel(id) && !(typeof m.type === 'string' && !isChatModel(m.type));
+
 // 下拉列表里显示的模型：只留对话模型，按上面的规则排序
 const chatModelList = (list) => sortModels(list.filter(isChatModel));
 
@@ -719,7 +758,7 @@ function modelEntries(j) {
     const raw = m && (m.id || m.name);
     if (typeof raw !== 'string' || !raw) continue;
     const id = raw.replace(/^models\//, ''); // Gemini 的模型名带有 models/ 前缀，去掉后也能用
-    if (seen.has(id) || !isChatModel(id)) continue;
+    if (seen.has(id) || !isChatEntry(m, id)) continue;
     seen.add(id);
     out.push({ id, info: modelInfoOf(m) });
   }
@@ -731,7 +770,7 @@ function modelEntries(j) {
 // 认得出的写法：
 //   费用  pricing: { prompt, completion }（OpenRouter，每 token 美元，字符串）、pricing: { input, output }（Together 等，每百万 token）、
 //         cost: { input, output }（每百万 token）、input_cost_per_token / output_cost_per_token（LiteLLM）、input_price / output_price
-//   状态  status（字符串，原样显示），或者 active / available / enabled（true → ok，false → down）
+//   状态  status、availability（字符串，原样显示），或者 active / available / enabled（true → ok，false → down）
 //   标签  tags（字符串数组，或者用逗号分隔的字符串）
 // 统一成 { in, out, call, status, tags }（没有的不写）：in、out 是每百万 token 的价格，call 是按次计费的每次价格。
 // 价格不换算货币，单位以服务商为准（多为美元）
@@ -789,7 +828,8 @@ function modelInfoOf(m) {
   }
   if (pin !== null) info.in = pin;
   if (pout !== null) info.out = pout;
-  if (typeof m.status === 'string' && m.status.trim()) info.status = m.status.trim();
+  const st = [m.status, m.availability].find((v) => typeof v === 'string' && v.trim());
+  if (st) info.status = st.trim();
   else {
     const flag = ['active', 'available', 'enabled'].find((k) => typeof m[k] === 'boolean');
     if (flag) info.status = m[flag] ? 'ok' : 'down';
