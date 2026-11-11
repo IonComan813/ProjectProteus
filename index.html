@@ -378,6 +378,29 @@
     </div>
   </div>
 
+  <!-- 完整模型列表：本次打开期间获取过模型列表后，设置区的「完整列表」按钮打开。点窗口以外的地方关闭。
+       放在出错提示（#modal）前面：重新获取失败时提示显示在它上面 -->
+  <div class="modal" id="modelListBox" hidden>
+    <div class="modal-box model-list-box" role="dialog" aria-modal="true" aria-labelledby="modelListTitle">
+      <div class="modal-head"><strong id="modelListTitle"></strong><span class="muted small" data-i18n="expand.hint">点击窗口以外的地方关闭</span></div>
+      <div class="model-list-tools">
+        <input type="text" id="modelFilterName" spellcheck="false" autocomplete="off" data-i18n-ph="models.filterName" data-i18n-aria="models.filterName" aria-label="筛选名称">
+        <input type="text" id="modelFilterTag" spellcheck="false" autocomplete="off" data-i18n-ph="models.filterTag" data-i18n-aria="models.filterTag" aria-label="筛选标签">
+        <button class="btn btn-small" id="btnRefetchModels" data-i18n="models.refetch">重新获取</button>
+        <p class="model-filter-hint muted small" data-i18n="models.filterHint"></p>
+      </div>
+      <!-- 表头：名称、输入费用、输出费用可以点击排序；状态不能 -->
+      <div class="model-row model-head" id="modelListHead">
+        <button type="button" class="model-name" data-sort="name"><span id="modelColName" data-i18n="models.colName">名称</span> <span class="sort-mark"></span></button>
+        <button type="button" class="model-price" data-sort="in" data-i18n-title="models.priceTitle"><span data-i18n="models.colIn">输入</span> <span class="sort-mark"></span></button>
+        <button type="button" class="model-price" data-sort="out" data-i18n-title="models.priceTitle"><span data-i18n="models.colOut">输出</span> <span class="sort-mark"></span></button>
+        <div class="model-status" data-i18n="models.colStatus">状态</div>
+      </div>
+      <div class="model-table" id="modelTable"></div>
+      <div class="model-list-foot muted small" id="modelListFoot"></div>
+    </div>
+  </div>
+
   <!-- GitHub 同步的窗口（js/sync.js）：登录、选择仓库、执行同步都在这里。按 Esc、点窗口以外的地方不关闭，只能点里面的按钮。
        放在其他弹窗前面：里面问密码、确认时，密码框和确认框显示在它上面 -->
   <div class="modal" id="syncDialog" hidden>
@@ -483,7 +506,12 @@
         </label>
         <div class="field relay-model"><span id="relayModelLabel" data-i18n="set.modelName">模型</span>
           <div class="row nowrap">
-            <select id="relayModel" aria-labelledby="relayModelLabel" disabled></select>
+            <!-- 和设置区的模型一样：可以输入，▾ 打开获取到的列表；空着 = 暂不选择 -->
+            <div class="combo" id="relayModelCombo">
+              <input type="text" id="relayModel" aria-labelledby="relayModelLabel" spellcheck="false" autocomplete="off" data-i18n-ph="relay.modelNone">
+              <button type="button" class="combo-toggle" id="btnRelayModelMenu" data-i18n-title="set.showModels">▾</button>
+              <div class="combo-menu" id="relayModelMenu" hidden></div>
+            </div>
             <button type="button" class="btn btn-small" id="btnRelayFetch" data-i18n="relay.fetch">获取模型列表</button>
           </div>
           <div class="relay-status" id="relayStatus" role="status"></div>

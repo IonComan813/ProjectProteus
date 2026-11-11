@@ -30,7 +30,6 @@ const DEFAULT_SETTINGS = {
   baseUrls: {},
   models: {},          // 各服务商的模型名。没有预填：模型名要用户自己获取列表后选，或直接输入
   maxTokens: { anthropic: 16000 }, // 新添加的 Anthropic 兼容服务商也从 16000 开始（saveRelayDialog）
-  modelLists: {},      // 各服务商“获取列表”得到的模型名，记下来供下拉选择
   effort: '',
   useTemperature: false,
   temperature: 1,
@@ -56,6 +55,9 @@ const state = {
   renderedConvId: null,
   greetingMode: null,  // 正在用输入框编辑开场白时为 { preview }
   version: null,       // 当前运行的版本号（网页版为 null）
+  // 本次打开期间「获取列表」得到的模型：{ 服务商: { models, info } }，info 是附加信息 { 模型名: { in, out, call, status, tags } }
+  // （providers.js 的 modelInfoOf）。不保存：服务商的模型会更新，每次打开软件重新获取；上次选的模型名照样保存、可用
+  modelLists: {},
 };
 
 const els = {};
@@ -89,6 +91,17 @@ function toast(msg) {
 function showError(msg) {
   els.errorBar.textContent = msg;
   els.errorBar.hidden = !msg;
+}
+
+// 点窗口以外的地方（遮罩）关闭。按下和松开都要在遮罩上：在窗口里按下鼠标拖选文字、到窗口外才松开时，
+// click 落在遮罩上，但不是要关闭
+function closeOnBackdrop(backdrop, close) {
+  let downOnBackdrop = false;
+  backdrop.addEventListener('pointerdown', (e) => { downOnBackdrop = e.target === backdrop; });
+  backdrop.addEventListener('click', (e) => {
+    if (e.target === backdrop && downOnBackdrop) close();
+    downOnBackdrop = false;
+  });
 }
 
 function showModal(title, body) {
@@ -895,10 +908,13 @@ function renderMessages() {
       sub.append(t('msg.emptyAssistantSub1'), document.createElement('br'), t(isMobileLayout() ? 'msg.emptyAssistantSub2Mobile' : 'msg.emptyAssistantSub2'));
       hint.appendChild(sub);
     } else {
-      hint.append(t('msg.empty'), document.createElement('br'));
+      // 手机上屏幕窄，前两句在逗号处换行（文字里的 \n），写法也和电脑上不同
+      const m = isMobileLayout() ? 'Mobile' : '';
+      const lines = (key) => t(key).split('\n').flatMap((line, i) => (i ? [document.createElement('br'), line] : [line]));
+      hint.append(...lines('msg.empty' + m), document.createElement('br'));
       const sub = document.createElement('span');
       sub.className = 'small';
-      sub.append(t('msg.emptySub1'), document.createElement('br'), t(isMobileLayout() ? 'msg.emptySub2Mobile' : 'msg.emptySub2'));
+      sub.append(...lines('msg.emptySub1' + m), document.createElement('br'), t('msg.emptySub2' + m));
       hint.appendChild(sub);
     }
     box.appendChild(hint);
@@ -2938,6 +2954,7 @@ function bindBackButton() {
     if (!els.allConvBox.hidden) return closeAllConvs();
     // 信息弹窗直接关掉：它没有自己的 Escape 处理，派发 Escape 会连设置面板一起关掉
     if (!els.modal.hidden) { els.modal.hidden = true; return; }
+    if (!els.modelListBox.hidden) return closeModelList();
     if (expandSource) return closeExpand();
     if (!els.previewBox.hidden) return closePreview();
     if (document.body.classList.contains('settings-open')) return closeSettings();
@@ -3083,7 +3100,7 @@ function fillProviderFields() {
   els.model.value = s.models[s.provider] || '';
   els.maxTokens.value = s.maxTokens[s.provider] || '';
   closeModelMenu();
-  els.btnModelMenu.disabled = !modelOptions().length; // 还没获取列表时 ▾ 不能点
+  updateFetchButton();
   els.temperature.disabled = !s.useTemperature;
   updateFormatFields();
 }
@@ -3140,7 +3157,7 @@ function migrateRelays(s) {
       const id = key.slice(RELAY_PREFIX.length);
       s.relays.push({ id, name: uniqueRelayName(hostName(s.baseUrls[old]) || t('relay.formatShort.' + format), s), format });
     }
-    for (const k of ['apiKeys', 'baseUrls', 'models', 'maxTokens', 'modelLists']) {
+    for (const k of ['apiKeys', 'baseUrls', 'models', 'maxTokens']) {
       if (key && s[k][old] !== undefined) s[k][key] = s[k][old];
       delete s[k][old];
     }
@@ -3156,7 +3173,7 @@ function migrateRelays(s) {
       const key = RELAY_PREFIX + id;
       s.relays.push({ id, name: uniqueRelayName(hostName(url) || t('relay.formatShort.' + PROVIDERS[k].format), s), format: PROVIDERS[k].format });
       s.baseUrls[key] = url;
-      for (const f of ['apiKeys', 'models', 'maxTokens', 'modelLists']) {
+      for (const f of ['apiKeys', 'models', 'maxTokens']) {
         if (s[f][k] !== undefined) { s[f][key] = s[f][k]; delete s[f][k]; }
       }
       if (s.provider === k) s.provider = key;
@@ -3169,10 +3186,10 @@ function migrateRelays(s) {
   const orRelay = s.relays.find((r) => trimSlash(s.baseUrls[RELAY_PREFIX + r.id] || '') === PROVIDERS.openrouter.baseUrl);
   if (orRelay && !(s.apiKeys.openrouter || '').trim()) {
     const key = RELAY_PREFIX + orRelay.id;
-    for (const f of ['apiKeys', 'models', 'maxTokens', 'modelLists']) {
+    for (const f of ['apiKeys', 'models', 'maxTokens']) {
       if (s[f][key] !== undefined) s[f].openrouter = s[f][key];
     }
-    for (const f of ['apiKeys', 'baseUrls', 'models', 'maxTokens', 'modelLists']) delete s[f][key];
+    for (const f of ['apiKeys', 'baseUrls', 'models', 'maxTokens']) delete s[f][key];
     s.relays = s.relays.filter((r) => r !== orRelay);
     if (s.provider === key) s.provider = 'openrouter';
     migrated = true;
@@ -3198,7 +3215,8 @@ function removeRelay(relay) {
   const s = state.settings;
   const key = RELAY_PREFIX + relay.id;
   s.relays = s.relays.filter((r) => r !== relay);
-  for (const k of ['apiKeys', 'baseUrls', 'models', 'maxTokens', 'modelLists']) delete s[k][key];
+  for (const k of ['apiKeys', 'baseUrls', 'models', 'maxTokens']) delete s[k][key];
+  delete state.modelLists[key];
   if (s.provider === key) s.provider = 'anthropic';
   setCustomProviders(s.relays);
   fillProviderSelect();
@@ -3208,11 +3226,12 @@ function removeRelay(relay) {
   toast(t('relay.deleted', { name: relay.name }));
 }
 
-// 「添加服务商」窗口。relayDraft 是窗口打开期间的状态：models 是获取到的模型列表，fetching 是正在获取的那一次（关掉窗口后作废）
+// 「添加服务商」窗口。relayDraft 是窗口打开期间的状态：models 是获取到的模型列表，info 是同时得到的附加信息（保存后本次打开期间
+// 在设置区的「完整列表」里看，这个窗口里只有简单的下拉框），fetching 是正在获取的那一次（关掉窗口后作废）
 let relayDraft = null;
 
 function openRelayDialog() {
-  relayDraft = { models: null, fetching: null };
+  relayDraft = { models: null, info: null, fetching: null };
   els.relayName.value = '';
   els.relayFormat.value = '';
   els.relayUrl.value = '';
@@ -3232,21 +3251,11 @@ function closeRelayDialog() {
   relayDraft = null;
 }
 
+// 模型：和设置区一样的输入框 + 下拉列表（空着 = 暂不选择）。只有简单的列表，不能打开「完整列表」
+let relayModelCombo = null;
 function fillRelayModels() {
-  const list = relayDraft && relayDraft.models;
-  els.relayModel.innerHTML = '';
-  const add = (value, label) => {
-    const o = document.createElement('option');
-    o.value = value;
-    o.textContent = label;
-    els.relayModel.appendChild(o);
-  };
-  if (!list) add('', t('relay.modelNotFetched'));
-  else {
-    add('', t(list.length ? 'relay.modelNone' : 'relay.modelEmpty'));
-    for (const m of sortModels(list)) add(m, m);
-  }
-  els.relayModel.disabled = !list || !list.length;
+  els.relayModel.value = '';
+  relayModelCombo.close();
 }
 
 function setRelayStatus(text, error = false) {
@@ -3269,10 +3278,10 @@ async function fetchRelayModels() {
   updateRelaySave();
   setRelayStatus(t('relay.fetching'));
   try {
-    const list = await fetchModels(cfg);
+    const { models: list, info } = await fetchModels(cfg);
     if (relayDraft !== draft || draft.fetching !== run) return;
     draft.models = list;
-    fillRelayModels();
+    draft.info = info;
     setRelayStatus(t(list.length ? 'relay.fetched' : 'relay.fetchedNone', { n: list.length }));
   } catch (e) {
     if (relayDraft !== draft || draft.fetching !== run) return;
@@ -3299,8 +3308,8 @@ async function saveRelayDialog() {
   s.relays.push({ id, name, format: format === 'anthropic' ? 'anthropic' : 'openai' });
   s.baseUrls[key] = url;
   s.apiKeys[key] = els.relayKey.value.trim();
-  if (els.relayModel.value) s.models[key] = els.relayModel.value;
-  if (relayDraft && relayDraft.models) s.modelLists[key] = relayDraft.models;
+  if (els.relayModel.value.trim()) s.models[key] = els.relayModel.value.trim();
+  if (relayDraft && relayDraft.models) storeModelList(key, relayDraft.models, relayDraft.info); // 设置区的按钮直接是「完整列表」
   if (format === 'anthropic') s.maxTokens[key] = 16000;
   s.provider = key;
   s.rememberKeys = els.relayRemember.checked;
@@ -3324,6 +3333,14 @@ function bindRelayDialog() {
     els.btnRelayToggleKey.textContent = t(show ? 'set.hide' : 'set.show');
   });
   els.btnRelayFetch.addEventListener('click', () => void fetchRelayModels());
+  relayModelCombo = modelCombo({
+    input: els.relayModel,
+    toggle: els.btnRelayModelMenu,
+    menu: els.relayModelMenu,
+    options: () => (relayDraft && relayDraft.models ? chatModelList(relayDraft.models) : null),
+    hint: () => t('set.needModelList'),
+    onPick: () => {},
+  });
   els.relayCancel.addEventListener('click', closeRelayDialog);
   els.relaySave.addEventListener('click', () => void saveRelayDialog());
   // 不能用 Esc 关闭：拦下来，免得关掉窗口后面的设置面板、列表等。Enter 也不当作保存（容易误按）
@@ -3331,53 +3348,130 @@ function bindRelayDialog() {
     if (els.relayDialog.hidden || e.key !== 'Escape') return;
     e.stopPropagation();
     e.preventDefault();
+    relayModelCombo.close(); // 模型列表开着时只收起它
   }, true);
 }
 
 // ---- 模型下拉列表 ----
 // 浏览器自带的输入建议（datalist）会按输入框里已有的文字过滤，样式也改不了，所以自己画一个。
+// 设置区和「添加服务商」窗口各有一个，都是输入框 + ▾ + 列表（modelCombo）：可以直接输入模型名，输入时列表按文字筛选
+// （包含这段文字，不分大小写），也可以点 ▾ 看全部。还没获取列表时点 ▾（或按 ↓）只显示一条提示，不能选；边输入边筛选时不显示。
+// opts：input、toggle、menu 三个元素；options() 可选的模型（null = 还没获取列表）；onPick(m) 选中后；
+// hint() 没有列表时的提示文字
 
-const modelMenu = { items: [], active: -1 };
+function modelCombo({ input, toggle, menu, options, onPick, hint }) {
+  const st = { items: [], active: -1 };
 
-// 可选的模型：只有点“获取列表”从接口拿到的。没有预设的列表：预设的名字不一定能用，容易误解成都可以用。
-// 显示时再排一次序：以前获取、按旧规则排的列表也按现在的顺序显示
-function modelOptions() {
-  return sortModels(state.settings.modelLists[state.settings.provider] || []);
-}
+  function close() {
+    menu.hidden = true;
+  }
 
-// filter 为空时显示全部；否则只显示包含这段文字的
-function openModelMenu(filter) {
-  const f = (filter || '').trim().toLowerCase();
-  const current = els.model.value.trim();
-  modelMenu.items = modelOptions().filter((m) => !f || m.toLowerCase().includes(f));
-  // 还没获取列表，或者没有匹配的：不打开（输入的名字照样可以用）
-  if (!modelMenu.items.length) return closeModelMenu();
-  modelMenu.active = modelMenu.items.indexOf(current);
-  els.modelMenu.innerHTML = '';
-  modelMenu.items.forEach((m, i) => {
-    const item = document.createElement('div');
-    item.className = 'combo-item' + (m === current ? ' current' : '');
-    item.textContent = m;
-    item.title = m;
-    item.addEventListener('mousedown', (e) => { e.preventDefault(); pickModel(m); });
-    item.addEventListener('mousemove', () => highlightModel(i, false));
-    els.modelMenu.appendChild(item);
+  function highlight(i, scroll) {
+    st.active = i;
+    const els = menu.querySelectorAll('.combo-item');
+    els.forEach((el, j) => el.classList.toggle('active', j === i));
+    if (els[i] && scroll) els[i].scrollIntoView({ block: 'nearest' });
+  }
+
+  function pick(m) {
+    input.value = m;
+    close();
+    onPick(m);
+  }
+
+  // filter 为空时显示全部；否则只显示包含这段文字的
+  function open(filter) {
+    const f = (filter || '').trim().toLowerCase();
+    const current = input.value.trim();
+    const all = options();
+    menu.innerHTML = '';
+    if (!all) {
+      st.items = [];
+      st.active = -1;
+      if (f) return close();
+      const item = document.createElement('div');
+      item.className = 'combo-item combo-hint';
+      item.textContent = hint();
+      item.addEventListener('mousedown', (e) => e.preventDefault());
+      menu.appendChild(item);
+      menu.hidden = false;
+      return;
+    }
+    st.items = all.filter((m) => !f || m.toLowerCase().includes(f));
+    // 没有匹配的：不打开（输入的名字照样可以用）
+    if (!st.items.length) return close();
+    st.items.forEach((m, i) => {
+      const item = document.createElement('div');
+      item.className = 'combo-item' + (m === current ? ' current' : '');
+      item.textContent = m;
+      item.title = m;
+      item.addEventListener('mousedown', (e) => { e.preventDefault(); pick(m); });
+      item.addEventListener('mousemove', () => highlight(i, false));
+      menu.appendChild(item);
+    });
+    menu.hidden = false;
+    highlight(st.items.indexOf(current), true);
+  }
+
+  toggle.addEventListener('mousedown', (e) => e.preventDefault()); // 不让输入框失去焦点
+  toggle.addEventListener('click', () => {
+    if (menu.hidden) { open(''); input.focus(); } else close();
   });
-  els.modelMenu.hidden = false;
-  highlightModel(modelMenu.active, true);
+  input.addEventListener('input', () => open(input.value));
+  input.addEventListener('blur', close);
+  // 列表不是从输入框打开的（例如点「获取列表」后自动展开）时输入框没有焦点，不会触发 blur：
+  // 点在列表、输入框和 ▾ 以外的任何地方都收起
+  document.addEventListener('pointerdown', (e) => {
+    if (menu.hidden) return;
+    if ([menu, input, toggle].some((el) => el.contains(e.target))) return;
+    close();
+  }, true);
+  input.addEventListener('keydown', (e) => {
+    const n = st.items.length;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (menu.hidden) return open('');
+      if (!n) return;
+      const d = e.key === 'ArrowDown' ? 1 : -1;
+      highlight((st.active + d + n) % n, true);
+    } else if (e.key === 'Enter' && !menu.hidden && st.active >= 0) {
+      e.preventDefault();
+      pick(st.items[st.active]);
+    } else if (e.key === 'Escape' && !menu.hidden) {
+      e.stopPropagation(); // 只收起列表，不顺带关闭设置面板
+      close();
+    }
+  });
+  return { open, close };
 }
 
-function closeModelMenu() {
-  els.modelMenu.hidden = true;
+// 设置区的模型：可选的只有本次打开期间点「获取列表」从接口拿到的。没有预设的列表：预设的名字不一定能用，容易误解成都可以用
+function modelOptions() {
+  const l = state.modelLists[state.settings.provider];
+  return l ? chatModelList(l.models) : [];
 }
 
-function highlightModel(i, scroll) {
-  modelMenu.active = i;
-  els.modelMenu.querySelectorAll('.combo-item').forEach((el, j) => el.classList.toggle('active', j === i));
-  const el = els.modelMenu.querySelectorAll('.combo-item')[i];
-  if (el && scroll) el.scrollIntoView({ block: 'nearest' });
+let settingsModelCombo = null;
+const openModelMenu = (filter) => settingsModelCombo.open(filter);
+const closeModelMenu = () => { if (settingsModelCombo) settingsModelCombo.close(); };
+
+function bindModelMenu() {
+  settingsModelCombo = modelCombo({
+    input: els.model,
+    toggle: els.btnModelMenu,
+    menu: els.modelMenu,
+    options: () => (hasModelList() ? modelOptions() : null),
+    hint: () => t('set.needModelList'),
+    onPick: (m) => {
+      state.settings.models[state.settings.provider] = m;
+      updateFormatFields();
+      saveSettingsSoon();
+      updateEstimate();
+    },
+  });
 }
 
+// 「完整列表」里点一行：和在下拉列表里选一样
 function pickModel(m) {
   els.model.value = m;
   state.settings.models[state.settings.provider] = m;
@@ -3387,29 +3481,222 @@ function pickModel(m) {
   closeModelMenu();
 }
 
-function bindModelMenu() {
-  els.btnModelMenu.addEventListener('mousedown', (e) => e.preventDefault()); // 不让输入框失去焦点
-  els.btnModelMenu.addEventListener('click', () => {
-    if (els.modelMenu.hidden) { openModelMenu(''); els.model.focus(); } else closeModelMenu();
+// ---- 完整模型列表 ----
+// 本次打开期间获取过模型列表后（在设置区，或者添加服务商的时候），设置区的「获取列表」变成「完整列表」，打开这个窗口：
+// 列出所有对话模型和服务商给的费用、状态、标签（大多数服务商只给名称，没有的显示 —）。
+// 点表头排序：第一次升序，再点一次降序。名称用和下拉列表一样的排序规则（compareModels），费用按数值，没有价格的总在最后；
+// 名称、标签各有一个筛选框：逗号（中英文都可以）隔开几个条件，要同时满足；文字 = 包含它，!文字 = 不包含它，不分大小写。
+// 点一行选用这个模型。重新获取列表也在这里。「添加服务商」窗口里的模型下拉框不进这个窗口
+
+const modelList = { sort: 'name', desc: false, fetching: null };
+
+const hasModelList = () => !!state.modelLists[state.settings.provider];
+
+// 记下获取到的列表和附加信息（只在本次打开期间）
+function storeModelList(provider, models, info) {
+  state.modelLists[provider] = { models, info: info || {} };
+}
+
+// 改的是 data-i18n：切换界面语言时按现在的状态重新翻译
+function updateFetchButton() {
+  const b = els.btnFetchModels;
+  const full = hasModelList();
+  b.dataset.i18n = full ? 'set.fullList' : 'set.fetchModels';
+  b.dataset.i18nTitle = full ? 'set.fullListTitle' : 'set.fetchModelsTitle';
+  b.textContent = t(b.dataset.i18n);
+  b.title = t(b.dataset.i18nTitle);
+}
+
+function openModelList() {
+  closeModelMenu();
+  renderModelList();
+  els.modelListBox.hidden = false;
+  const cur = els.modelTable.querySelector('.current');
+  if (cur) cur.scrollIntoView({ block: 'center' });
+  // 触屏上不放焦点（会弹出键盘盖住列表）
+  if (!window.matchMedia('(hover: none)').matches) els.modelFilterName.focus({ preventScroll: true });
+}
+
+function closeModelList() {
+  els.modelListBox.hidden = true;
+}
+
+// 筛选条件：[{ not, v }]，都是小写。「gemini, !flash」= 包含 gemini 而且不包含 flash
+function parseModelFilter(text) {
+  return text.toLowerCase().split(/[,，]/)
+    .map((w) => w.trim())
+    .map((w) => (w[0] === '!' || w[0] === '！' ? { not: true, v: w.slice(1).trim() } : { not: false, v: w }))
+    .filter((c) => c.v);
+}
+// hay 里有一项包含 v 就算包含
+const modelFilterHit = (conds, hay) => conds.every((c) => hay.some((h) => h.includes(c.v)) !== c.not);
+
+// 每百万 token 的价格：最多 4 位有效数字
+function fmtModelPrice(n) {
+  return typeof n === 'number' ? String(Number(n.toPrecision(4))) : '';
+}
+
+// 状态的颜色：可用的绿色，不能用的红色，其余（deprecated、preview 之类）黄色
+function modelStatusClass(st) {
+  if (/^(ok|active|available|online|up|normal|healthy|enabled|operational|live|ga)$/i.test(st)) return 'ok';
+  if (/down|offline|unavailable|disabled|error|fail|outage|retired|maintenance|inactive/i.test(st)) return 'bad';
+  return 'warn';
+}
+
+function sortModelRows(rows) {
+  const { sort, desc } = modelList;
+  const byName = (a, b) => compareModels(a.name, b.name);
+  if (sort === 'name') {
+    rows.sort(byName);
+    if (desc) rows.reverse();
+    return rows;
+  }
+  return rows.sort((a, b) => {
+    const x = a.info[sort];
+    const y = b.info[sort];
+    const nx = typeof x !== 'number';
+    const ny = typeof y !== 'number';
+    if (nx || ny) return nx === ny ? byName(a, b) : nx ? 1 : -1;
+    return (desc ? y - x : x - y) || byName(a, b);
   });
-  els.model.addEventListener('input', () => openModelMenu(els.model.value));
-  els.model.addEventListener('blur', closeModelMenu);
-  els.model.addEventListener('keydown', (e) => {
-    const n = modelMenu.items.length;
-    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-      e.preventDefault();
-      if (els.modelMenu.hidden) return openModelMenu('');
-      if (!n) return;
-      const d = e.key === 'ArrowDown' ? 1 : -1;
-      highlightModel((modelMenu.active + d + n) % n, true);
-    } else if (e.key === 'Enter' && !els.modelMenu.hidden && modelMenu.active >= 0) {
-      e.preventDefault();
-      pickModel(modelMenu.items[modelMenu.active]);
-    } else if (e.key === 'Escape' && !els.modelMenu.hidden) {
-      e.stopPropagation(); // 只收起列表，不顺带关闭设置面板
-      closeModelMenu();
+}
+
+function renderModelList() {
+  const s = state.settings;
+  const relay = currentRelay();
+  els.modelListTitle.textContent = t('models.title', { name: relay ? relay.name : t('provider.' + s.provider) });
+  const infoMap = (state.modelLists[s.provider] || {}).info || {};
+  const all = modelOptions().map((name) => ({ name, info: infoMap[name] || {} }));
+  // 第一列的标题：服务商提供了标签时是「名称（含标签）」
+  els.modelColName.dataset.i18n = all.some((r) => r.info.tags) ? 'models.colNameTags' : 'models.colName';
+  els.modelColName.textContent = t(els.modelColName.dataset.i18n);
+  const nameConds = parseModelFilter(els.modelFilterName.value);
+  const tagConds = parseModelFilter(els.modelFilterTag.value);
+  const rows = sortModelRows(all.filter((r) => modelFilterHit(nameConds, [r.name.toLowerCase()])
+    && modelFilterHit(tagConds, (r.info.tags || []).map((x) => x.toLowerCase()))));
+
+  for (const b of els.modelListHead.querySelectorAll('[data-sort]')) {
+    const on = b.dataset.sort === modelList.sort;
+    b.querySelector('.sort-mark').textContent = on ? (modelList.desc ? '▼' : '▲') : '';
+    b.setAttribute('aria-sort', on ? (modelList.desc ? 'descending' : 'ascending') : 'none');
+  }
+
+  const current = els.model.value.trim();
+  const top = els.modelTable.scrollTop;
+  els.modelTable.innerHTML = '';
+  for (const r of rows) {
+    const row = document.createElement('div');
+    row.className = 'model-row' + (r.name === current ? ' current' : '');
+    row.tabIndex = 0;
+    row.setAttribute('role', 'button');
+    const cell = (cls, text, title) => {
+      const el = document.createElement('div');
+      el.className = cls;
+      el.textContent = text;
+      if (title) el.title = title;
+      row.appendChild(el);
+      return el;
+    };
+    const name = cell('model-name', '');
+    const id = document.createElement('div');
+    id.className = 'model-id';
+    id.textContent = r.name;
+    id.title = r.name;
+    name.appendChild(id);
+    if (r.info.tags) {
+      const tags = document.createElement('div');
+      tags.className = 'model-tags';
+      for (const tg of r.info.tags) {
+        const chip = document.createElement('span');
+        chip.className = 'model-tag';
+        chip.textContent = tg;
+        tags.appendChild(chip);
+      }
+      name.appendChild(tags);
     }
+    const perCall = typeof r.info.in !== 'number' && typeof r.info.call === 'number';
+    const pin = perCall ? t('models.perCall', { p: fmtModelPrice(r.info.call) }) : fmtModelPrice(r.info.in);
+    const pout = fmtModelPrice(r.info.out);
+    const st = r.info.status || '';
+    cell('model-price' + (perCall ? ' per-call' : '') + (pin ? '' : ' no-value'), pin || '—');
+    cell('model-price' + (pout ? '' : ' no-value'), pout || '—');
+    // 计划退役的（deprecated：还能用，但会退役）不直接写 deprecated（看不出能不能用）：有日期时写「退役日期」，
+    // 下一行是日期；没有日期时写「即将退役」。其他状态原样显示，有日期（例如已经退役的）时日期写在下一行
+    const deprecated = /^deprecated$/i.test(st);
+    const label = deprecated ? t(r.info.until ? 'models.retiresOn' : 'models.toBeRetired') : st;
+    const stCell = cell('model-status ' + (st ? modelStatusClass(st) : 'no-value'), label || '—');
+    if (st) stCell.title = label + (r.info.until ? ' ' + r.info.until : '') + (deprecated ? ` (${st})` : '');
+    if (r.info.until) {
+      const until = document.createElement('div');
+      until.className = 'model-until';
+      until.textContent = r.info.until;
+      stCell.appendChild(until);
+    }
+    row.addEventListener('click', () => { pickModel(r.name); closeModelList(); });
+    row.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault();
+      pickModel(r.name);
+      closeModelList();
+    });
+    els.modelTable.appendChild(row);
+  }
+  if (!rows.length) {
+    const empty = document.createElement('div');
+    empty.className = 'model-empty muted';
+    empty.textContent = t(all.length ? 'models.noMatch' : 'models.empty');
+    els.modelTable.appendChild(empty);
+  }
+  els.modelTable.scrollTop = top;
+
+  const anyInfo = all.some((r) => Object.keys(r.info).length);
+  const anyPrice = all.some((r) => ['in', 'out', 'call'].some((k) => typeof r.info[k] === 'number'));
+  els.modelListFoot.textContent = t('models.count', { shown: rows.length, total: all.length }) + ' · '
+    + t(anyPrice ? 'models.priceNote' : anyInfo ? 'models.noPrice' : 'models.noInfo');
+}
+
+async function refetchModelList() {
+  if (modelList.fetching) return;
+  const provider = state.settings.provider;
+  const run = {};
+  modelList.fetching = run;
+  els.btnRefetchModels.disabled = true;
+  els.btnRefetchModels.textContent = t('models.refetching');
+  try {
+    const { models, info } = await fetchModels(providerCfg());
+    storeModelList(provider, models, info);
+    if (!els.modelListBox.hidden) renderModelList();
+    toast(t('models.refetched', { n: models.length }));
+  } catch (e) {
+    showModal(t('set.fetchModelsFailed'), e.message);
+  } finally {
+    modelList.fetching = null;
+    els.btnRefetchModels.disabled = false;
+    els.btnRefetchModels.textContent = t('models.refetch');
+  }
+}
+
+function bindModelList() {
+  for (const el of [els.modelFilterName, els.modelFilterTag]) el.addEventListener('input', () => {
+    els.modelTable.scrollTop = 0;
+    renderModelList();
   });
+  for (const b of els.modelListHead.querySelectorAll('[data-sort]')) {
+    b.addEventListener('click', () => {
+      if (modelList.sort === b.dataset.sort) modelList.desc = !modelList.desc;
+      else { modelList.sort = b.dataset.sort; modelList.desc = false; }
+      renderModelList();
+    });
+  }
+  els.btnRefetchModels.addEventListener('click', () => void refetchModelList());
+  closeOnBackdrop(els.modelListBox, closeModelList);
+  // Esc 只关这个窗口，不顺带关闭设置面板。上面盖着出错提示时先关提示（它自己处理）
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || els.modelListBox.hidden || !els.modal.hidden) return;
+    e.stopPropagation();
+    e.preventDefault();
+    closeModelList();
+  }, true);
 }
 
 // ---- 查看下一轮将发送的内容 ----
@@ -3810,15 +4097,18 @@ function bindSettings() {
     els.btnToggleKey.textContent = t(show ? 'set.hide' : 'set.show');
   });
 
+  // 还没获取过列表时是「获取列表」；获取过（包括添加服务商时就获取了）是「完整列表」，打开大窗口，在那里重新获取
   els.btnFetchModels.addEventListener('click', async () => {
+    if (hasModelList()) return openModelList();
     els.btnFetchModels.disabled = true;
     try {
-      const list = await fetchModels(providerCfg());
-      s().modelLists[s().provider] = list;
-      els.btnModelMenu.disabled = !list.length;
-      saveSettingsSoon();
+      const { models: list, info } = await fetchModels(providerCfg());
+      storeModelList(s().provider, list, info);
+      updateFetchButton();
       toast(t('set.fetchedModels', { n: list.length }));
       openModelMenu('');
+      // 电脑上把光标放进模型输入框，可以直接用方向键和回车选；触屏上不放（会弹出键盘盖住列表）
+      if (!els.modelMenu.hidden && !window.matchMedia('(hover: none)').matches) els.model.focus();
     } catch (e) {
       showModal(t('set.fetchModelsFailed'), e.message);
     } finally {
@@ -4028,7 +4318,7 @@ function bindChat() {
     else if (c) void deleteConv(c);
   });
   // 有输入框或确认框打开时（例如正在重命名），对话列表不受点击、Esc 和窗口大小变化影响
-  const dialogOpen = () => !els.dialog.hidden || !els.textDialog.hidden || !els.pwDialog.hidden || !els.modal.hidden || !els.updateDialog.hidden || !els.relayDialog.hidden || !els.syncDialog.hidden;
+  const dialogOpen = () => !els.dialog.hidden || !els.textDialog.hidden || !els.pwDialog.hidden || !els.modal.hidden || !els.updateDialog.hidden || !els.relayDialog.hidden || !els.syncDialog.hidden || !els.modelListBox.hidden;
   // 点在列表和右键菜单以外：都收起；点在列表里（右键菜单以外）：只收起右键菜单。
   // 用 pointerdown：点在不可用的输入框上时浏览器不发 mousedown
   document.addEventListener('pointerdown', (e) => {
@@ -4058,7 +4348,7 @@ function bindChat() {
     closeConvMenu();
   });
   // 点「全部对话」窗口以外的地方关闭它
-  els.allConvBox.addEventListener('click', (e) => { if (e.target === els.allConvBox) closeAllConvs(); });
+  closeOnBackdrop(els.allConvBox, closeAllConvs);
   // 电脑和手机布局的对话名称写法不同（手机上更紧凑），切换布局时重新显示
   window.matchMedia('(max-width: 999px)').addEventListener('change', renderConvSelect);
   els.btnNewConv.addEventListener('click', (e) => {
@@ -4085,7 +4375,7 @@ function bindChat() {
   els.btnDeleteConv.addEventListener('click', () => deleteConv());
 
   els.btnModalClose.addEventListener('click', () => { els.modal.hidden = true; });
-  els.modal.addEventListener('click', (e) => { if (e.target === els.modal) els.modal.hidden = true; });
+  closeOnBackdrop(els.modal, () => { els.modal.hidden = true; });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') els.modal.hidden = true; });
 
   window.addEventListener('beforeunload', (e) => {
@@ -4100,8 +4390,14 @@ async function boot() {
   const saved = (await DB.get('settings')) || {};
   const sessionKeys = state.settings && state.settings.rememberKeys === false ? state.settings.apiKeys : null;
   state.settings = { ...DEFAULT_SETTINGS, ...saved };
-  for (const k of ['apiKeys', 'baseUrls', 'models', 'maxTokens', 'modelLists', 'sync']) {
+  for (const k of ['apiKeys', 'baseUrls', 'models', 'maxTokens', 'sync']) {
     state.settings[k] = { ...DEFAULT_SETTINGS[k], ...(saved[k] || {}) };
+  }
+  // 以前的版本把获取到的模型列表存在设置里（modelLists、modelInfo）：现在每次打开重新获取，删掉
+  if ('modelLists' in state.settings || 'modelInfo' in state.settings) {
+    delete state.settings.modelLists;
+    delete state.settings.modelInfo;
+    saveSettingsSoon();
   }
   if (sessionKeys) state.settings.apiKeys = sessionKeys; // 不记住 Key 时，本次打开期间填过的 Key 继续有效
   // （很早的版本单列过 OpenRouter，键名也是 openrouter：现在它又是内置服务商，那时的 Key 和模型直接接着用）
@@ -4185,6 +4481,7 @@ function init() {
   bindChat();
   bindLayout();
   bindModelMenu();
+  bindModelList();
   bindBackButton();
   // 消息高度变化时（内容载入、图片加载、展开 <details> 等），如果停留在底部就继续贴底
   Render.onResize(() => { if (state.follow) els.messages.scrollTop = els.messages.scrollHeight; });
