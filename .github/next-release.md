@@ -30,3 +30,7 @@
   zh-TW: 「新增服務商」視窗裡的模型改為可以輸入的下拉框，可以輸入一段文字篩選取得的模型
   en: The model box in the "Add a provider" window now lets you type part of a name to filter the fetched models
   ja: 「サービスを追加」ウィンドウのモデル欄で、文字を入力して取得したモデルを絞り込めるようにしました
+- zh-CN: 模型列表里 Claude 的 fable 视为最强的一档，排在 opus 后面
+  zh-TW: 模型清單裡 Claude 的 fable 視為最強的一檔，排在 opus 後面
+  en: In model lists, Claude's fable models are treated as the top tier and sorted after opus
+  ja: モデル一覧で Claude の fable を最上位とみなし、opus の後に並べるようにしました

@@ -785,6 +785,7 @@ textarea:focus, input:focus, select:focus { outline: 1px solid var(--accent); bo
 .model-price.per-call { font-size: 12px; }
 .model-status { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; text-align: center; }
 .model-table .model-status { color: var(--muted); } /* 没有状态（—）或认不出的 */
+.model-until { font-size: 10px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
 .model-table .model-status.ok { color: var(--ok); }
 .model-table .model-status.bad { color: var(--danger); }
 .model-table .model-status.warn { color: var(--accent); }

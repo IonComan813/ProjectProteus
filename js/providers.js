@@ -551,12 +551,13 @@ async function streamChat(cfg, system, messages, { signal, onText, onThinking, o
 //   Anthropic 格式：<地址>/v1/models → <地址>/models
 // 都取不到时报第一个错误。
 // 返回 { models, info }：models 是排好序的对话模型名；info 是 { 模型名: 附加信息 }，只有带了费用、状态或标签的模型才有
-// （见下面的 modelInfoOf）。用户添加的 OpenAI 格式服务商同时再试两个价目表，和模型列表一起请求：
-//   <地址>/catalog（一些中转站的公开价目表，见 modelCatalog）、<域名>/api/pricing（new-api，见 newApiPricing）。
+// （见下面的 modelInfoOf）。用户添加的服务商（两种格式都是）同时再试两个价目表，和模型列表一起请求：
+//   <地址>/catalog（一些中转站的公开价目表，见 modelCatalog；Anthropic 格式先试 <地址>/v1/catalog）、
+//   <域名>/api/pricing（new-api，见 newApiPricing）。
 // 附加信息按 模型列表自己带的 > catalog > new-api 合并。模型列表取不到时，用 catalog 里的模型
 async function fetchModels(cfg) {
   const p = providerOf(cfg.provider) || {};
-  if (p.auth === 'google' && !cfg.format) return { models: await fetchVertexModels(cfg), info: {} };
+  if (p.auth === 'google' && !cfg.format) return fetchVertexModels(cfg);
   const lc = p.listFormat && !cfg.format ? { ...cfg, format: p.listFormat } : cfg;
   const base = baseOf(p.listFormat && !cfg.format ? { ...cfg, model: '' } : cfg);
   if (!base) throw new Error(t('api.needBaseUrl'));
@@ -564,8 +565,8 @@ async function fetchModels(cfg) {
   const headers = anthropic
     ? { 'x-api-key': cfg.apiKey, 'anthropic-version': ANTHROPIC_VERSION, 'anthropic-dangerous-direct-browser-access': 'true' }
     : (cfg.apiKey ? { authorization: 'Bearer ' + cfg.apiKey } : {});
-  const extra = !anthropic && !isBuiltinProvider(cfg.provider)
-    ? Promise.all([modelCatalog(base, headers), newApiPricing(base)])
+  const extra = !isBuiltinProvider(cfg.provider)
+    ? Promise.all([modelCatalog(anthropic ? [base + '/v1/catalog', base + '/catalog'] : [base + '/catalog'], headers), newApiPricing(base)])
     : Promise.resolve([null, null]);
   let entries = null;
   let listError = null;
@@ -590,11 +591,19 @@ async function fetchModels(cfg) {
 }
 
 // 一些中转站在 <地址>/catalog 给出公开的价目表：{ data: [{ id, pricing: { input, output }, availability, type, tags }] }，
-// 价格是每百万 token。和模型列表用同一个地址、同样带 Key。返回 { info, nonChat }：info 是 { 模型名: 附加信息 }
+// 价格是每百万 token。和模型列表用同一个地址、同样的请求头（Key），按顺序试 urls，用第一个取得到的。返回 { info, nonChat }：info 是 { 模型名: 附加信息 }
 // （只有对话模型；没有附加信息的值为 {}），nonChat 是按 type 不是对话用的模型名。取不到、格式不对时为 null，不报错
-async function modelCatalog(base, headers) {
+async function modelCatalog(urls, headers) {
+  for (const url of urls) {
+    const got = await catalogAt(url, headers);
+    if (got) return got;
+  }
+  return null;
+}
+
+async function catalogAt(url, headers) {
   try {
-    const res = await fetch(base + '/catalog', { headers });
+    const res = await fetch(url, { headers });
     if (!res.ok) return null;
     const j = await res.json();
     if (!j || !Array.isArray(j.data)) return null;
@@ -658,11 +667,12 @@ async function firstModelList(urls, headers) {
 //   - 版本号后面：单词在数字前（gpt-4o < gpt-4.1，claude-3-opus < claude-3-5-haiku）；
 //     名称里、还没出现版本号时：数字在单词前（claude-3-… < claude-haiku-…）
 //   - 单词：分开写的在紧跟数字的前面（gpt-4-turbo < gpt-4o），一般单词在档次词前面，
-//     档次词按 flash < haiku < turbo < medium < sonnet < plus < pro < large < opus < max < ultra，其余按字母
+//     档次词按 flash < haiku < turbo < medium < sonnet < plus < pro < large < opus < max < ultra < fable，其余按字母
+//     （fable 是 Claude 最强的一档：claude-haiku < claude-sonnet < claude-opus < claude-fable）
 // 例：gpt-4 < gpt-4-0613 < gpt-4-turbo < gpt-4o-mini < gpt-4o < gpt-4.1-nano < gpt-4.1-mini < gpt-4.1 < gpt-5；
 //     claude-opus-4-20250514 < claude-opus-4-1-…；gemini-2.0-flash-lite < gemini-2.0-flash < gemini-2.5-flash < gemini-2.5-pro
 const MODEL_SMALL = ['nano', 'micro', 'tiny', 'mini', 'lite', 'small'];
-const MODEL_TIER = ['flash', 'haiku', 'turbo', 'medium', 'sonnet', 'plus', 'pro', 'large', 'opus', 'max', 'ultra'];
+const MODEL_TIER = ['flash', 'haiku', 'turbo', 'medium', 'sonnet', 'plus', 'pro', 'large', 'opus', 'max', 'ultra', 'fable'];
 const modelCollator = new Intl.Collator('en', { sensitivity: 'base', numeric: true });
 
 // 拆成数字段 { num, date } 和字母段 { word, attached }（attached：紧跟在数字后面，如 4o 的 o）
@@ -770,9 +780,14 @@ function modelEntries(j) {
 // 认得出的写法：
 //   费用  pricing: { prompt, completion }（OpenRouter，每 token 美元，字符串）、pricing: { input, output }（Together 等，每百万 token）、
 //         cost: { input, output }（每百万 token）、input_cost_per_token / output_cost_per_token（LiteLLM）、input_price / output_price
-//   状态  status、availability（字符串，原样显示），或者 active / available / enabled（true → ok，false → down）
+//   状态  status、availability（中转站，字符串，原样显示）；
+//         lifecycle（Anthropic 官方：active / deprecated / retired，计划退役的日期在 retires_at）；
+//         shutdown_date（OpenAI 官方：null = 没有宣布下线 → active；有日期时还没到 → deprecated，已经过了 → retired）；
+//         launchStage、versionState（Vertex：GA → ga，PUBLIC_PREVIEW → public preview…，不稳定的版本加上 unstable）；
+//         或者 active / available / enabled（true → ok，false → down）。Google AI Studio 的列表没有状态
 //   标签  tags（字符串数组，或者用逗号分隔的字符串）
-// 统一成 { in, out, call, status, tags }（没有的不写）：in、out 是每百万 token 的价格，call 是按次计费的每次价格。
+// 统一成 { in, out, call, status, until, tags }（没有的不写）：in、out 是每百万 token 的价格，call 是按次计费的每次价格，
+// until 是下线（退役）日期 YYYY-MM-DD。
 // 价格不换算货币，单位以服务商为准（多为美元）
 const priceNum = (v) => {
   if (v === null || v === undefined || v === '' || typeof v === 'boolean') return null;
@@ -791,6 +806,24 @@ function perMillion(v, unit) {
   if (/token/.test(u)) return n * 1e6;
   return n > 0 && n < 0.001 ? n * 1e6 : n;
 }
+
+// 日期 → YYYY-MM-DD（认得 2026-10-23、RFC 3339、Unix 秒或毫秒），认不出为 ''
+function dayOf(v) {
+  if (typeof v === 'string') {
+    const m = /^(\d{4}-\d{2}-\d{2})/.exec(v.trim());
+    return m ? m[1] : '';
+  }
+  if (typeof v === 'number' && Number.isFinite(v) && v > 0) {
+    const d = new Date(v < 1e12 ? v * 1000 : v);
+    return isNaN(d) ? '' : d.toISOString().slice(0, 10);
+  }
+  return '';
+}
+const today = () => {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+};
 
 function tagList(v) {
   const list = Array.isArray(v) ? v : typeof v === 'string' ? v.split(/[,，;；]/) : [];
@@ -828,11 +861,21 @@ function modelInfoOf(m) {
   }
   if (pin !== null) info.in = pin;
   if (pout !== null) info.out = pout;
-  const st = [m.status, m.availability].find((v) => typeof v === 'string' && v.trim());
+  const st = [m.status, m.availability, m.lifecycle].find((v) => typeof v === 'string' && v.trim());
   if (st) info.status = st.trim();
-  else {
+  else if ('shutdown_date' in m) {
+    const d = dayOf(m.shutdown_date);
+    info.status = !d ? 'active' : d <= today() ? 'retired' : 'deprecated';
+    if (d) info.until = d;
+  } else if (typeof m.launchStage === 'string' && /^[A-Z_]+$/.test(m.launchStage) && m.launchStage !== 'LAUNCH_STAGE_UNSPECIFIED') {
+    info.status = m.launchStage.toLowerCase().replace(/_/g, ' ') + (m.versionState === 'VERSION_STATE_UNSTABLE' ? ', unstable' : '');
+  } else {
     const flag = ['active', 'available', 'enabled'].find((k) => typeof m[k] === 'boolean');
     if (flag) info.status = m[flag] ? 'ok' : 'down';
+  }
+  if (!info.until && m.retires_at) {
+    const d = dayOf(m.retires_at);
+    if (d) info.until = d;
   }
   const tags = tagList(m.tags);
   if (tags.length) info.tags = tags;
@@ -880,10 +923,12 @@ async function newApiPricing(base) {
 
 // Vertex 的模型列表：Model Garden 的发布者模型列表（publishers.models.list，v1beta1），Google 和 Anthropic 各取一次，
 // 按 nextPageToken 翻页（最多 5 页）。只留对话模型：Google 的 gemini-…（前面加 google/），Anthropic 的 claude-…。
-// global 地址取不到时改用 us-central1。都取不到时可以直接输入模型名（Gemini 写 google/gemini-…，Claude 写 claude-…）
+// global 地址取不到时改用 us-central1。都取不到时可以直接输入模型名（Gemini 写 google/gemini-…，Claude 写 claude-…）。
+// 返回和 fetchModels 一样的 { models, info }：状态来自 launchStage、versionState（见 modelInfoOf）
 async function fetchVertexModels(cfg) {
   const headers = await authHeaders(cfg);
   const out = [];
+  const info = {};
   let firstError = null;
   for (const [publisher, prefix, keep] of [['google', 'google/', /^gemini-/], ['anthropic', '', /^claude-/]]) {
     let got = null;
@@ -895,17 +940,20 @@ async function fetchVertexModels(cfg) {
         if (!firstError) firstError = e;
       }
     }
-    for (const name of got || []) {
-      const id = name.replace(/^publishers\/[^/]+\/models\//, '');
-      if (keep.test(id) && isChatModel(id)) out.push(prefix + id);
+    for (const m of got || []) {
+      const id = m.name.replace(/^publishers\/[^/]+\/models\//, '');
+      if (!keep.test(id) || !isChatModel(id) || out.includes(prefix + id)) continue;
+      out.push(prefix + id);
+      const x = modelInfoOf(m);
+      if (x) info[prefix + id] = x;
     }
   }
   if (!out.length) throw firstError || new Error(t('api.noModels'));
-  return sortModels(new Set(out));
+  return { models: sortModels(out), info };
 }
 
 async function listPublisherModels(host, publisher, headers) {
-  const names = [];
+  const models = [];
   let token = '';
   for (let page = 0; page < 5; page++) {
     const url = `${host}/v1beta1/publishers/${publisher}/models?pageSize=200${token ? '&pageToken=' + encodeURIComponent(token) : ''}`;
@@ -915,9 +963,9 @@ async function listPublisherModels(host, publisher, headers) {
     }
     if (!res.ok) throw await readError(res);
     const j = await res.json();
-    for (const m of (j && j.publisherModels) || []) if (m && typeof m.name === 'string') names.push(m.name);
+    for (const m of (j && j.publisherModels) || []) if (m && typeof m.name === 'string') models.push(m);
     token = j && j.nextPageToken;
     if (!token) break;
   }
-  return names;
+  return models;
 }

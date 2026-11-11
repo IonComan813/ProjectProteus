@@ -3536,9 +3536,10 @@ function fmtModelPrice(n) {
   return typeof n === 'number' ? String(Number(n.toPrecision(4))) : '';
 }
 
+// 状态的颜色：可用的绿色，不能用的红色，其余（deprecated、preview 之类）黄色
 function modelStatusClass(st) {
-  if (/^(ok|active|available|online|up|normal|healthy|enabled|operational|live)$/i.test(st)) return 'ok';
-  if (/down|offline|unavailable|disabled|error|fail|outage|deprecated|retired|maintenance|inactive/i.test(st)) return 'bad';
+  if (/^(ok|active|available|online|up|normal|healthy|enabled|operational|live|ga)$/i.test(st)) return 'ok';
+  if (/down|offline|unavailable|disabled|error|fail|outage|retired|maintenance|inactive/i.test(st)) return 'bad';
   return 'warn';
 }
 
@@ -3619,7 +3620,15 @@ function renderModelList() {
     const st = r.info.status || '';
     cell('model-price' + (perCall ? ' per-call' : '') + (pin ? '' : ' no-value'), pin || '—');
     cell('model-price' + (pout ? '' : ' no-value'), pout || '—');
-    cell('model-status ' + (st ? modelStatusClass(st) : 'no-value'), st || '—', st);
+    const stCell = cell('model-status ' + (st ? modelStatusClass(st) : 'no-value'), st || '—', st);
+    // 下线（退役）日期：状态下面小字一行
+    if (r.info.until) {
+      const until = document.createElement('div');
+      until.className = 'model-until';
+      until.textContent = r.info.until;
+      stCell.title = st + ' · ' + t('models.until', { date: r.info.until });
+      stCell.appendChild(until);
+    }
     row.addEventListener('click', () => { pickModel(r.name); closeModelList(); });
     row.addEventListener('keydown', (e) => {
       if (e.key !== 'Enter' && e.key !== ' ') return;
@@ -3638,8 +3647,9 @@ function renderModelList() {
   els.modelTable.scrollTop = top;
 
   const anyInfo = all.some((r) => Object.keys(r.info).length);
+  const anyPrice = all.some((r) => ['in', 'out', 'call'].some((k) => typeof r.info[k] === 'number'));
   els.modelListFoot.textContent = t('models.count', { shown: rows.length, total: all.length }) + ' · '
-    + t(anyInfo ? 'models.priceNote' : 'models.noInfo');
+    + t(anyPrice ? 'models.priceNote' : anyInfo ? 'models.noPrice' : 'models.noInfo');
 }
 
 async function refetchModelList() {
