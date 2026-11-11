@@ -815,7 +815,7 @@ function dayOf(v) {
   }
   if (typeof v === 'number' && Number.isFinite(v) && v > 0) {
     const d = new Date(v < 1e12 ? v * 1000 : v);
-    return isNaN(d) ? '' : d.toISOString().slice(0, 10);
+    return Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
   }
   return '';
 }
