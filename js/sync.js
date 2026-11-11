@@ -42,8 +42,8 @@ const SYNC_SETTINGS = 'settings.json';
 const SYNC_CALIB = 'calibration.json';
 const SYNC_CONV_RE = /^conversations\/([\w-]{1,100})\.json$/;
 const SYNC_HARMLESS = new Set(['README.md', 'LICENSE', '.gitignore', '.gitattributes']); // 新建仓库时 GitHub 可能自动加的
-const SYNC_LLM_KEYS = ['provider', 'relays', 'baseUrls', 'models', 'maxTokens', 'modelLists', 'modelInfo', 'effort', 'useTemperature', 'temperature', 'openrouterSort', 'openrouterNoData'];
-const SYNC_PER_PROVIDER = ['apiKeys', 'baseUrls', 'models', 'maxTokens', 'modelLists', 'modelInfo'];
+const SYNC_LLM_KEYS = ['provider', 'relays', 'baseUrls', 'models', 'maxTokens', 'effort', 'useTemperature', 'temperature', 'openrouterSort', 'openrouterNoData'];
+const SYNC_PER_PROVIDER = ['apiKeys', 'baseUrls', 'models', 'maxTokens'];
 
 const syncIsObj = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
 const syncConvPath = (id) => `conversations/${id}.json`;
@@ -296,7 +296,7 @@ function cleanLlm(x) {
   const out = {};
   if (typeof x.provider === 'string') out.provider = x.provider;
   out.relays = Array.isArray(x.relays) ? x.relays.filter((r) => syncIsObj(r) && typeof r.id === 'string' && r.id) : [];
-  for (const k of ['baseUrls', 'models', 'maxTokens', 'modelLists', 'modelInfo']) out[k] = syncIsObj(x[k]) ? x[k] : {};
+  for (const k of ['baseUrls', 'models', 'maxTokens']) out[k] = syncIsObj(x[k]) ? x[k] : {};
   if (typeof x.effort === 'string') out.effort = x.effort;
   if (typeof x.useTemperature === 'boolean') out.useTemperature = x.useTemperature;
   if (typeof x.temperature === 'number' && Number.isFinite(x.temperature)) out.temperature = x.temperature;
@@ -325,7 +325,7 @@ function addMissingRelays(base, baseKeys, extra, extraKeys) {
     if (have.has(r.id)) continue;
     base.relays.push(r);
     const key = RELAY_PREFIX + r.id;
-    for (const k of ['baseUrls', 'models', 'maxTokens', 'modelLists', 'modelInfo']) if (extra[k][key] !== undefined) base[k][key] = extra[k][key];
+    for (const k of ['baseUrls', 'models', 'maxTokens']) if (extra[k][key] !== undefined) base[k][key] = extra[k][key];
     if (baseKeys && extraKeys && extraKeys[key] !== undefined) baseKeys[key] = extraKeys[key];
     n++;
   }
@@ -952,7 +952,7 @@ async function syncPull(flow, progress, mode, confirmed) {
     if (mode === 'all') applyLlm(llm, keys);
     else {
       const s = state.settings;
-      const mine = { relays: s.relays, baseUrls: s.baseUrls, models: s.models, maxTokens: s.maxTokens, modelLists: s.modelLists, modelInfo: s.modelInfo };
+      const mine = { relays: s.relays, baseUrls: s.baseUrls, models: s.models, maxTokens: s.maxTokens };
       relaysAdded = addMissingRelays(mine, s.apiKeys, llm, keys);
     }
   }

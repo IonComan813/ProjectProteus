@@ -378,19 +378,20 @@
     </div>
   </div>
 
-  <!-- 完整模型列表：设置区获取过模型列表后，「完整列表」按钮打开。点窗口以外的地方关闭。
+  <!-- 完整模型列表：本次打开期间获取过模型列表后，设置区的「完整列表」按钮打开。点窗口以外的地方关闭。
        放在出错提示（#modal）前面：重新获取失败时提示显示在它上面 -->
   <div class="modal" id="modelListBox" hidden>
     <div class="modal-box model-list-box" role="dialog" aria-modal="true" aria-labelledby="modelListTitle">
       <div class="modal-head"><strong id="modelListTitle"></strong><span class="muted small" data-i18n="expand.hint">点击窗口以外的地方关闭</span></div>
       <div class="model-list-tools">
-        <input type="text" id="modelFilterName" spellcheck="false" autocomplete="off" data-i18n-ph="models.filterName" data-i18n-title="models.filterTitle" data-i18n-aria="models.filterName">
-        <input type="text" id="modelFilterTag" spellcheck="false" autocomplete="off" data-i18n-ph="models.filterTag" data-i18n-title="models.filterTitle" data-i18n-aria="models.filterTag">
+        <input type="text" id="modelFilterName" spellcheck="false" autocomplete="off" data-i18n-ph="models.filterName" data-i18n-aria="models.filterName">
+        <input type="text" id="modelFilterTag" spellcheck="false" autocomplete="off" data-i18n-ph="models.filterTag" data-i18n-aria="models.filterTag">
         <button class="btn btn-small" id="btnRefetchModels" data-i18n="models.refetch">重新获取</button>
+        <p class="model-filter-hint muted small" data-i18n="models.filterHint"></p>
       </div>
       <!-- 表头：名称、输入费用、输出费用可以点击排序；状态不能 -->
       <div class="model-row model-head" id="modelListHead">
-        <button type="button" class="model-name" data-sort="name"><span data-i18n="models.colName">名称 / 标签</span> <span class="sort-mark"></span></button>
+        <button type="button" class="model-name" data-sort="name"><span id="modelColName" data-i18n="models.colName">名称</span> <span class="sort-mark"></span></button>
         <button type="button" class="model-price" data-sort="in" data-i18n-title="models.priceTitle"><span data-i18n="models.colIn">输入</span> <span class="sort-mark"></span></button>
         <button type="button" class="model-price" data-sort="out" data-i18n-title="models.priceTitle"><span data-i18n="models.colOut">输出</span> <span class="sort-mark"></span></button>
         <div class="model-status" data-i18n="models.colStatus">状态</div>

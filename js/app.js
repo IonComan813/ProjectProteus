@@ -30,8 +30,6 @@ const DEFAULT_SETTINGS = {
   baseUrls: {},
   models: {},          // 各服务商的模型名。没有预填：模型名要用户自己获取列表后选，或直接输入
   maxTokens: { anthropic: 16000 }, // 新添加的 Anthropic 兼容服务商也从 16000 开始（saveRelayDialog）
-  modelLists: {},      // 各服务商“获取列表”得到的模型名，记下来供下拉选择
-  modelInfo: {},       // 同时得到的模型附加信息 { 服务商: { 模型名: { in, out, call, status, tags } } }（providers.js 的 modelInfoOf），「完整列表」窗口里显示
   effort: '',
   useTemperature: false,
   temperature: 1,
@@ -57,6 +55,9 @@ const state = {
   renderedConvId: null,
   greetingMode: null,  // 正在用输入框编辑开场白时为 { preview }
   version: null,       // 当前运行的版本号（网页版为 null）
+  // 本次打开期间「获取列表」得到的模型：{ 服务商: { models, info } }，info 是附加信息 { 模型名: { in, out, call, status, tags } }
+  // （providers.js 的 modelInfoOf）。不保存：服务商的模型会更新，每次打开软件重新获取；上次选的模型名照样保存、可用
+  modelLists: {},
 };
 
 const els = {};
@@ -90,6 +91,17 @@ function toast(msg) {
 function showError(msg) {
   els.errorBar.textContent = msg;
   els.errorBar.hidden = !msg;
+}
+
+// 点窗口以外的地方（遮罩）关闭。按下和松开都要在遮罩上：在窗口里按下鼠标拖选文字、到窗口外才松开时，
+// click 落在遮罩上，但不是要关闭
+function closeOnBackdrop(backdrop, close) {
+  let downOnBackdrop = false;
+  backdrop.addEventListener('pointerdown', (e) => { downOnBackdrop = e.target === backdrop; });
+  backdrop.addEventListener('click', (e) => {
+    if (e.target === backdrop && downOnBackdrop) close();
+    downOnBackdrop = false;
+  });
 }
 
 function showModal(title, body) {
@@ -3088,7 +3100,6 @@ function fillProviderFields() {
   els.model.value = s.models[s.provider] || '';
   els.maxTokens.value = s.maxTokens[s.provider] || '';
   closeModelMenu();
-  els.btnModelMenu.disabled = !modelOptions().length; // 还没获取列表时 ▾ 不能点
   updateFetchButton();
   els.temperature.disabled = !s.useTemperature;
   updateFormatFields();
@@ -3146,7 +3157,7 @@ function migrateRelays(s) {
       const id = key.slice(RELAY_PREFIX.length);
       s.relays.push({ id, name: uniqueRelayName(hostName(s.baseUrls[old]) || t('relay.formatShort.' + format), s), format });
     }
-    for (const k of ['apiKeys', 'baseUrls', 'models', 'maxTokens', 'modelLists', 'modelInfo']) {
+    for (const k of ['apiKeys', 'baseUrls', 'models', 'maxTokens']) {
       if (key && s[k][old] !== undefined) s[k][key] = s[k][old];
       delete s[k][old];
     }
@@ -3162,7 +3173,7 @@ function migrateRelays(s) {
       const key = RELAY_PREFIX + id;
       s.relays.push({ id, name: uniqueRelayName(hostName(url) || t('relay.formatShort.' + PROVIDERS[k].format), s), format: PROVIDERS[k].format });
       s.baseUrls[key] = url;
-      for (const f of ['apiKeys', 'models', 'maxTokens', 'modelLists', 'modelInfo']) {
+      for (const f of ['apiKeys', 'models', 'maxTokens']) {
         if (s[f][k] !== undefined) { s[f][key] = s[f][k]; delete s[f][k]; }
       }
       if (s.provider === k) s.provider = key;
@@ -3175,10 +3186,10 @@ function migrateRelays(s) {
   const orRelay = s.relays.find((r) => trimSlash(s.baseUrls[RELAY_PREFIX + r.id] || '') === PROVIDERS.openrouter.baseUrl);
   if (orRelay && !(s.apiKeys.openrouter || '').trim()) {
     const key = RELAY_PREFIX + orRelay.id;
-    for (const f of ['apiKeys', 'models', 'maxTokens', 'modelLists', 'modelInfo']) {
+    for (const f of ['apiKeys', 'models', 'maxTokens']) {
       if (s[f][key] !== undefined) s[f].openrouter = s[f][key];
     }
-    for (const f of ['apiKeys', 'baseUrls', 'models', 'maxTokens', 'modelLists', 'modelInfo']) delete s[f][key];
+    for (const f of ['apiKeys', 'baseUrls', 'models', 'maxTokens']) delete s[f][key];
     s.relays = s.relays.filter((r) => r !== orRelay);
     if (s.provider === key) s.provider = 'openrouter';
     migrated = true;
@@ -3204,7 +3215,8 @@ function removeRelay(relay) {
   const s = state.settings;
   const key = RELAY_PREFIX + relay.id;
   s.relays = s.relays.filter((r) => r !== relay);
-  for (const k of ['apiKeys', 'baseUrls', 'models', 'maxTokens', 'modelLists', 'modelInfo']) delete s[k][key];
+  for (const k of ['apiKeys', 'baseUrls', 'models', 'maxTokens']) delete s[k][key];
+  delete state.modelLists[key];
   if (s.provider === key) s.provider = 'anthropic';
   setCustomProviders(s.relays);
   fillProviderSelect();
@@ -3214,8 +3226,8 @@ function removeRelay(relay) {
   toast(t('relay.deleted', { name: relay.name }));
 }
 
-// 「添加服务商」窗口。relayDraft 是窗口打开期间的状态：models 是获取到的模型列表，info 是同时得到的附加信息（保存后在「完整列表」里看，
-// 这个窗口里只有简单的下拉框），fetching 是正在获取的那一次（关掉窗口后作废）
+// 「添加服务商」窗口。relayDraft 是窗口打开期间的状态：models 是获取到的模型列表，info 是同时得到的附加信息（保存后本次打开期间
+// 在设置区的「完整列表」里看，这个窗口里只有简单的下拉框），fetching 是正在获取的那一次（关掉窗口后作废）
 let relayDraft = null;
 
 function openRelayDialog() {
@@ -3347,18 +3359,32 @@ function bindRelayDialog() {
 
 const modelMenu = { items: [], active: -1 };
 
-// 可选的模型：只有点“获取列表”从接口拿到的。没有预设的列表：预设的名字不一定能用，容易误解成都可以用。
-// 显示时再过滤、排序一次：以前获取的列表也只显示对话模型，并按现在的顺序显示
+// 可选的模型：只有本次打开期间点“获取列表”从接口拿到的。没有预设的列表：预设的名字不一定能用，容易误解成都可以用
 function modelOptions() {
-  return chatModelList(state.settings.modelLists[state.settings.provider] || []);
+  const l = state.modelLists[state.settings.provider];
+  return l ? chatModelList(l.models) : [];
 }
 
 // filter 为空时显示全部；否则只显示包含这段文字的
 function openModelMenu(filter) {
   const f = (filter || '').trim().toLowerCase();
   const current = els.model.value.trim();
+  // 本次打开期间还没获取列表：点 ▾（或按 ↓）时只显示一条提示，不能选；边输入边筛选时不显示
+  if (!hasModelList()) {
+    modelMenu.items = [];
+    modelMenu.active = -1;
+    if (f) return closeModelMenu();
+    els.modelMenu.innerHTML = '';
+    const hint = document.createElement('div');
+    hint.className = 'combo-item combo-hint';
+    hint.textContent = t('set.needModelList');
+    hint.addEventListener('mousedown', (e) => e.preventDefault());
+    els.modelMenu.appendChild(hint);
+    els.modelMenu.hidden = false;
+    return;
+  }
   modelMenu.items = modelOptions().filter((m) => !f || m.toLowerCase().includes(f));
-  // 还没获取列表，或者没有匹配的：不打开（输入的名字照样可以用）
+  // 没有匹配的：不打开（输入的名字照样可以用）
   if (!modelMenu.items.length) return closeModelMenu();
   modelMenu.active = modelMenu.items.indexOf(current);
   els.modelMenu.innerHTML = '';
@@ -3428,22 +3454,19 @@ function bindModelMenu() {
 }
 
 // ---- 完整模型列表 ----
-// 获取过模型列表后（在设置区，或者添加服务商的时候），设置区的「获取列表」变成「完整列表」，打开这个窗口：
+// 本次打开期间获取过模型列表后（在设置区，或者添加服务商的时候），设置区的「获取列表」变成「完整列表」，打开这个窗口：
 // 列出所有对话模型和服务商给的费用、状态、标签（大多数服务商只给名称，没有的显示 —）。
-// 点表头按名称、输入费用、输出费用排序（再点一次反过来；名称和下拉列表的顺序一样，没有价格的总在最后）；
-// 名称、标签各有一个筛选框：写一段文字 = 包含它，!文字 = 不包含它，空格隔开的几个条件要同时满足。点一行选用这个模型。
-// 重新获取列表也在这里。「添加服务商」窗口里的模型下拉框不进这个窗口
+// 点表头排序：第一次升序，再点一次降序。名称用和下拉列表一样的排序规则（compareModels），费用按数值，没有价格的总在最后；
+// 名称、标签各有一个筛选框：逗号（中英文都可以）隔开几个条件，要同时满足；文字 = 包含它，!文字 = 不包含它，不分大小写。
+// 点一行选用这个模型。重新获取列表也在这里。「添加服务商」窗口里的模型下拉框不进这个窗口
 
 const modelList = { sort: 'name', desc: false, fetching: null };
 
-const hasModelList = () => Array.isArray(state.settings.modelLists[state.settings.provider]);
+const hasModelList = () => !!state.modelLists[state.settings.provider];
 
-// 记下获取到的列表和附加信息（没有附加信息时把旧的删掉）
+// 记下获取到的列表和附加信息（只在本次打开期间）
 function storeModelList(provider, models, info) {
-  const s = state.settings;
-  s.modelLists[provider] = models;
-  if (info && Object.keys(info).length) s.modelInfo[provider] = info;
-  else delete s.modelInfo[provider];
+  state.modelLists[provider] = { models, info: info || {} };
 }
 
 // 改的是 data-i18n：切换界面语言时按现在的状态重新翻译
@@ -3470,10 +3493,11 @@ function closeModelList() {
   els.modelListBox.hidden = true;
 }
 
-// 筛选条件：[{ not, v }]，都是小写
+// 筛选条件：[{ not, v }]，都是小写。「gemini, !flash」= 包含 gemini 而且不包含 flash
 function parseModelFilter(text) {
-  return text.trim().toLowerCase().split(/\s+/)
-    .map((w) => (w[0] === '!' ? { not: true, v: w.slice(1) } : { not: false, v: w }))
+  return text.toLowerCase().split(/[,，]/)
+    .map((w) => w.trim())
+    .map((w) => (w[0] === '!' || w[0] === '！' ? { not: true, v: w.slice(1).trim() } : { not: false, v: w }))
     .filter((c) => c.v);
 }
 // hay 里有一项包含 v 就算包含
@@ -3512,8 +3536,11 @@ function renderModelList() {
   const s = state.settings;
   const relay = currentRelay();
   els.modelListTitle.textContent = t('models.title', { name: relay ? relay.name : t('provider.' + s.provider) });
-  const infoMap = s.modelInfo[s.provider] || {};
+  const infoMap = (state.modelLists[s.provider] || {}).info || {};
   const all = modelOptions().map((name) => ({ name, info: infoMap[name] || {} }));
+  // 第一列的标题：服务商提供了标签时是「名称（含标签）」
+  els.modelColName.dataset.i18n = all.some((r) => r.info.tags) ? 'models.colNameTags' : 'models.colName';
+  els.modelColName.textContent = t(els.modelColName.dataset.i18n);
   const nameConds = parseModelFilter(els.modelFilterName.value);
   const tagConds = parseModelFilter(els.modelFilterTag.value);
   const rows = sortModelRows(all.filter((r) => modelFilterHit(nameConds, [r.name.toLowerCase()])
@@ -3595,8 +3622,6 @@ async function refetchModelList() {
   try {
     const { models, info } = await fetchModels(providerCfg());
     storeModelList(provider, models, info);
-    saveSettingsSoon();
-    if (state.settings.provider === provider) els.btnModelMenu.disabled = !modelOptions().length;
     if (!els.modelListBox.hidden) renderModelList();
     toast(t('models.refetched', { n: models.length }));
   } catch (e) {
@@ -3621,8 +3646,7 @@ function bindModelList() {
     });
   }
   els.btnRefetchModels.addEventListener('click', () => void refetchModelList());
-  // 点窗口以外的地方关闭
-  els.modelListBox.addEventListener('click', (e) => { if (e.target === els.modelListBox) closeModelList(); });
+  closeOnBackdrop(els.modelListBox, closeModelList);
   // Esc 只关这个窗口，不顺带关闭设置面板。上面盖着出错提示时先关提示（它自己处理）
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape' || els.modelListBox.hidden || !els.modal.hidden) return;
@@ -4037,9 +4061,7 @@ function bindSettings() {
     try {
       const { models: list, info } = await fetchModels(providerCfg());
       storeModelList(s().provider, list, info);
-      els.btnModelMenu.disabled = !list.length;
       updateFetchButton();
-      saveSettingsSoon();
       toast(t('set.fetchedModels', { n: list.length }));
       openModelMenu('');
       // 电脑上把光标放进模型输入框，可以直接用方向键和回车选；触屏上不放（会弹出键盘盖住列表）
@@ -4283,7 +4305,7 @@ function bindChat() {
     closeConvMenu();
   });
   // 点「全部对话」窗口以外的地方关闭它
-  els.allConvBox.addEventListener('click', (e) => { if (e.target === els.allConvBox) closeAllConvs(); });
+  closeOnBackdrop(els.allConvBox, closeAllConvs);
   // 电脑和手机布局的对话名称写法不同（手机上更紧凑），切换布局时重新显示
   window.matchMedia('(max-width: 999px)').addEventListener('change', renderConvSelect);
   els.btnNewConv.addEventListener('click', (e) => {
@@ -4310,7 +4332,7 @@ function bindChat() {
   els.btnDeleteConv.addEventListener('click', () => deleteConv());
 
   els.btnModalClose.addEventListener('click', () => { els.modal.hidden = true; });
-  els.modal.addEventListener('click', (e) => { if (e.target === els.modal) els.modal.hidden = true; });
+  closeOnBackdrop(els.modal, () => { els.modal.hidden = true; });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') els.modal.hidden = true; });
 
   window.addEventListener('beforeunload', (e) => {
@@ -4325,8 +4347,14 @@ async function boot() {
   const saved = (await DB.get('settings')) || {};
   const sessionKeys = state.settings && state.settings.rememberKeys === false ? state.settings.apiKeys : null;
   state.settings = { ...DEFAULT_SETTINGS, ...saved };
-  for (const k of ['apiKeys', 'baseUrls', 'models', 'maxTokens', 'modelLists', 'modelInfo', 'sync']) {
+  for (const k of ['apiKeys', 'baseUrls', 'models', 'maxTokens', 'sync']) {
     state.settings[k] = { ...DEFAULT_SETTINGS[k], ...(saved[k] || {}) };
+  }
+  // 以前的版本把获取到的模型列表存在设置里（modelLists、modelInfo）：现在每次打开重新获取，删掉
+  if ('modelLists' in state.settings || 'modelInfo' in state.settings) {
+    delete state.settings.modelLists;
+    delete state.settings.modelInfo;
+    saveSettingsSoon();
   }
   if (sessionKeys) state.settings.apiKeys = sessionKeys; // 不记住 Key 时，本次打开期间填过的 Key 继续有效
   // （很早的版本单列过 OpenRouter，键名也是 openrouter：现在它又是内置服务商，那时的 Key 和模型直接接着用）
