@@ -14,3 +14,7 @@
   zh-TW: 修復了點「取得清單」後自動展開的模型清單點別處無法收起的問題，以及以 nano 等字樣開頭的模型排在清單最前面的問題
   en: Fixed the model list that opens after "Fetch list" not closing when clicking elsewhere, and models whose names start with words like "nano" being sorted to the top
   ja: 「一覧を取得」の後に自動で開くモデル一覧がほかの場所をクリックしても閉じない問題と、nano などで始まる名前のモデルが一覧の先頭に並ぶ問題を修正しました
+- zh-CN: 服务商「Gemini 官方（Google AI Studio）」改名为「Google AI Studio」，「Google Vertex AI」后面注明「现 Gemini Platform」
+  zh-TW: 服務商「Gemini 官方（Google AI Studio）」改名為「Google AI Studio」，「Google Vertex AI」後面註明「現 Gemini Platform」
+  en: The provider "Gemini (official, Google AI Studio)" is now called "Google AI Studio", and "Google Vertex AI" now notes "now Gemini Platform"
+  ja: サービス「Gemini 公式（Google AI Studio）」の名前を「Google AI Studio」に変更し、「Google Vertex AI」に「現 Gemini Platform」と注記しました
